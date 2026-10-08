@@ -12,13 +12,15 @@ import mimetypes
 from ai_lab.errors import ProviderError
 from ai_lab.spec import Image, ResponseRequest
 from ai_lab.transport import CliCall, CliResult
-from ai_lab.wire import text_of
+from ai_lab.wire.base import Wire, text_of
+
+__all__ = ['WIRE']
 
 _OUT = 'answer.json'
 _SCHEMA = 'schema.json'
 
 
-def respond(request: ResponseRequest, model: str, endpoint: str, key: str) -> CliCall:
+def _respond(request: ResponseRequest, model: str, endpoint: str, _key: str) -> CliCall:
     files = {_SCHEMA: json.dumps(dict(request.schema)).encode('utf-8')}
     images: list[str] = []
     texts = [request.instructions]
@@ -45,8 +47,12 @@ def respond(request: ResponseRequest, model: str, endpoint: str, key: str) -> Cl
     return CliCall(argv=tuple(argv), stdin='\n\n'.join(texts), files=files, output=_OUT)
 
 
-def parse_response(raw: CliResult) -> dict:
+def _parse_response(raw: CliResult) -> dict:
     try:
         return json.loads(raw.text)
     except json.JSONDecodeError:
-        raise ProviderError(f'codex wrote a final message that is not JSON: {raw.text[:300]}') from None
+        msg = f'codex wrote a final message that is not JSON: {raw.text[:300]}'
+        raise ProviderError(msg) from None
+
+
+WIRE = Wire(name='codex', cli=True, respond=_respond, parse_response=_parse_response)

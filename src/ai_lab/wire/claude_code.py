@@ -14,10 +14,12 @@ import json
 from ai_lab.errors import ProviderError
 from ai_lab.spec import Image, ResponseRequest
 from ai_lab.transport import CliCall, CliResult
-from ai_lab.wire import text_of
+from ai_lab.wire.base import Wire, text_of
+
+__all__ = ['WIRE']
 
 
-def respond(request: ResponseRequest, model: str, endpoint: str, key: str) -> CliCall:
+def _respond(request: ResponseRequest, model: str, endpoint: str, _key: str) -> CliCall:
     content = [
         {
             'type': 'image',
@@ -46,12 +48,17 @@ def respond(request: ResponseRequest, model: str, endpoint: str, key: str) -> Cl
     return CliCall(argv=tuple(argv), stdin=json.dumps(message) + '\n')
 
 
-def parse_response(raw: CliResult) -> dict:
+def _parse_response(raw: CliResult) -> dict:
     for line in reversed(raw.text.splitlines()):
         if '"type":"result"' not in line.replace(' ', ''):
             continue
         event = json.loads(line)
         if event.get('is_error') or 'structured_output' not in event:
-            raise ProviderError(f'claude returned no structured output: {str(event.get("result"))[:300]}')
+            msg = f'claude returned no structured output: {str(event.get("result"))[:300]}'
+            raise ProviderError(msg)
         return event['structured_output']
-    raise ProviderError(f'claude emitted no result event; tail: {raw.text[-300:]}')
+    msg = f'claude emitted no result event; tail: {raw.text[-300:]}'
+    raise ProviderError(msg)
+
+
+WIRE = Wire(name='claude_code', cli=True, respond=_respond, parse_response=_parse_response)

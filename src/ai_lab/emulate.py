@@ -51,6 +51,7 @@ def decision_schema(questions: tuple[Question, ...]) -> dict:
 
 
 def as_response_request(request: DecisionRequest) -> ResponseRequest:
+    """The decision request as a response request carrying its derived schema."""
     return ResponseRequest(
         instructions=_INSTRUCTIONS,
         context=request.context,
@@ -60,22 +61,27 @@ def as_response_request(request: DecisionRequest) -> ResponseRequest:
 
 
 def parse_answers(value: Mapping, questions: tuple[Question, ...]) -> dict[str, Answer]:
+    """Typed answers from a schema-bound reply, refusing any value outside its question's set."""
     answers: dict[str, Answer] = {}
     for q in questions:
         if q.name not in value:
-            raise ProviderError(f'the response has no answer for question {q.name!r}: {dict(value)}')
+            msg = f'the response has no answer for question {q.name!r}: {dict(value)}'
+            raise ProviderError(msg)
         got = value[q.name]
         if isinstance(q, Predicate):
             if not isinstance(got, bool):
-                raise ProviderError(f'predicate {q.name!r} needs true/false, got {got!r}')
+                msg = f'predicate {q.name!r} needs true/false, got {got!r}'
+                raise ProviderError(msg)
             answers[q.name] = PredicateAnswer(q.name, got)
         elif isinstance(q, Choice):
             if got not in {o.value for o in q.options}:
-                raise ProviderError(f'choice {q.name!r} got {got!r}, not one of its options')
+                msg = f'choice {q.name!r} got {got!r}, not one of its options'
+                raise ProviderError(msg)
             answers[q.name] = ChoiceAnswer(q.name, got)
         elif isinstance(q, Score):
             labels = [lv.label for lv in q.levels]
             if got not in labels:
-                raise ProviderError(f'score {q.name!r} got {got!r}, not one of its levels {labels}')
+                msg = f'score {q.name!r} got {got!r}, not one of its levels {labels}'
+                raise ProviderError(msg)
             answers[q.name] = ScoreAnswer(q.name, got, float(labels.index(got)))
     return answers

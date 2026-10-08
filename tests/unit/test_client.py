@@ -74,7 +74,7 @@ def test_an_unknown_provider_lists_the_known_ones():
 
 
 def test_an_http_provider_needs_a_model():
-    with pytest.raises(ValueError, match='needs a model'):
+    with pytest.raises(Unsupported, match='needs a model'):
         connect('openai')
 
 
@@ -90,15 +90,21 @@ def test_a_cli_provider_goes_through_run(request_):
     assert seen[0].argv[:2] == ('codex', 'exec')
 
 
-def test_a_user_table_adds_and_replaces_rows(tmp_path, monkeypatch):
-    extra = tmp_path / 'p.toml'
-    extra.write_text('[mylab]\nwire = "openai_chat"\nendpoint = "http://box:8000/v1"\n', encoding='utf-8')
-    monkeypatch.setenv('AI_LAB_PROVIDERS', str(extra))
-    assert providers()['mylab'] == Provider('mylab', 'openai_chat', 'http://box:8000/v1')
+def test_a_user_table_in_the_family_config_root_adds_and_replaces_rows(tmp_path, monkeypatch):
+    monkeypatch.setenv('AI_LAB_HOME', str(tmp_path))
+    (tmp_path / 'config').mkdir()
+    rows = (
+        '[mylab]\nwire = "openai_chat"\nendpoint = "http://box:8000/v1"\n'
+        '[ollama]\nwire = "openai_chat"\nendpoint = "http://gpu:11434/v1"\n'
+    )
+    (tmp_path / 'config' / 'providers.toml').write_text(rows, encoding='utf-8')
+    table = providers()
+    assert table['mylab'] == Provider('mylab', 'openai_chat', 'http://box:8000/v1')
+    assert table['ollama'].endpoint == 'http://gpu:11434/v1'
 
 
 def test_a_row_naming_an_unknown_wire_is_refused():
-    with pytest.raises(ValueError, match='unknown wire'):
+    with pytest.raises(Unsupported, match='unknown wire'):
         Provider('x', 'smoke_signals', 'e')
 
 

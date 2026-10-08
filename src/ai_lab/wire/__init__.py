@@ -1,49 +1,41 @@
-"""One module per wire PROTOCOL, never per company: a vendor is a row in ``providers.toml``.
+"""Every wire this package ships, in one table keyed by name.
 
-A wire module is pure translation and declares its verbs by defining them:
-
-* ``respond(request, model, endpoint, key) -> HttpCall | CliCall`` and ``parse_response(raw) -> Mapping``
-* ``decide(request, model, endpoint, key) -> HttpCall | CliCall`` and ``parse_decision(raw, request) -> answers``
-
-A wire without ``decide`` still decides -- through ``respond`` and :mod:`ai_lab.emulate` -- so only
-a native decision endpoint defines it. Capability is therefore read off the code, not declared
-beside it.
+A wire is a PROTOCOL, never a company: a vendor is a row in ``providers.toml`` that names one of
+these. What each wire can do is its :class:`~ai_lab.wire.base.Wire` record -- this table holds the
+records, so a provider naming anything else is refused against the set printed here.
 """
 
 from __future__ import annotations
 
-import importlib
-from types import ModuleType
+from collections.abc import Mapping
+from types import MappingProxyType
 
-from ai_lab.spec import Context, Fields, Image, Text
+from ai_lab.wire import (
+    anthropic_messages,
+    claude_code,
+    codex,
+    gemini,
+    openai_chat,
+    openai_decisions,
+    openai_responses,
+    typesafe,
+)
+from ai_lab.wire.base import Wire
 
-__all__ = ['WIRES', 'load', 'text_of']
+__all__ = ['WIRES']
 
-#: Every wire this package ships. A provider row naming anything else is refused.
-WIRES = frozenset(
+WIRES: Mapping[str, Wire] = MappingProxyType(
     {
-        'anthropic_messages',
-        'claude_code',
-        'codex',
-        'gemini',
-        'openai_chat',
-        'openai_decisions',
-        'openai_responses',
-        'typesafe',
+        module.WIRE.name: module.WIRE
+        for module in (
+            anthropic_messages,
+            claude_code,
+            codex,
+            gemini,
+            openai_chat,
+            openai_decisions,
+            openai_responses,
+            typesafe,
+        )
     }
 )
-
-
-def load(name: str) -> ModuleType:
-    if name not in WIRES:
-        raise ValueError(f'unknown wire {name!r}; the wires are {sorted(WIRES)}')
-    return importlib.import_module(f'ai_lab.wire.{name}')
-
-
-def text_of(part: Text | Fields) -> str:
-    return part.text if isinstance(part, Text) else part.as_text()
-
-
-def joined_text(context: Context) -> str:
-    """The text parts of a context, in order; images are the caller's to carry or refuse."""
-    return '\n\n'.join(text_of(p) for p in context if not isinstance(p, Image))

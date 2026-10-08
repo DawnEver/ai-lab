@@ -7,13 +7,15 @@ import base64
 from ai_lab.errors import ProviderError
 from ai_lab.spec import Image, ResponseRequest
 from ai_lab.transport import HttpCall
-from ai_lab.wire import text_of
+from ai_lab.wire.base import Wire, text_of
+
+__all__ = ['WIRE']
 
 _VERSION = '2023-06-01'
 _MAX_TOKENS = 8192
 
 
-def respond(request: ResponseRequest, model: str, endpoint: str, key: str) -> HttpCall:
+def _respond(request: ResponseRequest, model: str, endpoint: str, key: str) -> HttpCall:
     content = [
         {
             'type': 'image',
@@ -39,8 +41,12 @@ def respond(request: ResponseRequest, model: str, endpoint: str, key: str) -> Ht
     )
 
 
-def parse_response(raw: dict) -> dict:
+def _parse_response(raw: dict) -> dict:
     for block in raw.get('content', []):
         if block.get('type') == 'tool_use':
             return block['input']
-    raise ProviderError(f'the message carries no tool_use block: stop_reason={raw.get("stop_reason")}')
+    msg = f'the message carries no tool_use block: stop_reason={raw.get("stop_reason")}'
+    raise ProviderError(msg)
+
+
+WIRE = Wire(name='anthropic_messages', cli=False, respond=_respond, parse_response=_parse_response)

@@ -23,12 +23,14 @@ _ANSWERS = {cls.__name__: cls for cls in (PredicateAnswer, ChoiceAnswer, ScoreAn
 
 
 class Mode(StrEnum):
+    """``RECORD`` serves hits and records misses; ``REPLAY`` serves hits and raises on a miss."""
+
     RECORD = 'record'
     REPLAY = 'replay'
 
 
-def _key(verb: str, client: str, request: object) -> str:
-    return hashlib.sha256(canonical([verb, client, request]).encode('utf-8')).hexdigest()
+def _key(verb: str, client: str, request: DecisionRequest | ResponseRequest) -> str:
+    return hashlib.sha256('\n'.join((verb, client, canonical(request))).encode()).hexdigest()
 
 
 def _answer_to(a: Answer) -> dict:
@@ -44,6 +46,7 @@ class Ledger:
     """A JSONL file of entries; the file is the only state, so two runs can share one."""
 
     def __init__(self, path: str | Path, mode: Mode | str = Mode.RECORD) -> None:
+        """Open ``path`` (it need not exist yet) in ``mode``."""
         self.path = Path(path)
         self.mode = Mode(mode)
         self._entries: dict[str, dict] = {}
@@ -54,19 +57,24 @@ class Ledger:
                     self._entries[entry['key']] = entry
 
     def __len__(self) -> int:
+        """How many entries the file holds."""
         return len(self._entries)
 
     def wrap(self, client: object) -> Recorded:
+        """``client`` seen through this ledger."""
         return Recorded(client, self)
 
-    def _get(self, key: str, what: str) -> dict | None:
+    def entry(self, key: str, what: str) -> dict | None:
+        """The entry recorded under ``key``; ``None`` on a miss in ``RECORD``, a refusal in ``REPLAY``."""
         if key in self._entries:
             return self._entries[key]
         if self.mode is Mode.REPLAY:
-            raise ReplayMiss(f'{self.path} holds no entry for {what}; re-run with mode="record"')
+            msg = f'{self.path} holds no entry for {what}; re-run with mode="record"'
+            raise ReplayMiss(msg)
         return None
 
-    def _put(self, entry: dict) -> None:
+    def append(self, entry: dict) -> None:
+        """Write ``entry`` to the file and serve it from now on."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open('a', encoding='utf-8') as out:
             out.write(json.dumps(entry, ensure_ascii=False) + '\n')
@@ -77,13 +85,15 @@ class Recorded:
     """A client seen through a ledger; same verbs, same answers, served from the file when known."""
 
     def __init__(self, client: object, ledger: Ledger) -> None:
+        """``client``, answered from ``ledger`` when the exact request is known."""
         self.client = client
         self.ledger = ledger
         self.name = client.name
 
     def decide(self, request: DecisionRequest) -> Decision:
+        """The recorded decision for this request, else the client's (recorded in ``RECORD`` mode)."""
         key = _key('decide', self.name, request)
-        entry = self.ledger._get(key, f'decide on {self.name}')
+        entry = self.ledger.entry(key, f'decide on {self.name}')
         if entry is None:
             d = self.client.decide(request)
             entry = {
@@ -95,14 +105,15 @@ class Recorded:
                 'latency_s': d.latency_s,
                 'answers': [_answer_to(a) for a in d.answers.values()],
             }
-            self.ledger._put(entry)
+            self.ledger.append(entry)
             return d
         answers = {a.name: a for a in map(_answer_from, entry['answers'])}
         return Decision(answers, Basis(entry['basis']), entry['provider'], entry['model'], entry['latency_s'])
 
     def respond(self, request: ResponseRequest) -> Response:
+        """The recorded response for this request, else the client's (recorded in ``RECORD`` mode)."""
         key = _key('respond', self.name, request)
-        entry = self.ledger._get(key, f'respond on {self.name}')
+        entry = self.ledger.entry(key, f'respond on {self.name}')
         if entry is None:
             r = self.client.respond(request)
             entry = {
@@ -113,6 +124,6 @@ class Recorded:
                 'latency_s': r.latency_s,
                 'value': r.value,
             }
-            self.ledger._put(entry)
+            self.ledger.append(entry)
             return r
         return Response(entry['value'], entry['provider'], entry['model'], entry['latency_s'])

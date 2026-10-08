@@ -7,11 +7,13 @@ level's meaning; the answer's level index maps back to the declared label.
 
 from __future__ import annotations
 
-from ai_lab.answers import Answer, ChoiceAnswer, PredicateAnswer, Refusal, ScoreAnswer
+from ai_lab.answers import YES_AT, Answer, ChoiceAnswer, PredicateAnswer, Refusal, ScoreAnswer
 from ai_lab.errors import ProviderError
 from ai_lab.spec import Choice, DecisionRequest, Fields, Predicate, Question
 from ai_lab.transport import HttpCall
-from ai_lab.wire import joined_text
+from ai_lab.wire.base import Wire, joined_text
+
+__all__ = ['WIRE']
 
 
 def _question(q: Question) -> dict:
@@ -30,7 +32,7 @@ def _question(q: Question) -> dict:
     }
 
 
-def decide(request: DecisionRequest, model: str, endpoint: str, key: str) -> HttpCall:
+def _decide(request: DecisionRequest, model: str, endpoint: str, key: str) -> HttpCall:
     context = request.context
     state = dict(context[0].values) if len(context) == 1 and isinstance(context[0], Fields) else joined_text(context)
     return HttpCall(
@@ -40,18 +42,19 @@ def decide(request: DecisionRequest, model: str, endpoint: str, key: str) -> Htt
     )
 
 
-def parse_decision(raw: dict, request: DecisionRequest) -> dict[str, Answer]:
+def _parse_decision(raw: dict, request: DecisionRequest) -> dict[str, Answer]:
     got = raw.get('answers', {})
     answers: dict[str, Answer] = {}
     for q in request.questions:
         a = got.get(q.name)
         if a is None:
-            raise ProviderError(f'the decision has no answer for {q.name!r}: {raw}')
+            msg = f'the decision has no answer for {q.name!r}: {raw}'
+            raise ProviderError(msg)
         if a['type'] == 'refusal':
             answers[q.name] = Refusal(q.name)
         elif a['type'] == 'noul':
             p = float(a['noul'])
-            answers[q.name] = PredicateAnswer(q.name, p >= 0.5, p)
+            answers[q.name] = PredicateAnswer(q.name, p >= YES_AT, p)
         elif a['type'] == 'choice':
             probs = {k: float(v) for k, v in a.get('probabilities', {}).items()}
             answers[q.name] = ChoiceAnswer(q.name, a['choice'], probs or None, a.get('confidence'))
@@ -61,5 +64,9 @@ def parse_decision(raw: dict, request: DecisionRequest) -> dict[str, Answer]:
             level = max(probs, key=probs.get) if probs else labels[round(float(a['score']))]
             answers[q.name] = ScoreAnswer(q.name, level, float(a['score']), probs or None, a.get('confidence'))
         else:
-            raise ProviderError(f'unknown answer type {a["type"]!r} for {q.name!r}')
+            msg = f'unknown answer type {a["type"]!r} for {q.name!r}'
+            raise ProviderError(msg)
     return answers
+
+
+WIRE = Wire(name='typesafe', cli=False, decide=_decide, parse_decision=_parse_decision)

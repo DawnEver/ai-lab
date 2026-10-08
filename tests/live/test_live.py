@@ -4,6 +4,7 @@ FAILS here with the Unsupported message naming what is missing -- it is never sk
 import pytest
 
 from ai_lab import Basis, ResponseRequest, Text, connect
+from tests.live.images import red_square
 
 pytestmark = pytest.mark.live
 
@@ -25,8 +26,6 @@ def test_local_cli_responds_and_decides(spec, request_):
 
 @pytest.mark.parametrize('spec', ['claude_code:haiku', 'codex'])
 def test_local_cli_reads_an_image(spec):
-    from tests.live.images import red_square
-
     schema = {
         'type': 'object',
         'properties': {'colour': {'type': 'string', 'enum': ['red', 'green', 'blue']}},

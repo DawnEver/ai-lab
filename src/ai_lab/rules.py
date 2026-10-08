@@ -20,14 +20,19 @@ Rule = Callable[[Mapping[str, object]], object]
 
 
 class Rules:
+    """A decider made of one function per question over the context's fields."""
+
     def __init__(self, rules: Mapping[str, Rule], *, name: str = 'rules') -> None:
+        """``rules`` maps a question name to a function of the merged fields returning the answer's value."""
         self.rules = dict(rules)
         self.name = name
 
     def decide(self, request: DecisionRequest) -> Decision:
+        """Answer every question by its rule; a question without one is refused."""
         missing = [q.name for q in request.questions if q.name not in self.rules]
         if missing:
-            raise Unsupported(f'{self.name} has no rule for {missing}; declare one per question')
+            msg = f'{self.name} has no rule for {missing}; declare one per question'
+            raise Unsupported(msg)
         fields: dict[str, object] = {}
         for part in request.context:
             if isinstance(part, Fields):

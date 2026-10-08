@@ -1,7 +1,9 @@
 import io
+import sys
 import urllib.error
 
 import pytest
+from lab_commons.proc import pid_alive
 
 from ai_lab import ProviderError, Unsupported
 from ai_lab.transport import CliCall, HttpCall, post, run
@@ -47,7 +49,8 @@ def test_a_client_error_is_not_retried(monkeypatch):
 
 def test_retries_are_bounded(monkeypatch):
     def urlopen(request, timeout):
-        raise urllib.error.URLError('down')
+        msg = 'down'
+        raise urllib.error.URLError(msg)
 
     monkeypatch.setattr('urllib.request.urlopen', urlopen)
     with pytest.raises(ProviderError, match='after 3 attempts'):
@@ -57,3 +60,20 @@ def test_retries_are_bounded(monkeypatch):
 def test_a_missing_binary_is_unsupported():
     with pytest.raises(Unsupported, match='not on PATH'):
         run(CliCall(('no-such-binary-ai-lab',), ''))
+
+
+_PARENT = """
+import subprocess, sys, time
+child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])
+open(sys.argv[1], 'w').write(str(child.pid))
+time.sleep(60)
+"""
+
+
+def test_a_cli_past_its_ceiling_is_ended_as_a_tree(tmp_path):
+    pid_file = tmp_path / 'child.pid'
+    call = CliCall((sys.executable, '-c', _PARENT, str(pid_file)), '')
+    with pytest.raises(ProviderError, match='ended its process tree'):
+        run(call, timeout_s=3.0)
+    child = int(pid_file.read_text())
+    assert not pid_alive(child)

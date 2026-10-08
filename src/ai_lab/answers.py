@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 __all__ = [
+    'YES_AT',
     'Answer',
     'Basis',
     'ChoiceAnswer',
@@ -23,7 +24,13 @@ __all__ = [
 ]
 
 
+#: A native predicate reads as yes from this probability up.
+YES_AT = 0.5
+
+
 class Basis(StrEnum):
+    """Where an answer's probability came from."""
+
     NATIVE = 'native'
     STATED = 'stated'
     RULE = 'rule'
@@ -31,6 +38,8 @@ class Basis(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class PredicateAnswer:
+    """A yes/no answer, with the probability it is yes when the vendor gave one."""
+
     name: str
     value: bool
     probability: float | None = None
@@ -38,6 +47,8 @@ class PredicateAnswer:
 
 @dataclass(frozen=True, slots=True)
 class ChoiceAnswer:
+    """The picked option, with the distribution over options when the vendor gave one."""
+
     name: str
     choice: str
     probabilities: Mapping[str, float] | None = None
@@ -57,6 +68,8 @@ class ScoreAnswer:
 
 @dataclass(frozen=True, slots=True)
 class Refusal:
+    """The model declined to answer this question."""
+
     name: str
     reason: str = ''
 
@@ -66,6 +79,8 @@ Answer = PredicateAnswer | ChoiceAnswer | ScoreAnswer | Refusal
 
 @dataclass(frozen=True, slots=True)
 class Decision:
+    """One answer per question, from one provider and model."""
+
     answers: Mapping[str, Answer]
     basis: Basis
     provider: str
@@ -73,11 +88,14 @@ class Decision:
     latency_s: float = 0.0
 
     def __getitem__(self, name: str) -> Answer:
+        """The answer to the question named ``name``."""
         return self.answers[name]
 
 
 @dataclass(frozen=True, slots=True)
 class Response:
+    """An object of the requested schema, from one provider and model."""
+
     value: Mapping
     provider: str
     model: str

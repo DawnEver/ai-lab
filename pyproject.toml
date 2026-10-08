@@ -11,11 +11,19 @@ description = "Vendor-neutral typed decisions and schema-bound responses from an
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [{ name = "Mingyang Bao" }]
-# No runtime dependency: HTTP is urllib, config is tomllib, the CLIs are subprocesses.
-dependencies = []
+# HTTP is urllib, the provider table is tomllib, the CLIs are subprocesses. lab-commons supplies what
+# the family already owns: the config search path (`paths`) and ending a process TREE (`proc`).
+dependencies = [
+    "lab-commons[paths] @ git+https://github.com/DawnEver/lab-commons.git",
+]
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff"]
+# The family's development kit: rules registry, rendered configs, shared test bodies, verify entry.
+dev = [
+    "lab-commons[dev] @ git+https://github.com/DawnEver/lab-commons.git",
+    "pytest",
+    "ruff",
+]
 
 [tool.setuptools_scm]
 version_file = "src/ai_lab/__version__.py"
@@ -35,7 +43,20 @@ markers = ["live: calls a real model (network or a local CLI); run with -m live"
 
 [tool.ruff]
 line-length = 120
+target-version = "py312"
+
 [tool.ruff.format]
 quote-style = "single"
+
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP", "SIM"]
+select = [
+    "A", "AIR", "ANN", "ARG", "ASYNC", "B", "BLE", "C4", "C90", "COM", "D", "DJ", "DTZ", "E", "EM", "ERA",
+    "F", "FA", "FBT", "FIX", "FLY", "FURB", "G", "I", "ICN", "INP", "INT", "ISC", "LOG", "N", "NPY", "PD",
+    "PERF", "PGH", "PIE", "PLC", "PLE", "PLR", "PLW", "PT", "PTH", "PYI", "Q", "RET", "RSE", "RUF", "S",
+    "SIM", "SLF", "SLOT", "T10", "T20", "TD", "TID", "TRY", "UP", "W", "YTT",
+]
+ignore = ["COM812", "D203", "D213", "D400", "D401", "N818", "PLR0913", "Q000", "Q003", "S603"]
+
+[tool.ruff.lint.per-file-ignores]
+# A test asserts, reads private seams of what it tests, and names fixtures rather than documenting them.
+"tests/**" = ["S101", "SLF001", "D", "ANN", "ARG", "FBT003", "PLR2004", "PT018", "INP001"]

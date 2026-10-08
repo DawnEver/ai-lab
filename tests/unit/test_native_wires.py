@@ -7,7 +7,7 @@ from ai_lab.wire import openai_decisions, typesafe
 
 
 def test_openai_decisions_request(request_):
-    call = openai_decisions.decide(request_, 'gpt-6-luna', 'https://api.openai.com/v1', 'sk-x')
+    call = openai_decisions.WIRE.decide(request_, 'gpt-6-luna', 'https://api.openai.com/v1', 'sk-x')
     assert call.url == 'https://api.openai.com/v1/decisions'
     assert call.headers['Authorization'] == 'Bearer sk-x'
     body = call.body
@@ -20,14 +20,14 @@ def test_openai_decisions_request(request_):
 
 
 def test_openai_decisions_carries_images_as_data_urls(image_request):
-    body = openai_decisions.decide(image_request, 'm', 'e', 'k').body
+    body = openai_decisions.WIRE.decide(image_request, 'm', 'e', 'k').body
     content = body['input'][0]['content']
     assert content[1]['type'] == 'input_image'
     assert content[1]['image_url'].startswith('data:image/png;base64,')
 
 
 def test_the_key_never_appears_in_a_call_repr(request_):
-    assert 'sk-secret' not in repr(openai_decisions.decide(request_, 'm', 'e', 'sk-secret'))
+    assert 'sk-secret' not in repr(openai_decisions.WIRE.decide(request_, 'm', 'e', 'sk-secret'))
 
 
 def test_openai_decisions_response(request_):
@@ -58,7 +58,7 @@ def test_openai_decisions_response(request_):
             },
         ]
     }
-    got = openai_decisions.parse_decision(raw, request_)
+    got = openai_decisions.WIRE.parse_decision(raw, request_)
     assert got['worth_fea'] == PredicateAnswer('worth_fea', True, 0.92)
     assert got['fidelity'].choice == 'fea2d' and got['fidelity'].probabilities['drop'] == 0.02
     assert got['risk'] == ScoreAnswer('risk', 'medium', 1.1, {'low': 0.1, 'medium': 0.7, 'high': 0.2}, 0.55)
@@ -66,18 +66,18 @@ def test_openai_decisions_response(request_):
 
 def test_openai_decisions_refusal_is_an_answer_not_a_crash(questions):
     req = DecisionRequest((Fields({'a': 1}),), questions[:1])
-    got = openai_decisions.parse_decision({'answers': [{'type': 'refusal', 'name': 'worth_fea'}]}, req)
+    got = openai_decisions.WIRE.parse_decision({'answers': [{'type': 'refusal', 'name': 'worth_fea'}]}, req)
     assert got['worth_fea'] == Refusal('worth_fea')
 
 
 def test_a_missing_answer_is_refused(request_):
     with pytest.raises(ProviderError, match='no answer'):
-        openai_decisions.parse_decision({'answers': []}, request_)
+        openai_decisions.WIRE.parse_decision({'answers': []}, request_)
 
 
 def test_typesafe_sends_a_lone_fields_part_as_an_object(questions):
     req = DecisionRequest((Fields({'torque_nm': 327.0}),), questions)
-    call = typesafe.decide(req, 'jev-latest', 'https://api.typesafe.ai/v1', 'k')
+    call = typesafe.WIRE.decide(req, 'jev-latest', 'https://api.typesafe.ai/v1', 'k')
     assert call.url == 'https://api.typesafe.ai/v1/systemone'
     assert call.body['state'] == {'torque_nm': 327.0}
     qs = call.body['questions']
@@ -87,7 +87,7 @@ def test_typesafe_sends_a_lone_fields_part_as_an_object(questions):
 
 
 def test_typesafe_sends_mixed_context_as_text(request_):
-    state = typesafe.decide(request_, 'm', 'e', 'k').body['state']
+    state = typesafe.WIRE.decide(request_, 'm', 'e', 'k').body['state']
     assert isinstance(state, str) and 'IPM rotor' in state
 
 
@@ -105,7 +105,7 @@ def test_typesafe_response(request_):
             'risk': {'type': 'score', 'score': 0.4, 'probabilities': {'0': 0.6, '1': 0.4, '2': 0.0}, 'confidence': 0.9},
         },
     }
-    got = typesafe.parse_decision(raw, request_)
+    got = typesafe.WIRE.parse_decision(raw, request_)
     assert got['worth_fea'] == PredicateAnswer('worth_fea', False, 0.3)
     assert got['fidelity'] == ChoiceAnswer('fidelity', 'drop', {'drop': 0.8, 'fea2d': 0.2}, 0.81)
     assert got['risk'].level == 'low' and got['risk'].probabilities == {'low': 0.6, 'medium': 0.4, 'high': 0.0}

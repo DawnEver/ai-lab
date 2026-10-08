@@ -1,7 +1,8 @@
 # ai-lab
 
-Typed decisions and schema-bound responses from any model, through one interface. No runtime
-dependency.
+Typed decisions and schema-bound responses from any model, through one interface. Part of the
+lab-commons family: its config search path and process-tree reaping are lab-commons', and so are the
+lint set, the rendered project files and the verify entry point.
 
 ## Two verbs
 
@@ -33,8 +34,9 @@ decision['fidelity'].choice, decision['fidelity'].probabilities
 ## Providers are data, wires are protocols
 
 `connect('<provider>:<model>')` reads `providers.toml`: each row names a wire, an endpoint (a URL
-or a CLI binary), the environment variable holding its key, and whether it reads images. Set
-`AI_LAB_PROVIDERS` to your own TOML to add or replace rows.
+or a CLI binary), the environment variable holding its key, and whether it reads images. Put a
+`providers.toml` in the family config root (`$AI_LAB_HOME/config`, else the platform's user config
+directory for `ai_lab`) to add rows or replace one of the same name.
 
 | wire | decides | responds | packaged providers |
 |---|---|---|---|
@@ -58,6 +60,7 @@ off (`claude`) or a read-only ephemeral sandbox (`codex`): they answer, they can
 
 ```python
 from ai_lab import Ledger
+
 client = Ledger('output/ai/ledger.jsonl', mode='record').wrap(connect('anthropic:claude-sonnet-5-5'))
 ```
 
@@ -76,6 +79,11 @@ Windows: `setx OPENAI_API_KEY "sk-..."`, then restart the shell.
 ## Develop
 
 ```
-make verify        # ruff + unit tests (offline)
-make live          # real calls: local CLIs and every provider whose key is set
+uv pip install -e ".[dev]"     # the family dev kit (lab-commons[dev]), pytest, ruff
+make verify                    # python -m lab_commons.dev.verify: ruff, the suite, hook wiring
+python -m pytest -m live       # real calls: local CLIs and every provider whose key is set
 ```
+
+`.gitignore`, `.gitattributes`, `.rgignore`, `.pre-commit-config.yaml` and `Makefile` are RENDERED from
+the family bases (`tests/architecture/_famconfig.py` holds ai-lab's delta, empty today): a hand edit
+reds `tests/architecture/test_the_family_config_is_rendered.py`.

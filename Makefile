@@ -1,14 +1,14 @@
-PY ?= .venv/Scripts/python.exe
+# Rendered by lab_commons.dev.famconfig from the family base for Makefile.
+# Hand edits RED. The base is data in lab_commons.dev._famconfig_rows;
+# this repo's own lines are its declared delta. Change one, re-render, commit.
 
-.PHONY: install-dev lint fmt-check test live verify
+all:
+clean:
+fmt:
+install:
 install-dev:
-	uv venv .venv && uv pip install --python $(PY) -e ".[dev]"
 lint:
-	$(PY) -m ruff check .
-fmt-check:
-	$(PY) -m ruff format --check .
 test:
-	$(PY) -m pytest -q
-live:
-	$(PY) -m pytest -q -m live
-verify: lint fmt-check test
+test-parallel:
+verify:
+	python -m lab_commons.dev.verify

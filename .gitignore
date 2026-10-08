@@ -1,0 +1,6 @@
+__pycache__/
+*.egg-info/
+.venv/
+.ruff_cache/
+.pytest_cache/
+src/ai_lab/__version__.py

@@ -1,0 +1,52 @@
+"""The local ``codex exec``: your own login, no API key.
+
+Read-only sandbox, ephemeral session, an empty temporary working directory; ``--output-schema``
+binds the final message and ``-o`` writes it to a file this wire reads back. Images travel as files.
+"""
+
+from __future__ import annotations
+
+import json
+import mimetypes
+
+from ai_lab.errors import ProviderError
+from ai_lab.spec import Image, ResponseRequest
+from ai_lab.transport import CliCall, CliResult
+from ai_lab.wire import text_of
+
+_OUT = 'answer.json'
+_SCHEMA = 'schema.json'
+
+
+def respond(request: ResponseRequest, model: str, endpoint: str, key: str) -> CliCall:
+    files = {_SCHEMA: json.dumps(dict(request.schema)).encode('utf-8')}
+    images: list[str] = []
+    texts = [request.instructions]
+    for index, part in enumerate(request.context):
+        if isinstance(part, Image):
+            name = f'image{index}{mimetypes.guess_extension(part.mime) or ".png"}'
+            files[name] = part.data
+            images += ['-i', f'{{dir}}/{name}']
+        else:
+            texts.append(text_of(part))
+    argv = [
+        endpoint, 'exec',
+        '--sandbox', 'read-only',
+        '--skip-git-repo-check',
+        '--ephemeral',
+        '-C', '{dir}',
+        '--output-schema', f'{{dir}}/{_SCHEMA}',
+        '-o', f'{{dir}}/{_OUT}',
+        *images,
+    ]  # fmt: skip
+    if model:
+        argv += ['-m', model]
+    argv.append('-')
+    return CliCall(argv=tuple(argv), stdin='\n\n'.join(texts), files=files, output=_OUT)
+
+
+def parse_response(raw: CliResult) -> dict:
+    try:
+        return json.loads(raw.text)
+    except json.JSONDecodeError:
+        raise ProviderError(f'codex wrote a final message that is not JSON: {raw.text[:300]}') from None

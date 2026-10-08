@@ -1,0 +1,70 @@
+# Vendors are DATA. A row names its wire (a protocol module in ai_lab/wire), where it is reached
+# (a base URL, or a CLI binary), the environment variable holding its key ("" = none needed), and
+# whether it reads images. Which verbs it has is read off the wire's code, never declared here.
+# Add a row in your own file and point AI_LAB_PROVIDERS at it; a row there replaces one here.
+
+[openai]
+wire = "openai_responses"
+endpoint = "https://api.openai.com/v1"
+key_env = "OPENAI_API_KEY"
+vision = true
+
+[openai_decisions]
+wire = "openai_decisions"
+endpoint = "https://api.openai.com/v1"
+key_env = "OPENAI_API_KEY"
+vision = true
+
+[typesafe]
+wire = "typesafe"
+endpoint = "https://api.typesafe.ai/v1"
+key_env = "TYPESAFE_API_KEY"
+vision = false
+
+[anthropic]
+wire = "anthropic_messages"
+endpoint = "https://api.anthropic.com/v1"
+key_env = "ANTHROPIC_API_KEY"
+vision = true
+
+[gemini]
+wire = "gemini"
+endpoint = "https://generativelanguage.googleapis.com/v1beta"
+key_env = "GEMINI_API_KEY"
+vision = true
+
+[openrouter]
+wire = "openai_chat"
+endpoint = "https://openrouter.ai/api/v1"
+key_env = "OPENROUTER_API_KEY"
+vision = true
+
+[deepseek]
+wire = "openai_chat"
+endpoint = "https://api.deepseek.com/v1"
+key_env = "DEEPSEEK_API_KEY"
+vision = false
+
+[qwen]
+wire = "openai_chat"
+endpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+key_env = "DASHSCOPE_API_KEY"
+vision = true
+
+[ollama]
+wire = "openai_chat"
+endpoint = "http://localhost:11434/v1"
+key_env = ""
+vision = true
+
+[claude_code]
+wire = "claude_code"
+endpoint = "claude"
+key_env = ""
+vision = true
+
+[codex]
+wire = "codex"
+endpoint = "codex"
+key_env = ""
+vision = true

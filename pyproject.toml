@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=77.0.3", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai_lab"
+dynamic = ["version"]
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+description = "Vendor-neutral typed decisions and schema-bound responses from any model"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "Mingyang Bao" }]
+# No runtime dependency: HTTP is urllib, config is tomllib, the CLIs are subprocesses.
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+
+[tool.setuptools_scm]
+version_file = "src/ai_lab/__version__.py"
+fallback_version = "0.0.0"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["ai_lab*"]
+
+[tool.setuptools.package-data]
+ai_lab = ["providers.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not live'"
+markers = ["live: calls a real model (network or a local CLI); run with -m live"]
+
+[tool.ruff]
+line-length = 120
+[tool.ruff.format]
+quote-style = "single"
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]

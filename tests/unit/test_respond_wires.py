@@ -8,7 +8,7 @@ import pytest
 
 from ai_lab import Image, ProviderError, ResponseRequest, Text
 from ai_lab.transport import CliResult
-from ai_lab.wire import anthropic_messages, claude_code, codex, gemini, openai_chat, openai_responses
+from ai_lab.wire import anthropic_messages, claude_code, codex, gemini, openai_chat, openai_chat_json, openai_responses
 from tests.conftest import PNG
 
 SCHEMA = {
@@ -111,3 +111,12 @@ def test_codex_is_read_only_and_reads_images_from_files():
     assert call.stdin.startswith('Be brief.') and 'hello' in call.stdin
     assert argv[-1] == '-'
     assert codex.WIRE.parse_response(CliResult('{"ok": true}')) == {'ok': True}
+
+
+def test_openai_chat_json_asks_for_a_json_object_and_carries_the_schema_in_the_prompt():
+    call = openai_chat_json.WIRE.respond(REQ, 'deepseek-v4-flash', 'https://api.deepseek.com/v1', 'k')
+    assert call.body['response_format'] == {'type': 'json_object'}
+    system = call.body['messages'][0]['content']
+    assert system.startswith('Be brief.')
+    assert json.dumps(SCHEMA, sort_keys=True) in system
+    assert openai_chat_json.WIRE.parse_response({'choices': [{'message': {'content': '{"ok": true}'}}]}) == {'ok': True}

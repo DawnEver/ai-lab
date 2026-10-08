@@ -40,7 +40,7 @@ key_env = "OPENROUTER_API_KEY"
 vision = true
 
 [deepseek]
-wire = "openai_chat"
+wire = "openai_chat_json"
 endpoint = "https://api.deepseek.com/v1"
 key_env = "DEEPSEEK_API_KEY"
 vision = false

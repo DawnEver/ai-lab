@@ -60,3 +60,13 @@ ignore = ["COM812", "D203", "D213", "D400", "D401", "N818", "PLR0913", "Q000", "
 [tool.ruff.lint.per-file-ignores]
 # A test asserts, reads private seams of what it tests, and names fixtures rather than documenting them.
 "tests/**" = ["S101", "SLF001", "D", "ANN", "ARG", "FBT003", "PLR2004", "PT018", "INP001"]
+
+[tool.lab_commons.branchset]
+trunk = 'main'
+sessions = []
+
+[tool.lab_commons.doors]
+BARE-TEST-INVOCATION = "<venv python> -m lab_commons.dev.verify [-- <pytest args>]  (the verdict door; a hand-written pytest line has none)"
+PUSH-NO-VERIFY = "<venv python> -m lab_commons.dev.verify, then push without skipping the hook"
+GIT-NETWORK-VERB = "<venv python> -m lab_commons.dev.netverb -- git <push|fetch|pull|clone|ls-remote> ...  (retries 3x, then reports a diagnosis)"
+ENV-MUTATION-THROUGH-THE-DOOR = "<any family venv python> -m lab_commons.dev.dep --bootstrap <this checkout> --extra dev  (run from this checkout)"

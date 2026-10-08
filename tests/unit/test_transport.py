@@ -9,8 +9,8 @@ from ai_lab import ProviderError, Unsupported
 from ai_lab.transport import CliCall, HttpCall, post, run
 
 
-def _http_error(code):
-    return urllib.error.HTTPError('u', code, 'x', {}, io.BytesIO(b'detail'))
+def _http_error(code, body=b'detail'):
+    return urllib.error.HTTPError('u', code, 'x', {}, io.BytesIO(body))
 
 
 def test_a_retryable_status_is_retried_then_succeeds(monkeypatch):
@@ -84,9 +84,7 @@ def test_an_exhausted_quota_is_not_retried(monkeypatch):
 
     def urlopen(request, timeout):
         calls.append(1)
-        raise urllib.error.HTTPError(
-            'u', 429, 'x', {}, io.BytesIO(b'{"error":{"type":"insufficient_quota","code":"credit_balance_exhausted"}}')
-        )
+        raise _http_error(429, b'{"error":{"type":"insufficient_quota","code":"credit_balance_exhausted"}}')
 
     monkeypatch.setattr('urllib.request.urlopen', urlopen)
     with pytest.raises(ProviderError, match='insufficient_quota'):

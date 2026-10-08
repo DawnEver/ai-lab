@@ -77,3 +77,18 @@ def test_a_cli_past_its_ceiling_is_ended_as_a_tree(tmp_path):
         run(call, timeout_s=3.0)
     child = int(pid_file.read_text())
     assert not pid_alive(child)
+
+
+def test_an_exhausted_quota_is_not_retried(monkeypatch):
+    calls = []
+
+    def urlopen(request, timeout):
+        calls.append(1)
+        raise urllib.error.HTTPError(
+            'u', 429, 'x', {}, io.BytesIO(b'{"error":{"type":"insufficient_quota","code":"credit_balance_exhausted"}}')
+        )
+
+    monkeypatch.setattr('urllib.request.urlopen', urlopen)
+    with pytest.raises(ProviderError, match='insufficient_quota'):
+        post(HttpCall('https://x.test', {}), sleep=lambda s: None)
+    assert len(calls) == 1

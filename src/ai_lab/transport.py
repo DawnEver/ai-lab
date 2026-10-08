@@ -37,6 +37,8 @@ _REAP_CEILING_S = 10.0
 
 #: Statuses worth another attempt: rate limit, overload, transient server failure.
 _RETRYABLE = frozenset({408, 409, 429, 500, 502, 503, 504, 529})
+#: A 429 whose body says the account is out of money is not transient: waiting will not refill it.
+_EXHAUSTED = ('insufficient_quota', 'credit_balance_exhausted')
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,7 +89,7 @@ def post(call: HttpCall, *, timeout_s: float = HTTP_CEILING_S, attempts: int = 3
         except urllib.error.HTTPError as error:
             detail = error.read().decode('utf-8', 'replace')[:500]
             last = f'HTTP {error.code} from {call.url}: {detail}'
-            if error.code not in _RETRYABLE:
+            if error.code not in _RETRYABLE or any(marker in detail for marker in _EXHAUSTED):
                 raise ProviderError(last) from None
         except (urllib.error.URLError, TimeoutError) as error:
             last = f'{call.url} unreachable: {error}'

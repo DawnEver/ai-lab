@@ -28,6 +28,8 @@ __all__ = [
     'Score',
     'Text',
     'canonical',
+    'decision_request_from_json',
+    'decision_request_to_json',
 ]
 
 Scalar = str | int | float | bool | None
@@ -212,3 +214,50 @@ def canonical(request: DecisionRequest | ResponseRequest) -> str:
     ``dataclasses.asdict`` already tells a ``Text`` from a ``Fields`` and a ``Choice`` from a ``Score``.
     """
     return json.dumps(asdict(request), sort_keys=True, ensure_ascii=False, separators=(',', ':'), default=_digest)
+
+
+_PARTS = {'text': Text, 'fields': Fields, 'image': Image}
+_QUESTIONS = {'predicate': Predicate, 'choice': Choice, 'score': Score}
+
+
+def _part_to_json(part: Part) -> dict:
+    if isinstance(part, Image):
+        return {'kind': 'image', 'data': base64.b64encode(part.data).decode('ascii'), 'mime': part.mime}
+    return {'kind': type(part).__name__.lower(), **asdict(part)}
+
+
+def _question_to_json(question: Question) -> dict:
+    return {'kind': type(question).__name__.lower(), **asdict(question)}
+
+
+def decision_request_to_json(request: DecisionRequest) -> dict:
+    """The request as JSON-ready data, every part and question tagged by kind; images base64."""
+    return {
+        'context': [_part_to_json(p) for p in request.context],
+        'questions': [_question_to_json(q) for q in request.questions],
+    }
+
+
+def _part_from_json(d: dict) -> Part:
+    d = dict(d)
+    kind = d.pop('kind')
+    if kind == 'image':
+        return Image(base64.b64decode(d['data']), d['mime'])
+    return _PARTS[kind](**d)
+
+
+def _question_from_json(d: dict) -> Question:
+    d = dict(d)
+    kind = d.pop('kind')
+    if kind == 'choice':
+        d['options'] = tuple(Option(**o) for o in d['options'])
+    if kind == 'score':
+        d['levels'] = tuple(Level(**lv) for lv in d['levels'])
+    return _QUESTIONS[kind](**d)
+
+
+def decision_request_from_json(data: dict) -> DecisionRequest:
+    """The inverse of :func:`decision_request_to_json`."""
+    return DecisionRequest(
+        tuple(_part_from_json(p) for p in data['context']), tuple(_question_from_json(q) for q in data['questions'])
+    )

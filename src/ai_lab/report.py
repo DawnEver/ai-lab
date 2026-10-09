@@ -16,7 +16,7 @@ from pathlib import Path
 
 from ai_lab.usage import Usage, cost
 
-__all__ = ['ClientSummary', 'main', 'summarize']
+__all__ = ['ClientSummary', 'summarize']
 
 
 @dataclass

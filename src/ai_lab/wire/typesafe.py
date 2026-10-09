@@ -11,6 +11,7 @@ from ai_lab.answers import YES_AT, Answer, ChoiceAnswer, PredicateAnswer, Refusa
 from ai_lab.errors import ProviderError
 from ai_lab.spec import Choice, DecisionRequest, Fields, Predicate, Question
 from ai_lab.transport import HttpCall
+from ai_lab.usage import responses_usage
 from ai_lab.wire.base import Wire, joined_text
 
 __all__ = ['WIRE']
@@ -69,4 +70,5 @@ def _parse_decision(raw: dict, request: DecisionRequest) -> dict[str, Answer]:
     return answers
 
 
-WIRE = Wire(name='typesafe', cli=False, decide=_decide, parse_decision=_parse_decision)
+#: Usage measured 2026-10-09: `usage.input_tokens` / `output_tokens`, the Responses shape.
+WIRE = Wire(name='typesafe', cli=False, decide=_decide, parse_decision=_parse_decision, parse_usage=responses_usage)

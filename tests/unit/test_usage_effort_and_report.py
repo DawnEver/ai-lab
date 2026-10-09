@@ -52,7 +52,7 @@ def test_each_vendor_shape_is_read_into_one_usage() -> None:
 
 
 def test_every_http_wire_reads_usage_and_every_effort_hook_is_declared_data() -> None:
-    assert {n for n, w in WIRES.items() if w.parse_usage is None} == {'codex', 'typesafe'}
+    assert {n for n, w in WIRES.items() if w.parse_usage is None} == {'codex'}
     assert {n for n, w in WIRES.items() if w.effort} == {'openai_responses', 'openai_chat', 'openai_chat_json', 'codex'}
 
 

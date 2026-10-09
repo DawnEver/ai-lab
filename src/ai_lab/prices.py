@@ -184,17 +184,15 @@ def _fetch(vendor: str, model: str, get: Callable[[str], object]) -> dict[str, d
 
 
 def _consensus(sources: Mapping[str, Price]) -> tuple[Price, bool]:
+    quoted = [asdict(p) for p in sources.values()]
+
     def middle(field: str) -> float | None:
-        values = [getattr(p, field) for p in sources.values() if getattr(p, field) is not None]
+        values = [q[field] for q in quoted if q[field] is not None]
         return statistics.median(values) if values else None
 
-    price = Price(middle('input'), middle('output') or 0.0, middle('cached_input'))
-    agreed = all(
-        abs(getattr(p, f) - getattr(price, f)) <= _AGREE * max(getattr(price, f), 1e-12)
-        for p in sources.values()
-        for f in ('input', 'output')
-    )
-    return price, agreed
+    median = {field: middle(field) for field in ('input', 'output', 'cached_input')}
+    agreed = all(abs(q[f] - median[f]) <= _AGREE * max(median[f], 1e-12) for q in quoted for f in ('input', 'output'))
+    return Price(median['input'], median['output'] or 0.0, median['cached_input']), agreed
 
 
 def quote(

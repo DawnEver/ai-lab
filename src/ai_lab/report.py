@@ -1,9 +1,10 @@
 """``python -m ai_lab.report LEDGER [LEDGER ...]`` -- calls, latency, tokens and cost per client.
 
 Read-only over ledger files: one row per client name (``provider:model[@effort]``), so two efforts
-of one model, or two models on one task, are two rows to compare. Cost comes from
-:func:`ai_lab.usage.cost` and is blank where the user's ``prices.toml`` has no row; tokens are
-blank where the wire reports none (an entry recorded before usage was read counts as unreported).
+of one model, or two models on one task, are two rows to compare. Each entry is priced at the rate
+in force at its own time (:mod:`ai_lab.prices`); the ``price`` column says where the rate came from
+and flags a catalog DISPUTE. Tokens are blank where the wire reports none (an entry recorded before
+usage was read counts as unreported).
 """
 
 from __future__ import annotations
@@ -12,9 +13,11 @@ import json
 import sys
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
-from ai_lab.usage import Usage, cost
+from ai_lab.prices import Quote, cost, quote_for
+from ai_lab.usage import Usage
 
 __all__ = ['ClientSummary', 'summarize']
 
@@ -33,6 +36,7 @@ class ClientSummary:
     output_tokens: int = 0
     reasoning_tokens: int = 0
     cost_usd: float | None = 0.0
+    price: str = '-'
 
     @property
     def mean_latency_s(self) -> float:
@@ -40,9 +44,10 @@ class ClientSummary:
         return self.latency_s / self.calls if self.calls else 0.0
 
 
-def summarize(paths: Iterable[Path], *, price: Callable[[Usage, str], float | None] = cost) -> list[ClientSummary]:
+def summarize(paths: Iterable[Path], *, price: Callable[..., Quote | None] = quote_for) -> list[ClientSummary]:
     """One :class:`ClientSummary` per client name across ``paths``, in first-seen order."""
     rows: dict[str, ClientSummary] = {}
+    quotes: dict[tuple[str, str], Quote | None] = {}
     for path in paths:
         for line in Path(path).read_text('utf-8').splitlines():
             if not line.strip():
@@ -62,13 +67,20 @@ def summarize(paths: Iterable[Path], *, price: Callable[[Usage, str], float | No
             row.cached_tokens += usage.cached_tokens
             row.output_tokens += usage.output_tokens
             row.reasoning_tokens += usage.reasoning_tokens
-            dollars = price(usage, name)
+            at = datetime.fromisoformat(entry['at']) if entry.get('at') else None
+            memo = (name, '' if at is None else at.date().isoformat())
+            if memo not in quotes:
+                quotes[memo] = price(name, at=at)
+            held = quotes[memo]
+            if held is not None:
+                row.price = f'{held.origin}{"" if held.agreed else " DISPUTED"}'
+            dollars = cost(usage, None if held is None else held.price)
             row.cost_usd = None if dollars is None or row.cost_usd is None else row.cost_usd + dollars
     return list(rows.values())
 
 
 def _table(rows: Sequence[ClientSummary]) -> str:
-    head = ('client', 'calls', 'questions', 'mean s', 'usage', 'input', 'cached', 'output', 'reasoning', 'USD')
+    head = ('client', 'calls', 'questions', 'mean s', 'usage', 'input', 'cached', 'output', 'reasoning', 'USD', 'price')
     body = [
         (
             r.client,
@@ -81,6 +93,7 @@ def _table(rows: Sequence[ClientSummary]) -> str:
             str(r.output_tokens),
             str(r.reasoning_tokens),
             '-' if r.cost_usd is None else f'{r.cost_usd:.4f}',
+            r.price,
         )
         for r in rows
     ]

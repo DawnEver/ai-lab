@@ -28,9 +28,10 @@ from pathlib import Path
 from ai_lab.answers import ChoiceAnswer, PredicateAnswer, ScoreAnswer
 from ai_lab.client import connect
 from ai_lab.ledger import Ledger
+from ai_lab.prices import cost, quote_for
 from ai_lab.protocols import Decider
 from ai_lab.spec import DecisionRequest, decision_request_from_json
-from ai_lab.usage import Usage, cost
+from ai_lab.usage import Usage
 
 __all__ = ['Case', 'Scorecard', 'auc', 'evaluate', 'load']
 
@@ -134,6 +135,7 @@ def _add(total: Usage, more: Usage) -> Usage:
 def evaluate(cases: Iterable[Case], decider: Decider, name: str) -> Scorecard:
     """Ask ``decider`` every case and score its answers."""
     card = Scorecard(name)
+    held = quote_for(name)
     for case in cases:
         start = time.perf_counter()
         decision = decider.decide(case.request)
@@ -142,7 +144,7 @@ def evaluate(cases: Iterable[Case], decider: Decider, name: str) -> Scorecard:
         if decision.usage is not None:
             card.usage_reported += 1
             card.usage = _add(card.usage, decision.usage)
-            dollars = cost(decision.usage, name)
+            dollars = cost(decision.usage, None if held is None else held.price)
             card.cost_usd = None if dollars is None or card.cost_usd is None else card.cost_usd + dollars
         questions = {q.name: q for q in case.request.questions}
         for asked, label in case.labels.items():

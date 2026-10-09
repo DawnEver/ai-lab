@@ -1,41 +1,23 @@
-"""What a call consumed, as the vendor reported it, and what that costs at the user's own prices.
+"""What a call consumed, as the vendor reported it.
 
-TOKENS ARE THE FACT; COST IS DERIVED. Every wire reads its vendor's usage block into one
-:class:`Usage`, and the ledger records it. A price is the user's data -- vendors change them and
-this package must not ship a guess -- so :func:`cost` reads ``prices.toml`` from the same config
-root as ``providers.toml`` and answers ``None`` for a model it has no row for. A CLI that reports
-its own dollar figure (``claude``) carries it in :attr:`Usage.cost_usd`, which wins over the table.
-
-``prices.toml`` rows are keyed by the client name (``provider:model``, effort excluded -- effort
-moves the token counts, not the rate), in US dollars per million tokens::
-
-    ["openai_decisions:gpt-6-luna"]
-    input = 0.10
-    cached_input = 0.01
-    output = 0.40
+TOKENS ARE THE FACT; COST IS DERIVED (:mod:`ai_lab.prices`). Every wire reads its vendor's usage
+block into one :class:`Usage` and the ledger records it with the call's time. A CLI that reports its
+own dollar figure (``claude``) carries it in :attr:`Usage.cost_usd`.
 """
 
 from __future__ import annotations
 
-import tomllib
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
-
-from lab_commons.paths import config_root
 
 __all__ = [
     'Usage',
     'anthropic_usage',
     'chat_usage',
     'claude_code_usage',
-    'cost',
     'gemini_usage',
-    'prices_file',
     'responses_usage',
 ]
-
-_MILLION = 1_000_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,27 +105,3 @@ def claude_code_usage(event: Mapping) -> Usage:
         usage.reasoning_tokens,
         float(reported) if isinstance(reported, int | float) else None,
     )
-
-
-def prices_file() -> Path:
-    """Where the user's prices live (it need not exist)."""
-    return config_root('ai_lab') / 'prices.toml'
-
-
-def _prices(path: Path | None = None) -> dict[str, Mapping[str, float]]:
-    path = prices_file() if path is None else path
-    return tomllib.loads(path.read_text('utf-8')) if path.is_file() else {}
-
-
-def cost(usage: Usage | None, client: str, *, prices: Callable[[], Mapping] = _prices) -> float | None:
-    """US dollars for ``usage`` on ``client`` (``provider:model[@effort]``), or ``None`` when unpriced."""
-    if usage is None:
-        return None
-    if usage.cost_usd is not None:
-        return usage.cost_usd
-    row = prices().get(client.partition('@')[0])
-    if row is None:
-        return None
-    fresh = usage.input_tokens - usage.cached_tokens
-    cached_rate = row.get('cached_input', row['input'])
-    return (fresh * row['input'] + usage.cached_tokens * cached_rate + usage.output_tokens * row['output']) / _MILLION

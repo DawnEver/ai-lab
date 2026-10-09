@@ -78,18 +78,28 @@ ledger keeps two efforts apart. A wire without an effort hook refuses one (`open
 none -- the endpoint rejects the parameter).
 
 Every `Decision` and `Response` carries the vendor's `usage` (input, cached, output, reasoning
-tokens) where the wire reads it, and the ledger records it. Cost is derived from your own
-`prices.toml` beside `providers.toml` (US dollars per million tokens, keyed `provider:model`):
+tokens) where the wire reads it, and the ledger records it with the call's time.
+
+Cost is derived, never stored: tokens times the rate in force at the call. Rates come from public
+catalogs (models.dev, LiteLLM, Portkey; OpenRouter only for the `openrouter` vendor -- a reseller's
+route price is not the vendor's), cross-checked to their median and flagged DISPUTED beyond 5%,
+kept as dated snapshots in the user cache and refreshed at most daily. A provider row's `vendor`
+says who bills it (`""` = unmetered, e.g. a CLI on a subscription). A row in your own `prices.toml`
+beside `providers.toml` (US dollars per million tokens, keyed `provider:model`) is a contract rate
+and wins:
 
 ```toml
 ["openai_decisions:gpt-6-luna"]
 input = 0.10
 cached_input = 0.01
-output = 0.40
+output = 0.50
 ```
 
-`python -m ai_lab.report LEDGER [LEDGER ...]` prints calls, questions, latency, tokens and cost per
-client -- one row per `provider:model[@effort]`, which is the comparison of models and efforts.
+- `python -m ai_lab.prices CLIENT [...]` -- each catalog's quote, the consensus, agreement.
+- `python -m ai_lab.report LEDGER [...]` -- calls, latency, tokens and cost per `provider:model[@effort]`.
+- `python -m ai_lab.evaluate DATASET --decider SPEC [...]` -- every decider on the same labelled
+  requests (`{"request": ..., "labels": {...}}` per line): AUC, precision, recall, latency, tokens,
+  cost. With `--ledger`, known calls are served from it -- a recorded run is a free benchmark.
 
 ## Keys
 

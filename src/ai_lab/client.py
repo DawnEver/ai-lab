@@ -50,6 +50,8 @@ class Provider:
     endpoint: str
     key_env: str = ''
     vision: bool = False
+    #: Who bills this provider's tokens, as the price catalogs name it; ``''`` is unmetered.
+    vendor: str = ''
 
     def __post_init__(self) -> None:
         """Refuse a row naming a wire this package does not ship."""

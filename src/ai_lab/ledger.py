@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 
@@ -109,6 +110,7 @@ class Recorded:
                 'key': key,
                 'verb': 'decide',
                 'client': self.name,
+                'at': datetime.now(UTC).isoformat(),
                 'provider': d.provider,
                 'model': d.model,
                 'basis': d.basis.value,
@@ -138,6 +140,7 @@ class Recorded:
                 'key': key,
                 'verb': 'respond',
                 'client': self.name,
+                'at': datetime.now(UTC).isoformat(),
                 'provider': r.provider,
                 'model': r.model,
                 'latency_s': r.latency_s,

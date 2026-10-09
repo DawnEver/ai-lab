@@ -8,6 +8,7 @@ import pytest
 
 from ai_lab import DecisionRequest, Ledger, Predicate, ResponseRequest, Text, connect
 from ai_lab.errors import Unsupported
+from ai_lab.prices import Price, Quote
 from ai_lab.report import summarize
 from ai_lab.transport import CliCall, HttpCall
 from ai_lab.usage import (
@@ -15,7 +16,6 @@ from ai_lab.usage import (
     anthropic_usage,
     chat_usage,
     claude_code_usage,
-    cost,
     gemini_usage,
     responses_usage,
 )
@@ -93,13 +93,6 @@ def test_a_body_effort_nests_without_touching_the_original() -> None:
     assert call.body['reasoning'] == {'summary': 'auto'}
 
 
-def test_cost_reads_the_users_prices_and_is_none_without_a_row() -> None:
-    prices = lambda: {'p:m': {'input': 1.0, 'cached_input': 0.1, 'output': 4.0}}  # noqa: E731
-    assert cost(Usage(1_000_000, 500_000, 1_000_000), 'p:m@high', prices=prices) == pytest.approx(2.1)
-    assert cost(Usage(10, 10), 'q:m', prices=prices) is None
-    assert cost(Usage(1, 1, cost_usd=0.5), 'q:m', prices=prices) == 0.5
-
-
 def test_the_ledger_records_usage_and_the_report_totals_it(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv('OPENAI_API_KEY', 'k')
     ledger = Ledger(tmp_path / 'l.jsonl')
@@ -109,11 +102,14 @@ def test_the_ledger_records_usage_and_the_report_totals_it(tmp_path, monkeypatch
     assert entry['client'] == 'openai_decisions:m' and entry['usage']['input_tokens'] == 163
     replayed = Ledger(tmp_path / 'l.jsonl', 'replay').wrap(connect('openai_decisions:m')).decide(REQUEST)
     assert replayed.usage == Usage(163, 0, 3, 0)
-    (row,) = summarize([tmp_path / 'l.jsonl'], price=lambda usage, name: 0.25)
-    assert (row.client, row.calls, row.questions, row.input_tokens, row.cost_usd) == (
+    assert 'at' in entry
+    flat = Quote(Price(1.0, 0.0), 'test', agreed=True, sources={})
+    (row,) = summarize([tmp_path / 'l.jsonl'], price=lambda name, at: flat)
+    assert (row.client, row.calls, row.questions, row.input_tokens, row.price) == (
         'openai_decisions:m',
         1,
         1,
         163,
-        0.25,
+        'test',
     )
+    assert row.cost_usd == pytest.approx(160 / 1e6 + 3 / 1e6)

@@ -71,6 +71,26 @@ replayed run never reaches a model.
 `Rules({...})` is a decider made of code over `Fields`: the offline baseline any model decider has
 to beat.
 
+## Effort, usage and cost
+
+`connect('openai:gpt-x@high')` sets a reasoning effort; it is part of the client's name, so the
+ledger keeps two efforts apart. A wire without an effort hook refuses one (`openai_decisions` takes
+none -- the endpoint rejects the parameter).
+
+Every `Decision` and `Response` carries the vendor's `usage` (input, cached, output, reasoning
+tokens) where the wire reads it, and the ledger records it. Cost is derived from your own
+`prices.toml` beside `providers.toml` (US dollars per million tokens, keyed `provider:model`):
+
+```toml
+["openai_decisions:gpt-6-luna"]
+input = 0.10
+cached_input = 0.01
+output = 0.40
+```
+
+`python -m ai_lab.report LEDGER [LEDGER ...]` prints calls, questions, latency, tokens and cost per
+client -- one row per `provider:model[@effort]`, which is the comparison of models and efforts.
+
 ## Keys
 
 Keys are read from the environment at call time and never stored, logged or put in a repr. On

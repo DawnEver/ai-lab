@@ -11,7 +11,8 @@ import json
 from ai_lab.errors import ProviderError
 from ai_lab.spec import Image, ResponseRequest
 from ai_lab.transport import HttpCall
-from ai_lab.wire.base import Wire, is_closed, text_of
+from ai_lab.usage import chat_usage
+from ai_lab.wire.base import Wire, body_effort, is_closed, text_of
 
 __all__ = ['WIRE', 'chat_call', 'parse_message']
 
@@ -66,4 +67,11 @@ def parse_message(raw: dict) -> dict:
         raise ProviderError(msg) from None
 
 
-WIRE = Wire(name='openai_chat', cli=False, respond=_respond, parse_response=parse_message)
+WIRE = Wire(
+    name='openai_chat',
+    cli=False,
+    respond=_respond,
+    parse_response=parse_message,
+    parse_usage=chat_usage,
+    effort=body_effort('reasoning_effort'),
+)

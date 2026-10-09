@@ -6,6 +6,7 @@ from ai_lab.answers import YES_AT, Answer, ChoiceAnswer, PredicateAnswer, Refusa
 from ai_lab.errors import ProviderError
 from ai_lab.spec import Choice, DecisionRequest, Image, Predicate, Question
 from ai_lab.transport import HttpCall
+from ai_lab.usage import responses_usage
 from ai_lab.wire.base import Wire, text_of
 
 __all__ = ['WIRE']
@@ -76,4 +77,8 @@ def _parse_decision(raw: dict, request: DecisionRequest) -> dict[str, Answer]:
     return answers
 
 
-WIRE = Wire(name='openai_decisions', cli=False, decide=_decide, parse_decision=_parse_decision)
+#: No ``effort``: MEASURED 2026-10-09, the endpoint answers ``reasoning`` and ``reasoning_effort`` with
+#: 400 unknown_parameter, and it bills input tokens only (``output_tokens`` 0).
+WIRE = Wire(
+    name='openai_decisions', cli=False, decide=_decide, parse_decision=_parse_decision, parse_usage=responses_usage
+)

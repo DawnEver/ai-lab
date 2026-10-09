@@ -1,8 +1,13 @@
-"""``connect('provider:model')`` -> a :class:`Client` that decides and responds through one wire.
+"""``connect('provider:model[@effort]')`` -> a :class:`Client` that decides and responds through one wire.
 
 A client offers exactly what its wire's record carries: a native decision endpoint decides natively,
 a schema-capable wire decides by emulation and responds, and anything else is :class:`Unsupported`
 naming the remedy. The key is read from the environment at call time and is never stored.
+
+EFFORT IS PART OF THE NAME. ``openai_responses:gpt-x@high`` is a different client from ``@low``: its
+answers differ, so the ledger -- keyed on the name -- keeps them apart, and a comparison of efforts is
+a comparison of names. A wire with no ``effort`` hook refuses one rather than ignoring it. Every
+answer carries the vendor's token counts when the wire reads them (:mod:`ai_lab.usage`).
 
 THE PROVIDER TABLE HAS TWO LAYERS AND ONE RULE. The packaged ``providers.toml`` is the baseline; a
 ``providers.toml`` in ``lab_commons.paths.config_root('ai_lab')`` -- ``$AI_LAB_HOME/config`` when set,
@@ -26,6 +31,7 @@ from ai_lab import emulate, transport
 from ai_lab.answers import Basis, Decision, Response
 from ai_lab.errors import Unsupported
 from ai_lab.spec import DecisionRequest, ResponseRequest
+from ai_lab.usage import Usage
 from ai_lab.wire import WIRES
 from ai_lab.wire.base import Wire
 
@@ -83,6 +89,7 @@ class Client:
         provider: Provider,
         model: str,
         *,
+        effort: str = '',
         post: Callable[..., dict] = transport.post,
         run: Callable[..., transport.CliResult] = transport.run,
     ) -> None:
@@ -91,15 +98,22 @@ class Client:
         if not model and not self.wire.cli:
             msg = f'{provider.name} needs a model: connect("{provider.name}:<model>")'
             raise Unsupported(msg)
+        if effort and self.wire.effort is None:
+            msg = (
+                f'{provider.name} takes no effort (wire {provider.wire}); the wires that do are '
+                f'{sorted(n for n, w in WIRES.items() if w.effort)}'
+            )
+            raise Unsupported(msg)
         self.provider = provider
         self.model = model
+        self.effort = effort
         self._post = post
         self._run = run
 
     @property
     def name(self) -> str:
-        """``provider:model`` -- the spelling :func:`connect` takes back."""
-        return f'{self.provider.name}:{self.model}'
+        """``provider:model[@effort]`` -- the spelling :func:`connect` takes back."""
+        return f'{self.provider.name}:{self.model}' + (f'@{self.effort}' if self.effort else '')
 
     def __repr__(self) -> str:
         """``Client('provider:model')`` -- never the key."""
@@ -111,20 +125,20 @@ class Client:
         start = time.perf_counter()
         if self.wire.decide is not None:
             raw = self._send(self.wire.decide(request, self.model, self.provider.endpoint, self._key()))
-            answers, basis = self.wire.parse_decision(raw, request), Basis.NATIVE
+            answers, basis, usage = self.wire.parse_decision(raw, request), Basis.NATIVE, self._usage(raw)
         else:
-            value = self._respond_value(emulate.as_response_request(request))
+            value, usage = self._respond_value(emulate.as_response_request(request))
             answers, basis = emulate.parse_answers(value, request.questions), Basis.STATED
-        return Decision(answers, basis, self.provider.name, self.model, time.perf_counter() - start)
+        return Decision(answers, basis, self.provider.name, self.model, time.perf_counter() - start, usage)
 
     def respond(self, request: ResponseRequest) -> Response:
         """An object of the request's schema."""
         self._require_vision(has_image=request.has_image)
         start = time.perf_counter()
-        value = self._respond_value(request)
-        return Response(value, self.provider.name, self.model, time.perf_counter() - start)
+        value, usage = self._respond_value(request)
+        return Response(value, self.provider.name, self.model, time.perf_counter() - start, usage)
 
-    def _respond_value(self, request: ResponseRequest) -> Mapping:
+    def _respond_value(self, request: ResponseRequest) -> tuple[Mapping, Usage | None]:
         if self.wire.respond is None:
             msg = (
                 f'{self.provider.name} is a decision endpoint and cannot respond in a schema; '
@@ -132,7 +146,10 @@ class Client:
             )
             raise Unsupported(msg)
         raw = self._send(self.wire.respond(request, self.model, self.provider.endpoint, self._key()))
-        return self.wire.parse_response(raw)
+        return self.wire.parse_response(raw), self._usage(raw)
+
+    def _usage(self, raw: object) -> Usage | None:
+        return None if self.wire.parse_usage is None else self.wire.parse_usage(raw)
 
     def _require_vision(self, *, has_image: bool) -> None:
         if has_image and not self.provider.vision:
@@ -149,16 +166,19 @@ class Client:
         return key
 
     def _send(self, call: transport.HttpCall | transport.CliCall) -> object:
+        if self.effort:
+            call = self.wire.effort(call, self.effort)
         if isinstance(call, transport.CliCall):
             return self._run(call)
         return self._post(call)
 
 
 def connect(spec: str, **options: Callable) -> Client:
-    """``'openai_decisions:gpt-6-luna'``, ``'anthropic:claude-sonnet-5-5'``, ``'claude_code'``..."""
+    """``'openai_decisions:gpt-6-luna'``, ``'openai_responses:gpt-x@high'``, ``'claude_code'``..."""
+    spec, _, effort = spec.partition('@')
     name, _, model = spec.partition(':')
     table = providers()
     if name not in table:
         msg = f'unknown provider {name!r}; known: {sorted(table)} (add one in {user_providers_file()})'
         raise Unsupported(msg)
-    return Client(table[name], model, **options)
+    return Client(table[name], model, effort=effort, **options)

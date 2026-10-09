@@ -8,6 +8,7 @@ import json
 from ai_lab.errors import ProviderError
 from ai_lab.spec import Image, ResponseRequest
 from ai_lab.transport import HttpCall
+from ai_lab.usage import gemini_usage
 from ai_lab.wire.base import Wire, text_of
 
 __all__ = ['WIRE']
@@ -41,4 +42,4 @@ def _parse_response(raw: dict) -> dict:
         raise ProviderError(msg) from None
 
 
-WIRE = Wire(name='gemini', cli=False, respond=_respond, parse_response=_parse_response)
+WIRE = Wire(name='gemini', cli=False, respond=_respond, parse_response=_parse_response, parse_usage=gemini_usage)

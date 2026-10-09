@@ -11,7 +11,8 @@ import json
 
 from ai_lab.spec import ResponseRequest
 from ai_lab.transport import HttpCall
-from ai_lab.wire.base import Wire
+from ai_lab.usage import chat_usage
+from ai_lab.wire.base import Wire, body_effort
 from ai_lab.wire.openai_chat import chat_call, parse_message
 
 __all__ = ['WIRE']
@@ -23,4 +24,11 @@ def _respond(request: ResponseRequest, model: str, endpoint: str, key: str) -> H
     return chat_call(request, model, endpoint, key, system=system, response_format={'type': 'json_object'})
 
 
-WIRE = Wire(name='openai_chat_json', cli=False, respond=_respond, parse_response=parse_message)
+WIRE = Wire(
+    name='openai_chat_json',
+    cli=False,
+    respond=_respond,
+    parse_response=parse_message,
+    parse_usage=chat_usage,
+    effort=body_effort('reasoning_effort'),
+)

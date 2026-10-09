@@ -7,7 +7,8 @@ import json
 from ai_lab.errors import ProviderError
 from ai_lab.spec import Image, ResponseRequest
 from ai_lab.transport import HttpCall
-from ai_lab.wire.base import Wire, is_closed, text_of
+from ai_lab.usage import responses_usage
+from ai_lab.wire.base import Wire, body_effort, is_closed, text_of
 
 __all__ = ['WIRE']
 
@@ -50,4 +51,11 @@ def _parse_response(raw: dict) -> dict:
     raise ProviderError(msg)
 
 
-WIRE = Wire(name='openai_responses', cli=False, respond=_respond, parse_response=_parse_response)
+WIRE = Wire(
+    name='openai_responses',
+    cli=False,
+    respond=_respond,
+    parse_response=_parse_response,
+    parse_usage=responses_usage,
+    effort=body_effort('reasoning', 'effort'),
+)

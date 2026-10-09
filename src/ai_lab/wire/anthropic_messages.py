@@ -7,6 +7,7 @@ import base64
 from ai_lab.errors import ProviderError
 from ai_lab.spec import Image, ResponseRequest
 from ai_lab.transport import HttpCall
+from ai_lab.usage import anthropic_usage
 from ai_lab.wire.base import Wire, text_of
 
 __all__ = ['WIRE']
@@ -49,4 +50,6 @@ def _parse_response(raw: dict) -> dict:
     raise ProviderError(msg)
 
 
-WIRE = Wire(name='anthropic_messages', cli=False, respond=_respond, parse_response=_parse_response)
+WIRE = Wire(
+    name='anthropic_messages', cli=False, respond=_respond, parse_response=_parse_response, parse_usage=anthropic_usage
+)

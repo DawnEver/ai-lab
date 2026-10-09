@@ -11,6 +11,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 
+from ai_lab.usage import Usage
+
 __all__ = [
     'YES_AT',
     'Answer',
@@ -86,6 +88,7 @@ class Decision:
     provider: str
     model: str
     latency_s: float = 0.0
+    usage: Usage | None = None
 
     def __getitem__(self, name: str) -> Answer:
         """The answer to the question named ``name``."""
@@ -100,3 +103,4 @@ class Response:
     provider: str
     model: str
     latency_s: float = 0.0
+    usage: Usage | None = None

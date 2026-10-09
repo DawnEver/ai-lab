@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+from dataclasses import replace
 
 from ai_lab.errors import ProviderError
 from ai_lab.spec import Image, ResponseRequest
@@ -55,4 +56,10 @@ def _parse_response(raw: CliResult) -> dict:
         raise ProviderError(msg) from None
 
 
-WIRE = Wire(name='codex', cli=True, respond=_respond, parse_response=_parse_response)
+def _effort(call: CliCall, effort: str) -> CliCall:
+    """``-c model_reasoning_effort=<effort>``, before the trailing ``-`` that reads the prompt."""
+    return replace(call, argv=(*call.argv[:-1], '-c', f'model_reasoning_effort="{effort}"', call.argv[-1]))
+
+
+#: No ``parse_usage``: the answer is read from the ``-o`` file, which carries no token counts.
+WIRE = Wire(name='codex', cli=True, respond=_respond, parse_response=_parse_response, effort=_effort)

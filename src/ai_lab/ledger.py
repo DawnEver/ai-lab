@@ -16,6 +16,7 @@ from pathlib import Path
 from ai_lab.answers import Answer, Basis, ChoiceAnswer, Decision, PredicateAnswer, Refusal, Response, ScoreAnswer
 from ai_lab.errors import ReplayMiss
 from ai_lab.spec import DecisionRequest, ResponseRequest, canonical
+from ai_lab.usage import Usage
 
 __all__ = ['Ledger', 'Mode', 'Recorded']
 
@@ -31,6 +32,14 @@ class Mode(StrEnum):
 
 def _key(verb: str, client: str, request: DecisionRequest | ResponseRequest) -> str:
     return hashlib.sha256('\n'.join((verb, client, canonical(request))).encode()).hexdigest()
+
+
+def _usage_to(usage: Usage | None) -> dict | None:
+    return None if usage is None else asdict(usage)
+
+
+def _usage_from(d: dict | None) -> Usage | None:
+    return None if d is None else Usage(**d)
 
 
 def _answer_to(a: Answer) -> dict:
@@ -99,16 +108,25 @@ class Recorded:
             entry = {
                 'key': key,
                 'verb': 'decide',
+                'client': self.name,
                 'provider': d.provider,
                 'model': d.model,
                 'basis': d.basis.value,
                 'latency_s': d.latency_s,
+                'usage': _usage_to(d.usage),
                 'answers': [_answer_to(a) for a in d.answers.values()],
             }
             self.ledger.append(entry)
             return d
         answers = {a.name: a for a in map(_answer_from, entry['answers'])}
-        return Decision(answers, Basis(entry['basis']), entry['provider'], entry['model'], entry['latency_s'])
+        return Decision(
+            answers,
+            Basis(entry['basis']),
+            entry['provider'],
+            entry['model'],
+            entry['latency_s'],
+            _usage_from(entry.get('usage')),
+        )
 
     def respond(self, request: ResponseRequest) -> Response:
         """The recorded response for this request, else the client's (recorded in ``RECORD`` mode)."""
@@ -119,11 +137,15 @@ class Recorded:
             entry = {
                 'key': key,
                 'verb': 'respond',
+                'client': self.name,
                 'provider': r.provider,
                 'model': r.model,
                 'latency_s': r.latency_s,
+                'usage': _usage_to(r.usage),
                 'value': r.value,
             }
             self.ledger.append(entry)
             return r
-        return Response(entry['value'], entry['provider'], entry['model'], entry['latency_s'])
+        return Response(
+            entry['value'], entry['provider'], entry['model'], entry['latency_s'], _usage_from(entry.get('usage'))
+        )

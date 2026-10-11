@@ -32,7 +32,7 @@ repos:
       name: issue references are well-formed (warns, never blocks)
       entry: lab-issue-ref
       language: python
-      additional_dependencies: ['lab-commons @ git+https://github.com/DawnEver/lab-commons.git@97b2764a45c99e97890e679d7fd192ac716895a5']
+      additional_dependencies: ['lab-commons @ git+https://github.com/DawnEver/lab-commons.git@f4b3382393bd88904d9cafc6c0b3a7ae55ca031f']
       stages: [commit-msg]
       verbose: true
     - id: merge-audit
@@ -40,5 +40,5 @@ repos:
       entry: lab-with-venv
       args: ['lab_commons.dev.mergeaudit']
       language: python
-      additional_dependencies: ['lab-commons @ git+https://github.com/DawnEver/lab-commons.git@97b2764a45c99e97890e679d7fd192ac716895a5']
+      additional_dependencies: ['lab-commons @ git+https://github.com/DawnEver/lab-commons.git@f4b3382393bd88904d9cafc6c0b3a7ae55ca031f']
       stages: [commit-msg]

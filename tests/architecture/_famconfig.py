@@ -17,5 +17,5 @@ REPO: Final = 'ai-lab'
 
 DELTAS: Final[dict[str, Delta]] = {
     artefact: Delta(repo=REPO, added=(), dropped={}, ceiling=0)
-    for artefact in ('.gitattributes', '.gitignore', '.pre-commit-config.yaml', '.rgignore', 'Makefile')
+    for artefact in ('.gitattributes', '.gitignore', '.rgignore', 'Makefile')
 }

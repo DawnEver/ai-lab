@@ -132,6 +132,6 @@ make verify                    # python -m lab_commons.dev.verify: ruff, the sui
 python -m pytest -m live       # real calls: local CLIs and every provider whose key is stored
 ```
 
-`.gitignore`, `.gitattributes`, `.rgignore`, `.pre-commit-config.yaml` and `Makefile` are RENDERED from
+`.gitignore`, `.gitattributes`, `.rgignore` and `Makefile` are RENDERED from
 the family bases (`tests/architecture/_famconfig.py` holds ai-lab's delta, empty today): a hand edit
 reds `tests/architecture/test_the_family_config_is_rendered.py`.

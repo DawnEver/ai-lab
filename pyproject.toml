@@ -65,6 +65,9 @@ ignore = ["COM812", "D203", "D213", "D400", "D401", "N818", "PLR0913", "Q000", "
 trunk = 'main'
 sessions = []
 
+# Git hooks: the family base (lab_commons/dev/githooks/base.toml) as is; ai-lab adds no row.
+[tool.lab_commons.hooks]
+
 [tool.lab_commons.doors]
 BARE-TEST-INVOCATION = "<venv python> -m lab_commons.dev.verify [-- <pytest args>]  (the verdict door; a hand-written pytest line has none)"
 PUSH-NO-VERIFY = "<venv python> -m lab_commons.dev.verify, then push without skipping the hook"

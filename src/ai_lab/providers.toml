@@ -1,77 +1,79 @@
 # Vendors are DATA. A row names its wire (a protocol module in ai_lab/wire), where it is reached
-# (a base URL, or a CLI binary), the environment variable holding its key ("" = none needed), and
-# whether it reads images, and the billing vendor the price catalogs know it as ("" = unmetered). Which verbs it has is read off the wire's code, never declared here.
-# Add a row in your own file and point AI_LAB_PROVIDERS at it; a row there replaces one here.
+# (a base URL, or a CLI binary), the conventional name of its key ("" = none needed; the key itself is
+# in the git credential store under the endpoint's host, never in the environment -- `python -m
+# ai_lab.auth login <provider>`), whether it reads images, and the billing vendor the price catalogs
+# know it as ("" = unmetered). Which verbs it has is read off the wire's code, never declared here.
+# Add a row in your own providers.toml (ai_lab.client.user_providers_file); a row there replaces one here.
 
 [openai]
 wire = "openai_responses"
 endpoint = "https://api.openai.com/v1"
-key_env = "OPENAI_API_KEY"
+key_name = "OPENAI_API_KEY"
 vision = true
 vendor = "openai"
 
 [openai_decisions]
 wire = "openai_decisions"
 endpoint = "https://api.openai.com/v1"
-key_env = "OPENAI_API_KEY"
+key_name = "OPENAI_API_KEY"
 vision = true
 vendor = "openai"
 
 [typesafe]
 wire = "typesafe"
 endpoint = "https://api.typesafe.ai/v1"
-key_env = "TYPESAFE_API_KEY"
+key_name = "TYPESAFE_API_KEY"
 vision = false
 
 [anthropic]
 wire = "anthropic_messages"
 endpoint = "https://api.anthropic.com/v1"
-key_env = "ANTHROPIC_API_KEY"
+key_name = "ANTHROPIC_API_KEY"
 vision = true
 vendor = "anthropic"
 
 [gemini]
 wire = "gemini"
 endpoint = "https://generativelanguage.googleapis.com/v1beta"
-key_env = "GEMINI_API_KEY"
+key_name = "GEMINI_API_KEY"
 vision = true
 vendor = "google"
 
 [openrouter]
 wire = "openai_chat"
 endpoint = "https://openrouter.ai/api/v1"
-key_env = "OPENROUTER_API_KEY"
+key_name = "OPENROUTER_API_KEY"
 vision = true
 vendor = "openrouter"
 
 [deepseek]
 wire = "openai_chat_json"
 endpoint = "https://api.deepseek.com/v1"
-key_env = "DEEPSEEK_API_KEY"
+key_name = "DEEPSEEK_API_KEY"
 vision = false
 vendor = "deepseek"
 
 [qwen]
 wire = "openai_chat"
 endpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-key_env = "DASHSCOPE_API_KEY"
+key_name = "DASHSCOPE_API_KEY"
 vision = true
 vendor = "alibaba"
 
 [ollama]
 wire = "openai_chat"
 endpoint = "http://localhost:11434/v1"
-key_env = ""
+key_name = ""
 vision = true
 
 [claude_code]
 wire = "claude_code"
 endpoint = "claude"
-key_env = ""
+key_name = ""
 vision = true
 
 [codex]
 wire = "codex"
 endpoint = "codex"
-key_env = ""
+key_name = ""
 vision = true

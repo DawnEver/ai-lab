@@ -56,14 +56,12 @@ def test_every_http_wire_reads_usage_and_every_effort_hook_is_declared_data() ->
     assert {n for n, w in WIRES.items() if w.effort} == {'openai_responses', 'openai_chat', 'openai_chat_json', 'codex'}
 
 
-def test_a_native_decision_carries_the_vendors_usage(monkeypatch) -> None:
-    monkeypatch.setenv('OPENAI_API_KEY', 'k')
+def test_a_native_decision_carries_the_vendors_usage(keys) -> None:
     decision = connect('openai_decisions:m', post=lambda call: DECISIONS_RAW).decide(REQUEST)
     assert decision.usage == Usage(163, 0, 3, 0)
 
 
-def test_effort_is_part_of_the_name_and_reaches_the_body(monkeypatch) -> None:
-    monkeypatch.setenv('OPENAI_API_KEY', 'k')
+def test_effort_is_part_of_the_name_and_reaches_the_body(keys) -> None:
     seen = []
 
     def post(call):
@@ -93,8 +91,7 @@ def test_a_body_effort_nests_without_touching_the_original() -> None:
     assert call.body['reasoning'] == {'summary': 'auto'}
 
 
-def test_the_ledger_records_usage_and_the_report_totals_it(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv('OPENAI_API_KEY', 'k')
+def test_the_ledger_records_usage_and_the_report_totals_it(tmp_path, keys) -> None:
     ledger = Ledger(tmp_path / 'l.jsonl')
     recorded = ledger.wrap(connect('openai_decisions:m', post=lambda call: DECISIONS_RAW))
     recorded.decide(REQUEST)

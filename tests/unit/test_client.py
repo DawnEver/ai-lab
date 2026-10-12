@@ -18,12 +18,6 @@ def _post_returning(payload):
     return post
 
 
-@pytest.fixture
-def keys(monkeypatch):
-    monkeypatch.setenv('OPENAI_API_KEY', 'sk-test')
-    monkeypatch.setenv('ANTHROPIC_API_KEY', 'ak-test')
-
-
 def test_every_packaged_provider_names_a_shipped_wire():
     assert {'openai', 'openai_decisions', 'typesafe', 'anthropic', 'gemini', 'claude_code', 'codex'} <= set(providers())
 
@@ -56,16 +50,48 @@ def test_a_decision_endpoint_cannot_respond(keys):
         connect('openai_decisions:gpt-6-luna').respond(ResponseRequest('i', (Text('t'),), {'type': 'object'}))
 
 
-def test_an_image_to_a_blind_provider_is_refused(monkeypatch, image_request):
-    monkeypatch.setenv('TYPESAFE_API_KEY', 'k')
+def test_an_image_to_a_blind_provider_is_refused(keys, image_request):
     with pytest.raises(Unsupported, match='does not read images'):
         connect('typesafe:jev-latest').decide(image_request)
 
 
-def test_a_missing_key_names_its_variable(monkeypatch, request_):
-    monkeypatch.delenv('OPENAI_API_KEY', raising=False)
-    with pytest.raises(Unsupported, match='OPENAI_API_KEY'):
+def test_a_missing_key_names_the_login_command(credential_store, request_):
+    with pytest.raises(Unsupported, match=r'python -m ai_lab\.auth login openai_decisions'):
         connect('openai_decisions:gpt-6-luna').decide(request_)
+
+
+def test_an_environment_variable_is_never_read_for_a_key(credential_store, monkeypatch, request_):
+    """PLANTED CONTROL: the conventional variable is set and the store is empty -- refused, not read."""
+    monkeypatch.setenv('OPENAI_API_KEY', 'sk-from-env')
+    with pytest.raises(Unsupported, match='auth login'):
+        connect('openai_decisions:gpt-6-luna', post=_post_returning({'answers': []})).decide(request_)
+
+
+def test_the_key_is_read_from_the_store_by_the_endpoint_host(credential_store, request_):
+    credential_store('api.openai.com', 'sk-stored')
+    post = _post_returning({'answers': [
+        {'type': 'predicate', 'name': 'worth_fea', 'probability': 0.9},
+        {'type': 'choice', 'name': 'fidelity', 'choice': 'fea3d'},
+        {'type': 'score', 'name': 'risk', 'score': 2.0},
+    ]})  # fmt: skip
+    connect('openai_decisions:gpt-6-luna', post=post).decide(request_)
+    assert post.calls[0].headers['Authorization'] == 'Bearer sk-stored'
+
+
+def test_a_keyless_provider_never_asks_the_store(monkeypatch):
+    def refuse(host, **_):
+        raise AssertionError(host)
+
+    monkeypatch.setattr('ai_lab.client.credential_for', refuse)
+    assert Client(providers()['ollama'], 'llama')._key() == ''
+
+
+def test_a_user_row_naming_the_retired_key_env_is_refused_with_the_remedy(credential_store, tmp_path):
+    (tmp_path / 'home' / 'config').mkdir(parents=True)
+    row = '[mylab]\nwire = "openai_chat"\nendpoint = "https://box/v1"\nkey_env = "MYLAB_KEY"\n'
+    (tmp_path / 'home' / 'config' / 'providers.toml').write_text(row, encoding='utf-8')
+    with pytest.raises(Unsupported, match=r'key_env.*key_name.*ai_lab\.auth login mylab'):
+        providers()
 
 
 def test_an_unknown_provider_lists_the_known_ones():

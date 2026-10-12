@@ -34,7 +34,7 @@ decision['fidelity'].choice, decision['fidelity'].probabilities
 ## Providers are data, wires are protocols
 
 `connect('<provider>:<model>')` reads `providers.toml`: each row names a wire, an endpoint (a URL
-or a CLI binary), the environment variable holding its key, and whether it reads images. Put a
+or a CLI binary), the conventional name of its key (`key_name`, `""` for none), and whether it reads images. Put a
 `providers.toml` in the family config root (`$AI_LAB_HOME/config`, else the platform's user config
 directory for `ai_lab`) to add rows or replace one of the same name.
 
@@ -103,15 +103,33 @@ output = 0.50
 
 ## Keys
 
-Keys are read from the environment at call time and never stored, logged or put in a repr. On
-Windows: `setx OPENAI_API_KEY "sk-..."`, then restart the shell.
+Keys live in the git credential store, the same one that holds your forge token, and nowhere else.
+Each key is stored under the `https` host of its provider's endpoint, so providers that share a host
+also share a key. This works the same way on Windows and Linux, and no environment variable is read.
+Calls read the key when they need it and never log it or put it in a repr. When a key is missing,
+the call is refused and the error names the command that stores it.
+
+```
+python -m ai_lab.auth login openai                 # prompts without echo (or reads one line from stdin)
+python -m ai_lab.auth login --from-file keys.env   # NAME=value, export NAME=value, or NAME value lines
+ssh box python -m ai_lab.auth login --from-file - < keys.env   # the same file over stdin
+python -m ai_lab.auth status                       # each keyed provider: stored / missing, never the key
+```
+
+A key file maps names to providers through each row's `key_name` (`OPENAI_API_KEY`,
+`DEEPSEEK_API_KEY`, ...). Unknown names are reported by name and skipped. Where the key is persisted
+depends on the configured `credential.helper`: Git Credential Manager on Windows, and on Linux a
+keychain or `git config --global credential.helper store` with `~/.git-credentials` set to mode 600.
+
+A user `providers.toml` that still has the retired `key_env` field is refused. Rename it to
+`key_name` and run `auth login`.
 
 ## Develop
 
 ```
 uv pip install -e ".[dev]"     # the family dev kit (lab-commons[dev]), pytest, ruff
 make verify                    # python -m lab_commons.dev.verify: ruff, the suite, hook wiring
-python -m pytest -m live       # real calls: local CLIs and every provider whose key is set
+python -m pytest -m live       # real calls: local CLIs and every provider whose key is stored
 ```
 
 `.gitignore`, `.gitattributes`, `.rgignore`, `.pre-commit-config.yaml` and `Makefile` are RENDERED from

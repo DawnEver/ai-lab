@@ -2,7 +2,8 @@
 
 A client offers exactly what its wire's record carries: a native decision endpoint decides natively,
 a schema-capable wire decides by emulation and responds, and anything else is :class:`Unsupported`
-naming the remedy. The key is read from the environment at call time and is never stored.
+naming the remedy. The key is read at call time from the git credential store, keyed by the host of
+the provider's endpoint, and is never held, logged or put in a repr (:mod:`ai_lab.auth` stores it).
 
 EFFORT IS PART OF THE NAME. ``openai_responses:gpt-x@high`` is a different client from ``@low``: its
 answers differ, so the ledger -- keyed on the name -- keeps them apart, and a comparison of efforts is
@@ -17,14 +18,15 @@ the family's config search path, so ai-lab carries no second convention for wher
 
 from __future__ import annotations
 
-import os
 import time
 import tomllib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
+from urllib.parse import urlsplit
 
+from lab_commons.credentials import NoCredential, credential_for
 from lab_commons.paths import config_root
 
 from ai_lab import emulate, transport
@@ -43,12 +45,17 @@ APP = 'ai_lab'
 
 @dataclass(frozen=True, slots=True)
 class Provider:
-    """One vendor: which wire it speaks, where it is reached, which variable holds its key."""
+    """One vendor: which wire it speaks, where it is reached, and whether it needs a key.
+
+    ``key_name`` is the conventional name of the vendor's key (``OPENAI_API_KEY``); ``''`` is keyless.
+    It is never looked up in the environment: the key itself lives in the git credential store under
+    :attr:`host`, and the name only lets ``python -m ai_lab.auth login --from-file`` import a key file.
+    """
 
     name: str
     wire: str
     endpoint: str
-    key_env: str = ''
+    key_name: str = ''
     vision: bool = False
     #: Who bills this provider's tokens, as the price catalogs name it; ``''`` is unmetered.
     vendor: str = ''
@@ -59,6 +66,25 @@ class Provider:
             msg = f'provider {self.name!r} names unknown wire {self.wire!r}; the wires are {sorted(WIRES)}'
             raise Unsupported(msg)
 
+    @property
+    def keyed(self) -> bool:
+        """Whether a call needs a stored key."""
+        return bool(self.key_name)
+
+    @property
+    def host(self) -> str:
+        """The host the key is stored under: providers sharing it share one key."""
+        return urlsplit(self.endpoint).hostname or ''
+
+
+#: The field a key USED to be named by (an environment variable), retired 2026-10-13 for the store.
+_RETIRED_KEY_FIELD = 'key_env'
+
+
+def login_command(provider: str) -> str:
+    """The command that stores *provider*'s key -- the remedy every missing-key refusal names."""
+    return f'python -m ai_lab.auth login {provider}'
+
 
 def user_providers_file() -> Path:
     """Where a user's own provider rows live (it need not exist)."""
@@ -67,6 +93,13 @@ def user_providers_file() -> Path:
 
 def _rows(text: str, origin: str) -> dict[str, Provider]:
     table = tomllib.loads(text)
+    for name, row in table.items():
+        if _RETIRED_KEY_FIELD in row:
+            msg = (
+                f'provider {name!r} in {origin} names {_RETIRED_KEY_FIELD!r}, retired: keys are no longer read from '
+                f'the environment. Rename it to key_name (same value), then store the key: {login_command(name)}'
+            )
+            raise Unsupported(msg)
     try:
         return {name: Provider(name=name, **row) for name, row in table.items()}
     except TypeError as error:
@@ -159,13 +192,13 @@ class Client:
             raise Unsupported(msg)
 
     def _key(self) -> str:
-        if not self.provider.key_env:
+        if not self.provider.keyed:
             return ''
-        key = os.environ.get(self.provider.key_env, '')
-        if not key:
-            msg = f'{self.provider.name} needs its key in the environment variable {self.provider.key_env}'
-            raise Unsupported(msg)
-        return key
+        try:
+            return credential_for(self.provider.host)[1]
+        except NoCredential as missing:
+            msg = f'{self.provider.name} has no key stored for {self.provider.host} ({missing}); run: '
+            raise Unsupported(msg + login_command(self.provider.name)) from None
 
     def _send(self, call: transport.HttpCall | transport.CliCall) -> object:
         if self.effort:

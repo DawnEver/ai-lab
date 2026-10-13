@@ -53,7 +53,7 @@ _ABSENT: Final = frozenset({
     'SUBAGENT-NO-PUSH', 'WORKTREES-STAY-INSIDE', 'ONE-BOX-ONE-LOCK',
     # One trunk, no integration branch: main moves by a direct merge, so none of these has a subject.
     'DOWNSTREAM-SYNCS-INTEGRATION', 'INTEGRATION-LIVES-IN-THE-MAIN-CHECKOUT', 'MERGE-OR-DELETE',
-    'PRS-TARGET-INTEGRATION', 'TRUNK-MOVES-BY-FAST-FORWARD',
+    'PRS-TARGET-INTEGRATION', 'TRUNK-MOVES-BY-FAST-FORWARD', 'PUSH-FROM-ITS-OWN-BRANCH',
     # The environment: no own venv yet (the agent guard refuses creating one until a door is declared),
     # so nothing installs hooks or dependencies through a checked door here.
     'HOOKS-ARE-WIRED', 'INSTALL-DOOR-DELIVERS-THE-DECLARATION', 'ENV-MUTATION-THROUGH-THE-DOOR',
@@ -72,9 +72,10 @@ _ABSENT: Final = frozenset({
 })  # fmt: skip
 
 #: The size of the set as of 2026-10-08 (41), re-based 2026-10-13 when the registry added six rules with
-#: no subject here (the five integration-branch rules and REPORTS-LIVE-IN-MEMORY); lowering it is the only
+#: no subject here (the five integration-branch rules and REPORTS-LIVE-IN-MEMORY), and again (48) for
+#: PUSH-FROM-ITS-OWN-BRANCH, an integration-line rule with no line here; lowering it is the only
 #: legal edit.
-_ABSENT_CEILING: Final = 47
+_ABSENT_CEILING: Final = 48
 
 
 def test_every_rule_is_enforced_or_declared_absent() -> None:

@@ -120,3 +120,13 @@ def test_openai_chat_json_asks_for_a_json_object_and_carries_the_schema_in_the_p
     assert system.startswith('Be brief.')
     assert json.dumps(SCHEMA, sort_keys=True) in system
     assert openai_chat_json.WIRE.parse_response({'choices': [{'message': {'content': '{"ok": true}'}}]}) == {'ok': True}
+
+
+def test_openai_chat_json_effort_off_turns_thinking_off_and_a_level_sets_the_effort():
+    call = openai_chat_json.WIRE.respond(REQ, 'deepseek-v4-flash', 'https://api.deepseek.com/v1', 'k')
+    off = openai_chat_json.WIRE.effort(call, 'off').body
+    assert off['thinking'] == {'type': 'disabled'}
+    assert 'reasoning_effort' not in off
+    high = openai_chat_json.WIRE.effort(call, 'high').body
+    assert high['thinking'] == {'type': 'enabled'}
+    assert high['reasoning_effort'] == 'high'

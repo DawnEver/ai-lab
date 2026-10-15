@@ -85,7 +85,13 @@ def post(call: HttpCall, *, timeout_s: float = HTTP_CEILING_S, attempts: int = 3
         )
         try:
             with urllib.request.urlopen(request, timeout=timeout_s) as reply:  # noqa: S310 -- checked above
-                return json.loads(reply.read().decode('utf-8'))
+                body = json.loads(reply.read().decode('utf-8'))
+            # A 200 carrying only an error (DeepSeek's overloaded queue) is a failed call, judged as a status.
+            if not (isinstance(body, dict) and 'error' in body and 'choices' not in body):
+                return body
+            last = f'error body from {call.url}: {str(body["error"])[:500]}'
+            if any(marker in last for marker in _EXHAUSTED):
+                raise ProviderError(last)
         except urllib.error.HTTPError as error:
             detail = error.read().decode('utf-8', 'replace')[:500]
             last = f'HTTP {error.code} from {call.url}: {detail}'

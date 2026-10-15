@@ -90,3 +90,33 @@ def test_an_exhausted_quota_is_not_retried(monkeypatch):
     with pytest.raises(ProviderError, match='insufficient_quota'):
         post(HttpCall('https://x.test', {}), sleep=lambda s: None)
     assert len(calls) == 1
+
+
+class _Body(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def test_a_200_carrying_only_an_error_is_retried(monkeypatch):
+    """DeepSeek answers an overloaded queue with HTTP 200 and ``{"error": ...}`` -- a transient failure."""
+    replies = [b'{"error": {"message": "unable to start processing within the 900-second timeout"}}', b'{"ok": true}']
+    monkeypatch.setattr('urllib.request.urlopen', lambda request, timeout: _Body(replies.pop(0)))
+    sleeps = []
+    assert post(HttpCall('https://x.test', {}), sleep=sleeps.append) == {'ok': True}
+    assert sleeps == [1.0]
+
+
+def test_an_exhausted_balance_in_a_200_body_is_not_retried(monkeypatch):
+    calls = []
+
+    def urlopen(request, timeout):
+        calls.append(1)
+        return _Body(b'{"error": {"code": "insufficient_quota"}}')
+
+    monkeypatch.setattr('urllib.request.urlopen', urlopen)
+    with pytest.raises(ProviderError, match='insufficient_quota'):
+        post(HttpCall('https://x.test', {}), sleep=lambda s: None)
+    assert len(calls) == 1

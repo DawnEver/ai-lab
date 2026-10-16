@@ -116,6 +116,7 @@ class Recorded:
                 'basis': d.basis.value,
                 'latency_s': d.latency_s,
                 'usage': _usage_to(d.usage),
+                'key_slot': d.key_slot,
                 'answers': [_answer_to(a) for a in d.answers.values()],
             }
             self.ledger.append(entry)
@@ -128,6 +129,7 @@ class Recorded:
             entry['model'],
             entry['latency_s'],
             _usage_from(entry.get('usage')),
+            entry.get('key_slot', 0),
         )
 
     def respond(self, request: ResponseRequest) -> Response:
@@ -145,10 +147,16 @@ class Recorded:
                 'model': r.model,
                 'latency_s': r.latency_s,
                 'usage': _usage_to(r.usage),
+                'key_slot': r.key_slot,
                 'value': r.value,
             }
             self.ledger.append(entry)
             return r
         return Response(
-            entry['value'], entry['provider'], entry['model'], entry['latency_s'], _usage_from(entry.get('usage'))
+            entry['value'],
+            entry['provider'],
+            entry['model'],
+            entry['latency_s'],
+            _usage_from(entry.get('usage')),
+            entry.get('key_slot', 0),
         )

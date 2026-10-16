@@ -6,6 +6,10 @@
 # billed per token), "subscription" (a logged-in vendor CLI; local only, refused on a Slurm compute node,
 # and it names its vendor's "api_provider" row as the alternative) or "local" (a keyless server you
 # run). Which verbs it has is read off the wire's code, never declared here.
+# A row may declare "model_wires" = {model = wire}: a model of the SAME account that one wire of
+# its vendor serves instead of the row's default (OpenAI's /decisions endpoint serves gpt-6-luna).
+# One provider is ONE ACCOUNT KIND OF ONE VENDOR; a second door into an account is a model_wires entry,
+# never a second row. An "api" row's keys are ordered slots (`login <provider> --slot N`).
 # Add a row in your own providers.toml (ai_lab.client.user_providers_file); a row there replaces one here.
 
 [openai]
@@ -15,14 +19,7 @@ key_name = "OPENAI_API_KEY"
 vision = true
 vendor = "openai"
 auth = "api"
-
-[openai_decisions]
-wire = "openai_decisions"
-endpoint = "https://api.openai.com/v1"
-key_name = "OPENAI_API_KEY"
-vision = true
-vendor = "openai"
-auth = "api"
+model_wires = { "gpt-6-luna" = "openai_decisions" }
 
 [typesafe]
 wire = "typesafe"

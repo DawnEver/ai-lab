@@ -25,10 +25,18 @@ def test_login_reads_the_key_from_stdin_and_stores_it_under_the_providers_host(c
     assert 'sk-fake-1' not in out.out + out.err
 
 
-def test_providers_sharing_a_host_share_one_stored_key(credential_store, monkeypatch):
-    _stdin(monkeypatch, 'sk-shared\n')
-    assert auth.main(['login', 'openai_decisions']) == 0
-    assert credential_for('api.openai.com')[1] == 'sk-shared'
+def test_login_slot_2_stores_the_second_username(credential_store, monkeypatch, capsys):
+    _stdin(monkeypatch, 'sk-fake-two\n')
+    assert auth.main(['login', 'openai', '--slot', '2']) == 0
+    assert 'https://api-key-2:sk-fake-two@api.openai.com' in credential_store.file.read_text(encoding='utf-8')
+    out = capsys.readouterr()
+    assert 'sk-fake-two' not in out.out + out.err
+
+
+def test_login_refuses_slot_zero(credential_store, monkeypatch, capsys):
+    _stdin(monkeypatch, 'sk-x\n')
+    assert auth.main(['login', 'openai', '--slot', '0']) == 1
+    assert 'slot' in capsys.readouterr().err
 
 
 def test_login_refuses_an_unknown_or_keyless_provider_and_an_empty_key(credential_store, monkeypatch, capsys):
@@ -97,12 +105,22 @@ def test_status_lists_each_provider_with_its_auth_kind_and_key_state_never_the_s
     assert auth.main(['status']) == 0
     out = capsys.readouterr().out
     lines = {line.split()[0]: line for line in out.splitlines() if line.strip()}
-    assert 'stored' in lines['openai'] and 'stored' in lines['openai_decisions']
-    assert 'missing' in lines['anthropic']
+    assert lines['openai'].split()[-1] == '1'
+    assert lines['anthropic'].split()[-1] == '0'
+    assert 'openai_decisions' not in lines
     assert lines['openai'].split()[1] == 'api'
     assert lines['claude_code'].split()[1:] == ['subscription', '-', '-']
     assert lines['ollama'].split()[1] == 'local'
     assert 'sk-fake-status' not in out
+
+
+def test_status_counts_slots_up_to_the_first_gap(credential_store, capsys):
+    credential_store('api.openai.com', 'sk-a')
+    credential_store('api.openai.com', 'sk-b', 'api-key-2')
+    credential_store('api.openai.com', 'sk-d', 'api-key-4')
+    assert auth.main(['status']) == 0
+    line = next(x for x in capsys.readouterr().out.splitlines() if x.startswith('openai '))
+    assert line.split()[-1] == '2'
 
 
 def test_the_module_runs_as_a_cli():

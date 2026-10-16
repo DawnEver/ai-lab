@@ -4,7 +4,7 @@ import pytest
 
 from ai_lab import Basis, Provider, ResponseRequest, Text, Unsupported, connect, providers
 from ai_lab.client import Client
-from ai_lab.transport import CliResult
+from ai_lab.transport import CliResult, HttpCall
 
 
 def _post_returning(payload):
@@ -19,7 +19,7 @@ def _post_returning(payload):
 
 
 def test_every_packaged_provider_names_a_shipped_wire():
-    assert {'openai', 'openai_decisions', 'typesafe', 'anthropic', 'gemini', 'claude_code', 'codex'} <= set(providers())
+    assert {'openai', 'typesafe', 'anthropic', 'gemini', 'claude_code', 'codex'} <= set(providers())
 
 
 def test_a_native_endpoint_decides_natively(keys, request_):
@@ -28,7 +28,7 @@ def test_a_native_endpoint_decides_natively(keys, request_):
         {'type': 'choice', 'name': 'fidelity', 'choice': 'fea3d'},
         {'type': 'score', 'name': 'risk', 'score': 2.0},
     ]})  # fmt: skip
-    d = connect('openai_decisions:gpt-6-luna', post=post).decide(request_)
+    d = connect('openai:gpt-6-luna', post=post).decide(request_)
     assert d.basis is Basis.NATIVE
     assert d['fidelity'].choice == 'fea3d'
     assert d['risk'].level == 'high'
@@ -47,7 +47,7 @@ def test_a_responding_wire_decides_by_emulation(keys, request_):
 
 def test_a_decision_endpoint_cannot_respond(keys):
     with pytest.raises(Unsupported, match='decision endpoint'):
-        connect('openai_decisions:gpt-6-luna').respond(ResponseRequest('i', (Text('t'),), {'type': 'object'}))
+        connect('openai:gpt-6-luna').respond(ResponseRequest('i', (Text('t'),), {'type': 'object'}))
 
 
 def test_an_image_to_a_blind_provider_is_refused(keys, image_request):
@@ -56,15 +56,15 @@ def test_an_image_to_a_blind_provider_is_refused(keys, image_request):
 
 
 def test_a_missing_key_names_the_login_command(credential_store, request_):
-    with pytest.raises(Unsupported, match=r'python -m ai_lab\.auth login openai_decisions'):
-        connect('openai_decisions:gpt-6-luna').decide(request_)
+    with pytest.raises(Unsupported, match=r'python -m ai_lab\.auth login openai'):
+        connect('openai:gpt-6-luna').decide(request_)
 
 
 def test_an_environment_variable_is_never_read_for_a_key(credential_store, monkeypatch, request_):
     """PLANTED CONTROL: the conventional variable is set and the store is empty -- refused, not read."""
     monkeypatch.setenv('OPENAI_API_KEY', 'sk-from-env')
     with pytest.raises(Unsupported, match='auth login'):
-        connect('openai_decisions:gpt-6-luna', post=_post_returning({'answers': []})).decide(request_)
+        connect('openai:gpt-6-luna', post=_post_returning({'answers': []})).decide(request_)
 
 
 def test_the_key_is_read_from_the_store_by_the_endpoint_host(credential_store, request_):
@@ -74,16 +74,17 @@ def test_the_key_is_read_from_the_store_by_the_endpoint_host(credential_store, r
         {'type': 'choice', 'name': 'fidelity', 'choice': 'fea3d'},
         {'type': 'score', 'name': 'risk', 'score': 2.0},
     ]})  # fmt: skip
-    connect('openai_decisions:gpt-6-luna', post=post).decide(request_)
+    connect('openai:gpt-6-luna', post=post).decide(request_)
     assert post.calls[0].headers['Authorization'] == 'Bearer sk-stored'
 
 
 def test_a_keyless_provider_never_asks_the_store(monkeypatch):
-    def refuse(host, **_):
+    def refuse(host, slot):
         raise AssertionError(host)
 
-    monkeypatch.setattr('ai_lab.client.credential_for', refuse)
-    assert Client(providers()['ollama'], 'llama')._key() == ''
+    monkeypatch.setattr('ai_lab.client._slot_key', refuse)
+    client = Client(providers()['ollama'], 'llama', post=lambda call, **_: dict(call.headers))
+    assert client._send(lambda key: HttpCall('http://x', {}, {'key': key})) == ({'key': ''}, 0)
 
 
 def test_a_user_row_naming_the_retired_key_env_is_refused_with_the_remedy(credential_store, tmp_path):
@@ -147,7 +148,7 @@ def _user_rows(tmp_path, monkeypatch, rows):
 def test_every_packaged_row_declares_its_auth_kind():
     kinds = {name: row.auth for name, row in providers().items()}
     assert kinds['claude_code'] == kinds['codex'] == 'subscription'
-    assert {kinds[n] for n in ('anthropic', 'openai', 'openai_decisions')} == {'api'}
+    assert {kinds[n] for n in ('anthropic', 'openai')} == {'api'}
     assert kinds['ollama'] == 'local'
 
 

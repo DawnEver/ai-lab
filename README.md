@@ -27,7 +27,7 @@ request = DecisionRequest(
         Choice('fidelity', 'Which fidelity next?', (Option('drop'), Option('fea2d'), Option('fea3d'))),
     ),
 )
-decision = connect('openai_decisions:gpt-6-luna').decide(request)
+decision = connect('openai:gpt-6-luna').decide(request)
 decision['fidelity'].choice, decision['fidelity'].probabilities
 ```
 
@@ -38,9 +38,15 @@ or a CLI binary), the conventional name of its key (`key_name`, `""` for none), 
 `providers.toml` in the family config root (`$AI_LAB_HOME/config`, else the platform's user config
 directory for `ai_lab`) to add rows or replace one of the same name.
 
+One provider is ONE ACCOUNT KIND OF ONE VENDOR: `openai` and `anthropic` are API accounts, `codex` and
+`claude_code` the same vendors' subscriptions. A vendor endpoint that only some models of an account
+serve is not a second provider: the row's `model_wires = {model = wire}` routes those models, so
+`openai:gpt-6-luna` goes to OpenAI's `/decisions` and any other `openai:<model>` to `/responses`. The
+retired spelling `openai_decisions:<model>` is refused naming `openai:<model>`.
+
 | wire | decides | responds | packaged providers |
 |---|---|---|---|
-| `openai_decisions` | native | -- | `openai_decisions` |
+| `openai_decisions` | native | -- | `openai` (models in its `model_wires`: `gpt-6-luna`) |
 | `typesafe` | native | -- | `typesafe` (Jev) |
 | `openai_responses` | emulated | yes | `openai` |
 | `openai_chat` | emulated | yes | `openrouter`, `deepseek`, `qwen`, `ollama` |
@@ -58,7 +64,7 @@ off (`claude`) or a read-only ephemeral sandbox (`codex`): they answer, they can
 
 Every provider row declares its `auth` kind; a row without one, or with an unknown one, is refused:
 
-- `api` -- a keyed account billed per token (`anthropic`, `openai`, `openai_decisions`, ...); the key is in the git credential store.
+- `api` -- a keyed account billed per token (`anthropic`, `openai`, `deepseek`, ...); the key is in the git credential store.
 - `subscription` -- a logged-in vendor CLI (`claude_code`, `codex`). LOCAL ONLY: on a Slurm compute node (`SLURM_JOB_ID` set) a request is refused and names the row's `api_provider` (`anthropic`, `openai`) to use instead.
 - `local` -- a keyless server you run yourself (`ollama`).
 
@@ -80,8 +86,8 @@ to beat.
 ## Effort, usage and cost
 
 `connect('openai:gpt-x@high')` sets a reasoning effort; it is part of the client's name, so the
-ledger keeps two efforts apart. A wire without an effort hook refuses one (`openai_decisions` takes
-none -- the endpoint rejects the parameter).
+ledger keeps two efforts apart. A wire without an effort hook refuses one (`openai:gpt-6-luna` takes
+none -- the `/decisions` endpoint rejects the parameter).
 
 Every `Decision` and `Response` carries the vendor's `usage` (input, cached, output, reasoning
 tokens) where the wire reads it, and the ledger records it with the call's time.
@@ -95,7 +101,7 @@ beside `providers.toml` (US dollars per million tokens, keyed `provider:model`) 
 and wins:
 
 ```toml
-["openai_decisions:gpt-6-luna"]
+["openai:gpt-6-luna"]
 input = 0.10
 cached_input = 0.01
 output = 0.50
@@ -115,11 +121,18 @@ also share a key. This works the same way on Windows and Linux, and no environme
 Calls read the key when they need it and never log it or put it in a repr. When a key is missing,
 the call is refused and the error names the command that stores it.
 
+An API provider may hold several keys as ordered FALLBACK slots: usernames `api-key`, `api-key-2`,
+`api-key-3`, ... under the same host, read up to the first missing slot. A call uses slot 1 and moves
+to the next slot when it fails at the account level -- exhausted balance, 401/403, or a 429 past its
+retries; when every slot fails the error lists each slot's failure kind, never a key. The slot that
+served a call is the `key_slot` of its `Decision`/`Response` and of its ledger entry.
+
 ```
 python -m ai_lab.auth login openai                 # prompts without echo (or reads one line from stdin)
+python -m ai_lab.auth login openai --slot 2        # a fallback key, stored as api-key-2
 python -m ai_lab.auth login --from-file keys.env   # NAME=value, export NAME=value, or NAME value lines
 ssh box python -m ai_lab.auth login --from-file - < keys.env   # the same file over stdin
-python -m ai_lab.auth status                       # each provider: auth kind; stored / missing if keyed, never the key
+python -m ai_lab.auth status                       # each provider: auth kind; how many key slots it holds, never a key
 ```
 
 A key file maps names to providers through each row's `key_name` (`OPENAI_API_KEY`,

@@ -11,6 +11,10 @@ it needs a key (non-empty) and what the key is conventionally called -- which is
 needs to route a ``NAME value`` line to a provider. A separate ``keyed = true`` flag beside it could
 disagree with it; deriving the flag from the name cannot. Providers sharing a host share one stored key.
 
+SLOTS ARE FALLBACK KEYS OF ONE ACCOUNT. ``login <provider> --slot N`` stores username ``api-key-N``
+(slot 1, the default, is ``api-key``); a call falls over to the next slot on an account-level failure
+(:mod:`ai_lab.client`). ``status`` counts each provider's slots up to the first gap.
+
 The key never travels in argv: ``login <provider>`` reads it from the terminal without echo, or from
 stdin when piped; ``--from-file -`` reads a key file from stdin (``ssh box python -m ai_lab.auth login
 --from-file - < keys``).
@@ -25,14 +29,11 @@ import sys
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
-from lab_commons.credentials import NoCredential, credential_for, store_credential
+from lab_commons.credentials import NoCredential, store_credential
 
-from ai_lab.client import Provider, providers
+from ai_lab.client import Provider, providers, slot_username, stored_slots
 
-__all__ = ['USERNAME', 'main', 'parse_key_file']
-
-#: The username every API key is stored with; the secret is what a call presents.
-USERNAME = 'api-key'
+__all__ = ['main', 'parse_key_file']
 
 #: ``[export ]NAME<= or whitespace>value``: the name, then the first ``=`` or run of whitespace.
 _LINE = re.compile(r'^(?:export\s+)?([^=\s]+)\s*(?:=|\s)\s*(.*)$')
@@ -66,16 +67,19 @@ def _keyed() -> dict[str, Provider]:
     return {name: row for name, row in providers().items() if row.keyed}
 
 
-def _store(host: str, secret: str) -> bool:
+def _store(host: str, secret: str, slot: int = 1) -> bool:
     try:
-        store_credential(host, USERNAME, secret)
+        store_credential(host, slot_username(slot), secret)
     except NoCredential as failed:
         sys.stderr.write(f'{failed}\n')
         return False
     return True
 
 
-def _login_one(name: str) -> int:
+def _login_one(name: str, slot: int) -> int:
+    if slot < 1:
+        sys.stderr.write(f'--slot is 1 or more, not {slot}\n')
+        return 1
     table = providers()
     if name not in table:
         sys.stderr.write(f'unknown provider {name!r}; known: {sorted(table)}\n')
@@ -84,15 +88,15 @@ def _login_one(name: str) -> int:
     if not provider.keyed:
         sys.stderr.write(f'{name} needs no key\n')
         return 1
-    prompt = f'{provider.key_name} for {provider.host}: '
+    prompt = f'{provider.key_name} for {provider.host} (slot {slot}): '
     secret = (getpass.getpass(prompt) if sys.stdin.isatty() else sys.stdin.readline()).strip()
     if not secret:
         sys.stderr.write('empty key; nothing stored\n')
         return 1
-    if not _store(provider.host, secret):
+    if not _store(provider.host, secret, slot):
         return 1
     sharing = sorted(n for n, row in _keyed().items() if row.host == provider.host)
-    sys.stdout.write(f'stored the key for {provider.host} ({", ".join(sharing)})\n')
+    sys.stdout.write(f'stored key slot {slot} for {provider.host} ({", ".join(sharing)})\n')
     return 0
 
 
@@ -126,13 +130,7 @@ def _status_lines(rows: Iterable[Provider]) -> list[str]:
         if not row.keyed:
             lines.append(f'{row.name:20} {row.auth:13} {"-":45} -')
             continue
-        try:
-            credential_for(row.host)
-        except NoCredential:
-            state = 'missing'
-        else:
-            state = 'stored'
-        lines.append(f'{row.name:20} {row.auth:13} {row.host:45} {state}')
+        lines.append(f'{row.name:20} {row.auth:13} {row.host:45} {stored_slots(row.host)}')
     return lines
 
 
@@ -144,12 +142,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     target = login.add_mutually_exclusive_group(required=True)
     target.add_argument('provider', nargs='?', help='a keyed provider; the key is read without echo, never argv')
     target.add_argument('--from-file', metavar='PATH', help='a NAME=value / NAME value file; "-" reads stdin')
-    verbs.add_parser('status', help='each provider: auth kind, and stored or missing for a keyed one (never the key)')
+    login.add_argument(
+        '--slot', type=int, default=1, help='the fallback key slot to store (1 = api-key, N = api-key-N)'
+    )
+    verbs.add_parser('status', help='each provider: auth kind, and how many key slots a keyed one holds (never a key)')
     args = parser.parse_args(argv)
     if args.verb == 'status':
         sys.stdout.write('\n'.join(_status_lines(providers().values())) + '\n')
         return 0
-    return _login_file(args.from_file) if args.from_file else _login_one(args.provider)
+    return _login_file(args.from_file) if args.from_file else _login_one(args.provider, args.slot)
 
 
 if __name__ == '__main__':

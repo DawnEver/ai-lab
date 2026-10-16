@@ -89,6 +89,8 @@ class Decision:
     model: str
     latency_s: float = 0.0
     usage: Usage | None = None
+    #: Which of the provider's key slots served the call (1 = ``api-key``); 0 = keyless or unknown.
+    key_slot: int = 0
 
     def __getitem__(self, name: str) -> Answer:
         """The answer to the question named ``name``."""
@@ -104,3 +106,5 @@ class Response:
     model: str
     latency_s: float = 0.0
     usage: Usage | None = None
+    #: Which of the provider's key slots served the call (1 = ``api-key``); 0 = keyless or unknown.
+    key_slot: int = 0

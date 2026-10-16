@@ -57,7 +57,7 @@ def test_every_http_wire_reads_usage_and_every_effort_hook_is_declared_data() ->
 
 
 def test_a_native_decision_carries_the_vendors_usage(keys) -> None:
-    decision = connect('openai_decisions:m', post=lambda call: DECISIONS_RAW).decide(REQUEST)
+    decision = connect('openai:gpt-6-luna', post=lambda call: DECISIONS_RAW).decide(REQUEST)
     assert decision.usage == Usage(163, 0, 3, 0)
 
 
@@ -76,7 +76,7 @@ def test_effort_is_part_of_the_name_and_reaches_the_body(keys) -> None:
 
 def test_a_wire_with_no_effort_refuses_one() -> None:
     with pytest.raises(Unsupported, match='takes no effort'):
-        connect('openai_decisions:m@high')
+        connect('openai:gpt-6-luna@high')
 
 
 def test_codex_effort_goes_before_the_prompt_dash() -> None:
@@ -93,17 +93,18 @@ def test_a_body_effort_nests_without_touching_the_original() -> None:
 
 def test_the_ledger_records_usage_and_the_report_totals_it(tmp_path, keys) -> None:
     ledger = Ledger(tmp_path / 'l.jsonl')
-    recorded = ledger.wrap(connect('openai_decisions:m', post=lambda call: DECISIONS_RAW))
+    recorded = ledger.wrap(connect('openai:gpt-6-luna', post=lambda call: DECISIONS_RAW))
     recorded.decide(REQUEST)
     entry = json.loads((tmp_path / 'l.jsonl').read_text('utf-8'))
-    assert entry['client'] == 'openai_decisions:m' and entry['usage']['input_tokens'] == 163
-    replayed = Ledger(tmp_path / 'l.jsonl', 'replay').wrap(connect('openai_decisions:m')).decide(REQUEST)
+    assert entry['client'] == 'openai:gpt-6-luna' and entry['usage']['input_tokens'] == 163
+    assert entry['key_slot'] == 1
+    replayed = Ledger(tmp_path / 'l.jsonl', 'replay').wrap(connect('openai:gpt-6-luna')).decide(REQUEST)
     assert replayed.usage == Usage(163, 0, 3, 0)
     assert 'at' in entry
     flat = Quote(Price(1.0, 0.0), 'test', agreed=True, sources={})
     (row,) = summarize([tmp_path / 'l.jsonl'], price=lambda name, at: flat)
     assert (row.client, row.calls, row.questions, row.input_tokens, row.price) == (
-        'openai_decisions:m',
+        'openai:gpt-6-luna',
         1,
         1,
         163,

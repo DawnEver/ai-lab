@@ -19,6 +19,17 @@ EVERY ROW DECLARES ITS AUTH KIND (:data:`AUTH_KINDS`); a missing or unknown one 
 inferred from an empty ``key_name``. A ``subscription`` row (the logged-in ``claude`` / ``codex`` CLIs)
 is LOCAL ONLY: a request through one on a Slurm compute node (``SLURM_JOB_ID`` set) is refused, naming
 the row's ``api_provider`` -- the same vendor's keyed ``api`` row -- as the one to use there.
+
+ONE PROVIDER IS ONE ACCOUNT KIND OF ONE VENDOR (user ruling 2026-10-16). A vendor endpoint that only
+some models of the account serve (OpenAI's ``/decisions``) is not a second row: the row declares
+``model_wires = {model = wire}`` and :meth:`Provider.wire_for` picks the wire by the MODEL, as data.
+A retired provider spelling (:data:`RETIRED_PROVIDERS`) is refused naming its replacement.
+
+AN API ACCOUNT'S KEYS ARE ORDERED SLOTS: usernames ``api-key``, ``api-key-2``, ``api-key-3``... under
+the endpoint host, read up to the first missing slot. A call starts on slot 1 and moves to the next
+slot when it fails at the ACCOUNT level (``ProviderError.kind``: exhausted, auth, rate limit); when
+every slot fails, the error lists each slot's failure kind -- never a key. The slot that served a
+call is on its :class:`~ai_lab.answers.Decision` / :class:`~ai_lab.answers.Response`.
 """
 
 from __future__ import annotations
@@ -27,23 +38,35 @@ import os
 import time
 import tomllib
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib.resources import files
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from lab_commons.credentials import NoCredential, credential_for
+# The private pair is the one way to fill BY USERNAME until lab_commons' credential_for takes one.
+from lab_commons.credentials import NoCredential, _credential, _why_no_credential
 from lab_commons.paths import config_root
 
 from ai_lab import emulate, transport
 from ai_lab.answers import Basis, Decision, Response
-from ai_lab.errors import Unsupported
+from ai_lab.errors import ProviderError, Unsupported
 from ai_lab.spec import DecisionRequest, ResponseRequest
 from ai_lab.usage import Usage
 from ai_lab.wire import WIRES
 from ai_lab.wire.base import Wire
 
-__all__ = ['APP', 'AUTH_KINDS', 'Client', 'Provider', 'connect', 'providers', 'user_providers_file']
+__all__ = [
+    'APP',
+    'AUTH_KINDS',
+    'RETIRED_PROVIDERS',
+    'Client',
+    'Provider',
+    'connect',
+    'providers',
+    'slot_username',
+    'stored_slots',
+    'user_providers_file',
+]
 
 #: The application name the family's path helpers resolve this package's roots under.
 APP = 'ai_lab'
@@ -74,18 +97,25 @@ class Provider:
     vendor: str = ''
     #: For a ``subscription`` row, the same vendor's ``api`` row -- the alternative off the laptop.
     api_provider: str = ''
+    #: ``{model: wire}`` -- a model of this account served by another wire than :attr:`wire`.
+    model_wires: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Refuse a row naming a wire this package does not ship, or an auth kind it does not know."""
-        if self.wire not in WIRES:
-            msg = f'provider {self.name!r} names unknown wire {self.wire!r}; the wires are {sorted(WIRES)}'
-            raise Unsupported(msg)
+        for wire in (self.wire, *self.model_wires.values()):
+            if wire not in WIRES:
+                msg = f'provider {self.name!r} names unknown wire {wire!r}; the wires are {sorted(WIRES)}'
+                raise Unsupported(msg)
         if self.auth not in AUTH_KINDS:
             msg = f'provider {self.name!r} names unknown auth {self.auth!r}; the kinds are {sorted(AUTH_KINDS)}'
             raise Unsupported(msg)
         if (self.auth == 'subscription') != bool(self.api_provider):
             msg = f'provider {self.name!r}: api_provider is declared by, and only by, a subscription row'
             raise Unsupported(msg)
+
+    def wire_for(self, model: str) -> str:
+        """The wire that serves *model*: its declared :attr:`model_wires` entry, else :attr:`wire`."""
+        return self.model_wires.get(model, self.wire)
 
     @property
     def keyed(self) -> bool:
@@ -101,6 +131,46 @@ class Provider:
 #: The field a key USED to be named by (an environment variable), retired 2026-10-13 for the store.
 _RETIRED_KEY_FIELD = 'key_env'
 
+#: Provider names that USED to exist, each with the provider that replaced it -- refused, never aliased.
+#: ``openai_decisions`` was a second door into the one OpenAI API account (retired 2026-10-16): its
+#: wire is now chosen by ``openai``'s ``model_wires``.
+RETIRED_PROVIDERS: Mapping[str, str] = {'openai_decisions': 'openai'}
+
+
+def _refuse_retired(name: str, model: str, origin: str) -> None:
+    if name in RETIRED_PROVIDERS:
+        replacement = f'{RETIRED_PROVIDERS[name]}:{model}' if model else RETIRED_PROVIDERS[name]
+        msg = f'provider {name!r} ({origin}) is retired: one provider is one account; use {replacement!r}'
+        raise Unsupported(msg)
+
+
+def slot_username(slot: int) -> str:
+    """The credential-store username of key slot *slot*: ``api-key``, ``api-key-2``, ``api-key-3``..."""
+    if slot < 1:
+        msg = f'a key slot is 1 or more, not {slot}'
+        raise ValueError(msg)
+    return 'api-key' if slot == 1 else f'api-key-{slot}'
+
+
+def _slot_key(host: str, slot: int) -> str:
+    """The secret stored in *slot* for *host*; :class:`NoCredential` naming why when there is none."""
+    done = _credential('fill', {'host': host, 'username': slot_username(slot)}, cwd=None, env=None)
+    fields = dict(line.partition('=')[::2] for line in done.stdout.splitlines())
+    if fields.get('password'):
+        return fields['password']
+    raise NoCredential(_why_no_credential(host, done))
+
+
+def stored_slots(host: str) -> int:
+    """How many key slots *host* holds, counted up to the first missing one."""
+    slot = 0
+    while True:
+        try:
+            _slot_key(host, slot + 1)
+        except NoCredential:
+            return slot
+        slot += 1
+
 
 def login_command(provider: str) -> str:
     """The command that stores *provider*'s key -- the remedy every missing-key refusal names."""
@@ -115,6 +185,7 @@ def user_providers_file() -> Path:
 def _rows(text: str, origin: str) -> dict[str, Provider]:
     table = tomllib.loads(text)
     for name, row in table.items():
+        _refuse_retired(name, '', origin)
         if _RETIRED_KEY_FIELD in row:
             msg = (
                 f'provider {name!r} in {origin} names {_RETIRED_KEY_FIELD!r}, retired: keys are no longer read from '
@@ -154,14 +225,14 @@ class Client:
         post: Callable[..., dict] = transport.post,
         run: Callable[..., transport.CliResult] = transport.run,
     ) -> None:
-        """Bind ``provider`` and ``model``; refuse an HTTP provider with no model."""
-        self.wire: Wire = WIRES[provider.wire]
+        """Bind ``provider``, ``model`` and the wire serving that model; refuse an HTTP provider with no model."""
+        self.wire: Wire = WIRES[provider.wire_for(model)]
         if not model and not self.wire.cli:
             msg = f'{provider.name} needs a model: connect("{provider.name}:<model>")'
             raise Unsupported(msg)
         if effort and self.wire.effort is None:
             msg = (
-                f'{provider.name} takes no effort (wire {provider.wire}); the wires that do are '
+                f'{provider.name}:{model} takes no effort (wire {self.wire.name}); the wires that do are '
                 f'{sorted(n for n, w in WIRES.items() if w.effort)}'
             )
             raise Unsupported(msg)
@@ -185,29 +256,30 @@ class Client:
         self._require_vision(has_image=request.has_image)
         start = time.perf_counter()
         if self.wire.decide is not None:
-            raw = self._send(self.wire.decide(request, self.model, self.provider.endpoint, self._key()))
+            raw, slot = self._send(lambda key: self.wire.decide(request, self.model, self.provider.endpoint, key))
             answers, basis, usage = self.wire.parse_decision(raw, request), Basis.NATIVE, self._usage(raw)
         else:
-            value, usage = self._respond_value(emulate.as_response_request(request))
+            value, usage, slot = self._respond_value(emulate.as_response_request(request))
             answers, basis = emulate.parse_answers(value, request.questions), Basis.STATED
-        return Decision(answers, basis, self.provider.name, self.model, time.perf_counter() - start, usage)
+        latency = time.perf_counter() - start
+        return Decision(answers, basis, self.provider.name, self.model, latency, usage, slot)
 
     def respond(self, request: ResponseRequest) -> Response:
         """An object of the request's schema."""
         self._require_vision(has_image=request.has_image)
         start = time.perf_counter()
-        value, usage = self._respond_value(request)
-        return Response(value, self.provider.name, self.model, time.perf_counter() - start, usage)
+        value, usage, slot = self._respond_value(request)
+        return Response(value, self.provider.name, self.model, time.perf_counter() - start, usage, slot)
 
-    def _respond_value(self, request: ResponseRequest) -> tuple[Mapping, Usage | None]:
+    def _respond_value(self, request: ResponseRequest) -> tuple[Mapping, Usage | None, int]:
         if self.wire.respond is None:
             msg = (
                 f'{self.provider.name} is a decision endpoint and cannot respond in a schema; '
                 f'use a provider whose wire responds ({sorted(n for n, w in WIRES.items() if w.respond)})'
             )
             raise Unsupported(msg)
-        raw = self._send(self.wire.respond(request, self.model, self.provider.endpoint, self._key()))
-        return self.wire.parse_response(raw), self._usage(raw)
+        raw, slot = self._send(lambda key: self.wire.respond(request, self.model, self.provider.endpoint, key))
+        return self.wire.parse_response(raw), self._usage(raw), slot
 
     def _usage(self, raw: object) -> Usage | None:
         return None if self.wire.parse_usage is None else self.wire.parse_usage(raw)
@@ -217,16 +289,32 @@ class Client:
             msg = f'{self.provider.name} does not read images; drop the Image parts or pick one that does'
             raise Unsupported(msg)
 
-    def _key(self) -> str:
+    def _send(self, build: Callable[[str], transport.HttpCall | transport.CliCall]) -> tuple[object, int]:
+        """``build(key)``'s reply and the key slot that served it, moving on a slot at an account failure."""
         if not self.provider.keyed:
-            return ''
-        try:
-            return credential_for(self.provider.host)[1]
-        except NoCredential as missing:
-            msg = f'{self.provider.name} has no key stored for {self.provider.host} ({missing}); run: '
-            raise Unsupported(msg + login_command(self.provider.name)) from None
+            return self._dispatch(build('')), 0
+        host, failures, last = self.provider.host, [], None
+        slot = 0
+        while True:
+            slot += 1
+            try:
+                key = _slot_key(host, slot)
+            except NoCredential as missing:
+                if slot == 1:
+                    msg = f'{self.provider.name} has no key stored for {host} ({missing}); run: '
+                    raise Unsupported(msg + login_command(self.provider.name)) from None
+                break
+            try:
+                return self._dispatch(build(key)), slot
+            except ProviderError as error:
+                if not error.kind:
+                    raise
+                failures.append(f'slot {slot}: {error.kind}')
+                last = error
+        msg = f'{self.provider.name}: every key slot for {host} failed ({", ".join(failures)}); last: {last}'
+        raise ProviderError(msg, kind=last.kind) from last
 
-    def _send(self, call: transport.HttpCall | transport.CliCall) -> object:
+    def _dispatch(self, call: transport.HttpCall | transport.CliCall) -> object:
         if self.provider.auth == 'subscription' and os.environ.get('SLURM_JOB_ID'):
             msg = (
                 f'{self.provider.name} uses subscription auth, which is local-only and refused on a Slurm '
@@ -241,9 +329,10 @@ class Client:
 
 
 def connect(spec: str, **options: Callable) -> Client:
-    """``'openai_decisions:gpt-6-luna'``, ``'openai_responses:gpt-x@high'``, ``'claude_code'``..."""
+    """``'openai:gpt-6-luna'``, ``'openai:gpt-x@high'``, ``'claude_code'``..."""
     spec, _, effort = spec.partition('@')
     name, _, model = spec.partition(':')
+    _refuse_retired(name, model, 'connect')
     table = providers()
     if name not in table:
         msg = f'unknown provider {name!r}; known: {sorted(table)} (add one in {user_providers_file()})'

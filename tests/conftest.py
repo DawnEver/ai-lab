@@ -39,8 +39,8 @@ def credential_store(tmp_path, monkeypatch):
     monkeypatch.setenv('GIT_CONFIG_SYSTEM', str(tmp_path / 'absent'))
     monkeypatch.setenv('AI_LAB_HOME', str(tmp_path / 'home'))
 
-    def put(host, secret):
-        store_credential(host, 'api-key', secret)
+    def put(host, secret, username='api-key'):
+        store_credential(host, username, secret)
 
     put.file = store
     return put

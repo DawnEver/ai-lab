@@ -39,6 +39,6 @@ def test_local_cli_reads_an_image(spec):
 
 
 def test_openai_decisions_native(request_):
-    d = connect('openai_decisions:gpt-6-luna').decide(request_)
+    d = connect('openai:gpt-6-luna').decide(request_)
     assert d.basis is Basis.NATIVE
     assert d['fidelity'].probabilities is not None

@@ -3,7 +3,9 @@
 ``output_config.format`` (``json_schema``) is the documented binding on every current model; a forced
 ``tool_choice`` is refused by the Claude 5.5 models ("type tool and any are not supported for this model",
 measured 2026-10-16). Top-level ``cache_control`` turns on automatic prompt caching: the repeated
-instructions and context prefix are read back at 0.05-0.1x the input rate once a request has written them.
+instructions and context prefix are read back at 0.05-0.1x the input rate once a request has written them;
+a second breakpoint on the block before the newest lets an append-only context read what the previous
+call wrote (the automatic one sits on the newest block, which no later request repeats).
 """
 
 from __future__ import annotations
@@ -33,6 +35,9 @@ def _respond(request: ResponseRequest, model: str, endpoint: str, key: str) -> H
         else {'type': 'text', 'text': text_of(p)}
         for p in request.context
     ]
+    if len(content) > 1:
+        # an append-only context's next request repeats every block but the newest: break there
+        content[-2]['cache_control'] = {'type': 'ephemeral'}
     return HttpCall(
         url=f'{endpoint}/messages',
         body={

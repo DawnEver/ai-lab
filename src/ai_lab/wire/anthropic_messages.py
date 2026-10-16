@@ -1,8 +1,15 @@
-"""Anthropic ``POST /v1/messages``; the schema is a single forced tool, so the reply IS its input."""
+"""Anthropic ``POST /v1/messages``; the schema is bound as structured output, so the reply IS the object.
+
+``output_config.format`` (``json_schema``) is the documented binding on every current model; a forced
+``tool_choice`` is refused by the Claude 5.5 models ("type tool and any are not supported for this model",
+measured 2026-10-16). Top-level ``cache_control`` turns on automatic prompt caching: the repeated
+instructions and context prefix are read back at 0.05-0.1x the input rate once a request has written them.
+"""
 
 from __future__ import annotations
 
 import base64
+import json
 
 from ai_lab.errors import ProviderError
 from ai_lab.spec import Image, ResponseRequest
@@ -33,21 +40,23 @@ def _respond(request: ResponseRequest, model: str, endpoint: str, key: str) -> H
             'max_tokens': _MAX_TOKENS,
             'system': request.instructions,
             'messages': [{'role': 'user', 'content': content}],
-            'tools': [
-                {'name': request.name, 'description': 'Return the answer.', 'input_schema': dict(request.schema)}
-            ],
-            'tool_choice': {'type': 'tool', 'name': request.name},
+            'output_config': {'format': {'type': 'json_schema', 'schema': dict(request.schema)}},
+            'cache_control': {'type': 'ephemeral'},
         },
         headers={'x-api-key': key, 'anthropic-version': _VERSION},
     )
 
 
 def _parse_response(raw: dict) -> dict:
-    for block in raw.get('content', []):
-        if block.get('type') == 'tool_use':
-            return block['input']
-    msg = f'the message carries no tool_use block: stop_reason={raw.get("stop_reason")}'
-    raise ProviderError(msg)
+    text = ''.join(b.get('text', '') for b in raw.get('content', []) if b.get('type') == 'text')
+    if not text:
+        msg = f'the message carries no text: stop_reason={raw.get("stop_reason")}'
+        raise ProviderError(msg)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        msg = f'the structured output is not JSON ({exc}): stop_reason={raw.get("stop_reason")}'
+        raise ProviderError(msg) from exc
 
 
 WIRE = Wire(

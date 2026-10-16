@@ -57,16 +57,21 @@ def test_openai_chat_without_a_key_sends_no_auth_header():
     assert openai_chat.WIRE.respond(REQ, 'llama', 'http://localhost:11434/v1', '').headers == {}
 
 
-def test_anthropic_messages_forces_one_tool():
+def test_anthropic_messages_binds_the_schema_as_structured_output_and_caches_the_prefix():
+    # Claude 5.5 refuses a forced tool_choice ("type tool and any are not supported", measured
+    # 2026-10-16); output_config.format is the documented schema binding on every current model.
     call = anthropic_messages.WIRE.respond(REQ, 'claude-x', 'https://api.anthropic.com/v1', 'k')
     assert call.headers['x-api-key'] == 'k'
-    assert call.body['tools'][0]['input_schema'] == SCHEMA
-    assert call.body['tool_choice'] == {'type': 'tool', 'name': 'probe'}
+    assert call.body['output_config']['format'] == {'type': 'json_schema', 'schema': SCHEMA}
+    assert 'tools' not in call.body and 'tool_choice' not in call.body
+    assert call.body['cache_control'] == {'type': 'ephemeral'}
     assert call.body['messages'][0]['content'][1]['source']['data'] == B64
-    raw = {'content': [{'type': 'text', 'text': 'x'}, {'type': 'tool_use', 'name': 'probe', 'input': {'ok': True}}]}
+    raw = {'content': [{'type': 'text', 'text': '{"ok": true}'}], 'stop_reason': 'end_turn'}
     assert anthropic_messages.WIRE.parse_response(raw) == {'ok': True}
-    with pytest.raises(ProviderError, match='tool_use'):
+    with pytest.raises(ProviderError, match='max_tokens'):
         anthropic_messages.WIRE.parse_response({'content': [], 'stop_reason': 'max_tokens'})
+    with pytest.raises(ProviderError, match='JSON'):
+        anthropic_messages.WIRE.parse_response({'content': [{'type': 'text', 'text': 'nope'}]})
 
 
 def test_gemini():

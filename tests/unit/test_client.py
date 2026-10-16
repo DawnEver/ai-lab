@@ -38,11 +38,11 @@ def test_a_native_endpoint_decides_natively(keys, request_):
 
 def test_a_responding_wire_decides_by_emulation(keys, request_):
     answer = {'worth_fea': False, 'fidelity': 'drop', 'risk': 'low'}
-    post = _post_returning({'content': [{'type': 'tool_use', 'input': answer}]})
+    post = _post_returning({'content': [{'type': 'text', 'text': json.dumps(answer)}]})
     d = connect('anthropic:claude-x', post=post).decide(request_)
     assert d.basis is Basis.STATED
     assert d['worth_fea'].probability is None
-    assert post.calls[0].body['tools'][0]['input_schema']['required'] == ['worth_fea', 'fidelity', 'risk']
+    assert post.calls[0].body['output_config']['format']['schema']['required'] == ['worth_fea', 'fidelity', 'risk']
 
 
 def test_a_decision_endpoint_cannot_respond(keys):
@@ -195,6 +195,6 @@ def test_a_subscription_provider_runs_off_the_cluster(monkeypatch):
 
 def test_an_api_provider_runs_on_a_slurm_node(keys, monkeypatch):
     monkeypatch.setenv('SLURM_JOB_ID', '42')
-    post = _post_returning({'content': [{'type': 'tool_use', 'input': {'ok': True}}]})
+    post = _post_returning({'content': [{'type': 'text', 'text': '{"ok": true}'}]})
     connect('anthropic:m', post=post).respond(REQ_OK)
     assert post.calls

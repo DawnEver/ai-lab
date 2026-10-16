@@ -123,13 +123,16 @@ def _login_file(source: str) -> int:
 def _status_lines(rows: Iterable[Provider]) -> list[str]:
     lines = []
     for row in rows:
+        if not row.keyed:
+            lines.append(f'{row.name:20} {row.auth:13} {"-":45} -')
+            continue
         try:
             credential_for(row.host)
         except NoCredential:
             state = 'missing'
         else:
             state = 'stored'
-        lines.append(f'{row.name:20} {row.host:45} {state}')
+        lines.append(f'{row.name:20} {row.auth:13} {row.host:45} {state}')
     return lines
 
 
@@ -141,10 +144,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     target = login.add_mutually_exclusive_group(required=True)
     target.add_argument('provider', nargs='?', help='a keyed provider; the key is read without echo, never argv')
     target.add_argument('--from-file', metavar='PATH', help='a NAME=value / NAME value file; "-" reads stdin')
-    verbs.add_parser('status', help='each keyed provider: stored or missing (never the key)')
+    verbs.add_parser('status', help='each provider: auth kind, and stored or missing for a keyed one (never the key)')
     args = parser.parse_args(argv)
     if args.verb == 'status':
-        sys.stdout.write('\n'.join(_status_lines(_keyed().values())) + '\n')
+        sys.stdout.write('\n'.join(_status_lines(providers().values())) + '\n')
         return 0
     return _login_file(args.from_file) if args.from_file else _login_one(args.provider)
 

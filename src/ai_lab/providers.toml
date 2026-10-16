@@ -2,7 +2,10 @@
 # (a base URL, or a CLI binary), the conventional name of its key ("" = none needed; the key itself is
 # in the git credential store under the endpoint's host, never in the environment -- `python -m
 # ai_lab.auth login <provider>`), whether it reads images, and the billing vendor the price catalogs
-# know it as ("" = unmetered). Which verbs it has is read off the wire's code, never declared here.
+# know it as ("" = unmetered), and its AUTH KIND (ai_lab.client.AUTH_KINDS): "api" (a keyed account,
+# billed per token), "subscription" (a logged-in vendor CLI; local only, refused on a Slurm compute node,
+# and it names its vendor's "api_provider" row as the alternative) or "local" (a keyless server you
+# run). Which verbs it has is read off the wire's code, never declared here.
 # Add a row in your own providers.toml (ai_lab.client.user_providers_file); a row there replaces one here.
 
 [openai]
@@ -11,6 +14,7 @@ endpoint = "https://api.openai.com/v1"
 key_name = "OPENAI_API_KEY"
 vision = true
 vendor = "openai"
+auth = "api"
 
 [openai_decisions]
 wire = "openai_decisions"
@@ -18,12 +22,14 @@ endpoint = "https://api.openai.com/v1"
 key_name = "OPENAI_API_KEY"
 vision = true
 vendor = "openai"
+auth = "api"
 
 [typesafe]
 wire = "typesafe"
 endpoint = "https://api.typesafe.ai/v1"
 key_name = "TYPESAFE_API_KEY"
 vision = false
+auth = "api"
 
 [anthropic]
 wire = "anthropic_messages"
@@ -31,6 +37,7 @@ endpoint = "https://api.anthropic.com/v1"
 key_name = "ANTHROPIC_API_KEY"
 vision = true
 vendor = "anthropic"
+auth = "api"
 
 [gemini]
 wire = "gemini"
@@ -38,6 +45,7 @@ endpoint = "https://generativelanguage.googleapis.com/v1beta"
 key_name = "GEMINI_API_KEY"
 vision = true
 vendor = "google"
+auth = "api"
 
 [openrouter]
 wire = "openai_chat"
@@ -45,6 +53,7 @@ endpoint = "https://openrouter.ai/api/v1"
 key_name = "OPENROUTER_API_KEY"
 vision = true
 vendor = "openrouter"
+auth = "api"
 
 [deepseek]
 wire = "openai_chat_json"
@@ -52,6 +61,7 @@ endpoint = "https://api.deepseek.com/v1"
 key_name = "DEEPSEEK_API_KEY"
 vision = false
 vendor = "deepseek"
+auth = "api"
 
 [qwen]
 wire = "openai_chat"
@@ -59,21 +69,27 @@ endpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 key_name = "DASHSCOPE_API_KEY"
 vision = true
 vendor = "alibaba"
+auth = "api"
 
 [ollama]
 wire = "openai_chat"
 endpoint = "http://localhost:11434/v1"
 key_name = ""
 vision = true
+auth = "local"
 
 [claude_code]
 wire = "claude_code"
 endpoint = "claude"
 key_name = ""
 vision = true
+auth = "subscription"
+api_provider = "anthropic"
 
 [codex]
 wire = "codex"
 endpoint = "codex"
 key_name = ""
 vision = true
+auth = "subscription"
+api_provider = "openai"

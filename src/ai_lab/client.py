@@ -14,10 +14,16 @@ THE PROVIDER TABLE HAS TWO LAYERS AND ONE RULE. The packaged ``providers.toml`` 
 ``providers.toml`` in ``lab_commons.paths.config_root('ai_lab')`` -- ``$AI_LAB_HOME/config`` when set,
 else the platform's user config directory -- adds rows and replaces a row of the same name. That is
 the family's config search path, so ai-lab carries no second convention for where a user's file is.
+
+EVERY ROW DECLARES ITS AUTH KIND (:data:`AUTH_KINDS`); a missing or unknown one is refused, never
+inferred from an empty ``key_name``. A ``subscription`` row (the logged-in ``claude`` / ``codex`` CLIs)
+is LOCAL ONLY: a request through one on a Slurm compute node (``SLURM_JOB_ID`` set) is refused, naming
+the row's ``api_provider`` -- the same vendor's keyed ``api`` row -- as the one to use there.
 """
 
 from __future__ import annotations
 
+import os
 import time
 import tomllib
 from collections.abc import Callable, Mapping
@@ -37,10 +43,15 @@ from ai_lab.usage import Usage
 from ai_lab.wire import WIRES
 from ai_lab.wire.base import Wire
 
-__all__ = ['APP', 'Client', 'Provider', 'connect', 'providers', 'user_providers_file']
+__all__ = ['APP', 'AUTH_KINDS', 'Client', 'Provider', 'connect', 'providers', 'user_providers_file']
 
 #: The application name the family's path helpers resolve this package's roots under.
 APP = 'ai_lab'
+
+
+#: How a provider authenticates: a keyed per-token ``api`` account, a logged-in vendor CLI on a
+#: ``subscription`` (local only), or a keyless ``local`` server you run yourself.
+AUTH_KINDS = frozenset({'api', 'subscription', 'local'})
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,15 +66,25 @@ class Provider:
     name: str
     wire: str
     endpoint: str
+    #: One of :data:`AUTH_KINDS`.
+    auth: str
     key_name: str = ''
     vision: bool = False
     #: Who bills this provider's tokens, as the price catalogs name it; ``''`` is unmetered.
     vendor: str = ''
+    #: For a ``subscription`` row, the same vendor's ``api`` row -- the alternative off the laptop.
+    api_provider: str = ''
 
     def __post_init__(self) -> None:
-        """Refuse a row naming a wire this package does not ship."""
+        """Refuse a row naming a wire this package does not ship, or an auth kind it does not know."""
         if self.wire not in WIRES:
             msg = f'provider {self.name!r} names unknown wire {self.wire!r}; the wires are {sorted(WIRES)}'
+            raise Unsupported(msg)
+        if self.auth not in AUTH_KINDS:
+            msg = f'provider {self.name!r} names unknown auth {self.auth!r}; the kinds are {sorted(AUTH_KINDS)}'
+            raise Unsupported(msg)
+        if (self.auth == 'subscription') != bool(self.api_provider):
+            msg = f'provider {self.name!r}: api_provider is declared by, and only by, a subscription row'
             raise Unsupported(msg)
 
     @property
@@ -113,6 +134,11 @@ def providers() -> dict[str, Provider]:
     user = user_providers_file()
     if user.is_file():
         table.update(_rows(user.read_text('utf-8'), str(user)))
+    for row in table.values():
+        twin = table.get(row.api_provider)
+        if row.api_provider and (twin is None or twin.auth != 'api'):
+            msg = f'provider {row.name!r} names api_provider {row.api_provider!r}, which is not an api row'
+            raise Unsupported(msg)
     return table
 
 
@@ -201,6 +227,12 @@ class Client:
             raise Unsupported(msg + login_command(self.provider.name)) from None
 
     def _send(self, call: transport.HttpCall | transport.CliCall) -> object:
+        if self.provider.auth == 'subscription' and os.environ.get('SLURM_JOB_ID'):
+            msg = (
+                f'{self.provider.name} uses subscription auth, which is local-only and refused on a Slurm '
+                f'compute node; use the API provider {self.provider.api_provider!r} there'
+            )
+            raise Unsupported(msg)
         if self.effort:
             call = self.wire.effort(call, self.effort)
         if isinstance(call, transport.CliCall):

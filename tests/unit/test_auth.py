@@ -92,14 +92,16 @@ def test_a_file_with_nothing_storable_is_a_failure(credential_store, tmp_path):
     assert auth.main(['login', '--from-file', str(keys)]) == 1
 
 
-def test_status_lists_each_keyed_provider_stored_or_missing_never_the_secret(credential_store, capsys):
+def test_status_lists_each_provider_with_its_auth_kind_and_key_state_never_the_secret(credential_store, capsys):
     credential_store('api.openai.com', 'sk-fake-status')
     assert auth.main(['status']) == 0
     out = capsys.readouterr().out
     lines = {line.split()[0]: line for line in out.splitlines() if line.strip()}
     assert 'stored' in lines['openai'] and 'stored' in lines['openai_decisions']
     assert 'missing' in lines['anthropic']
-    assert 'ollama' not in lines
+    assert lines['openai'].split()[1] == 'api'
+    assert lines['claude_code'].split()[1:] == ['subscription', '-', '-']
+    assert lines['ollama'].split()[1] == 'local'
     assert 'sk-fake-status' not in out
 
 

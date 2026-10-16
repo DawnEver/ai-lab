@@ -56,6 +56,12 @@ raises `Unsupported` naming the remedy.
 Local CLIs run in an empty temporary directory with every tool, MCP server and settings source
 off (`claude`) or a read-only ephemeral sandbox (`codex`): they answer, they cannot act.
 
+Every provider row declares its `auth` kind; a row without one, or with an unknown one, is refused:
+
+- `api` -- a keyed account billed per token (`anthropic`, `openai`, `openai_decisions`, ...); the key is in the git credential store.
+- `subscription` -- a logged-in vendor CLI (`claude_code`, `codex`). LOCAL ONLY: on a Slurm compute node (`SLURM_JOB_ID` set) a request is refused and names the row's `api_provider` (`anthropic`, `openai`) to use instead.
+- `local` -- a keyless server you run yourself (`ollama`).
+
 ## Replay
 
 ```python
@@ -113,7 +119,7 @@ the call is refused and the error names the command that stores it.
 python -m ai_lab.auth login openai                 # prompts without echo (or reads one line from stdin)
 python -m ai_lab.auth login --from-file keys.env   # NAME=value, export NAME=value, or NAME value lines
 ssh box python -m ai_lab.auth login --from-file - < keys.env   # the same file over stdin
-python -m ai_lab.auth status                       # each keyed provider: stored / missing, never the key
+python -m ai_lab.auth status                       # each provider: auth kind; stored / missing if keyed, never the key
 ```
 
 A key file maps names to providers through each row's `key_name` (`OPENAI_API_KEY`,

@@ -120,19 +120,80 @@ def test_a_user_table_in_the_family_config_root_adds_and_replaces_rows(tmp_path,
     monkeypatch.setenv('AI_LAB_HOME', str(tmp_path))
     (tmp_path / 'config').mkdir()
     rows = (
-        '[mylab]\nwire = "openai_chat"\nendpoint = "http://box:8000/v1"\n'
-        '[ollama]\nwire = "openai_chat"\nendpoint = "http://gpu:11434/v1"\n'
+        '[mylab]\nwire = "openai_chat"\nendpoint = "http://box:8000/v1"\nauth = "local"\n'
+        '[ollama]\nwire = "openai_chat"\nendpoint = "http://gpu:11434/v1"\nauth = "local"\n'
     )
     (tmp_path / 'config' / 'providers.toml').write_text(rows, encoding='utf-8')
     table = providers()
-    assert table['mylab'] == Provider('mylab', 'openai_chat', 'http://box:8000/v1')
+    assert table['mylab'] == Provider('mylab', 'openai_chat', 'http://box:8000/v1', 'local')
     assert table['ollama'].endpoint == 'http://gpu:11434/v1'
 
 
 def test_a_row_naming_an_unknown_wire_is_refused():
     with pytest.raises(Unsupported, match='unknown wire'):
-        Provider('x', 'smoke_signals', 'e')
+        Provider('x', 'smoke_signals', 'e', 'api')
 
 
 def test_the_client_repr_holds_no_key(keys):
     assert 'sk-test' not in repr(Client(providers()['openai'], 'gpt-x'))
+
+
+def _user_rows(tmp_path, monkeypatch, rows):
+    monkeypatch.setenv('AI_LAB_HOME', str(tmp_path))
+    (tmp_path / 'config').mkdir()
+    (tmp_path / 'config' / 'providers.toml').write_text(rows, encoding='utf-8')
+
+
+def test_every_packaged_row_declares_its_auth_kind():
+    kinds = {name: row.auth for name, row in providers().items()}
+    assert kinds['claude_code'] == kinds['codex'] == 'subscription'
+    assert {kinds[n] for n in ('anthropic', 'openai', 'openai_decisions')} == {'api'}
+    assert kinds['ollama'] == 'local'
+
+
+def test_a_row_without_auth_is_refused(tmp_path, monkeypatch):
+    _user_rows(tmp_path, monkeypatch, '[mylab]\nwire = "openai_chat"\nendpoint = "http://box:8000/v1"\n')
+    with pytest.raises(Unsupported, match='missing'):
+        providers()
+
+
+def test_a_row_with_an_unknown_auth_is_refused(tmp_path, monkeypatch):
+    _user_rows(tmp_path, monkeypatch, '[mylab]\nwire = "openai_chat"\nendpoint = "e"\nauth = "magic"\n')
+    with pytest.raises(Unsupported, match="unknown auth 'magic'"):
+        providers()
+
+
+def _cli_ok(call, **_):
+    _cli_ok.calls.append(call)
+    return CliResult(
+        json.dumps({'type': 'result', 'is_error': False, 'result': '{"ok": true}', 'structured_output': {'ok': True}})
+    )
+
+
+REQ_OK = ResponseRequest('i', (Text('x'),), {'type': 'object', 'properties': {'ok': {'type': 'boolean'}}})
+
+
+def test_a_subscription_provider_refuses_on_a_slurm_node_and_names_the_api_provider(monkeypatch):
+    monkeypatch.setenv('SLURM_JOB_ID', '42')
+    _cli_ok.calls = []
+    with pytest.raises(Unsupported) as refused:
+        connect('claude_code', run=_cli_ok).respond(REQ_OK)
+    assert not _cli_ok.calls
+    text = str(refused.value)
+    assert 'claude_code' in text and 'local-only' in text and "'anthropic'" in text
+    with pytest.raises(Unsupported, match="'openai'"):
+        connect('codex', run=_cli_ok).respond(REQ_OK)
+
+
+def test_a_subscription_provider_runs_off_the_cluster(monkeypatch):
+    monkeypatch.delenv('SLURM_JOB_ID', raising=False)
+    _cli_ok.calls = []
+    connect('claude_code', run=_cli_ok).respond(REQ_OK)
+    assert _cli_ok.calls
+
+
+def test_an_api_provider_runs_on_a_slurm_node(keys, monkeypatch):
+    monkeypatch.setenv('SLURM_JOB_ID', '42')
+    post = _post_returning({'content': [{'type': 'tool_use', 'input': {'ok': True}}]})
+    connect('anthropic:m', post=post).respond(REQ_OK)
+    assert post.calls

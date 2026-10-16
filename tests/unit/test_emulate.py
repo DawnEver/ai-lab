@@ -40,6 +40,13 @@ def test_an_answer_outside_the_declared_set_is_refused(questions, value, match):
         parse_answers(value, questions)
 
 
+def test_a_label_padded_with_whitespace_is_the_label(questions):
+    # MEASURED 2026-10-16: deepseek-v4-flash answered ' poor' for a Score; the strict match killed the run.
+    got = parse_answers({'worth_fea': True, 'fidelity': ' fea2d ', 'risk': '\thigh'}, questions)
+    assert got['fidelity'] == ChoiceAnswer('fidelity', 'fea2d')
+    assert got['risk'] == ScoreAnswer('risk', 'high', 2.0)
+
+
 def test_the_emulated_request_keeps_the_context(request_):
     rr = as_response_request(request_)
     assert rr.context == request_.context

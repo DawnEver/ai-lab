@@ -68,6 +68,8 @@ def parse_answers(value: Mapping, questions: tuple[Question, ...]) -> dict[str, 
             msg = f'the response has no answer for question {q.name!r}: {dict(value)}'
             raise ProviderError(msg)
         got = value[q.name]
+        # a label is matched as written but for surrounding whitespace (' poor' measured from deepseek)
+        got = got.strip() if isinstance(got, str) else got
         if isinstance(q, Predicate):
             if not isinstance(got, bool):
                 msg = f'predicate {q.name!r} needs true/false, got {got!r}'

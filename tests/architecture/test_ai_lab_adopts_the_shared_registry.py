@@ -40,7 +40,14 @@ _MECHANISMS: Final = {
     # Every wait has a ceiling and a CLI past it is ended as a TREE from its root pid (a planted
     # grandchild must be dead afterwards).
     'REFUSAL-NAMES-THE-REMEDY': (TestPath('tests/unit/test_transport.py'),),
-}
+    # integrate/main and main are declared in pyproject.toml; the base table's `session-branch` pre-push
+    # row refuses the three push-side violations, and the one writer is git's own (guarded from force by it).
+    **dict.fromkeys(
+        ('ONE-WRITER-PER-SESSION-BRANCH', 'PUBLISH-IS-THE-LOCAL-REF', 'SESSION-HISTORY-ONLY-GROWS',
+         'INTEGRATION-IS-MERGES-ONLY'),
+        (TestPath('pyproject.toml'), TestPath('tests/architecture/test_session_branch_pushes_are_guarded.py')),
+    ),
+}  # fmt: skip
 
 #: Rules with no subject in this library today, BY NAME -- deriving it from ``RULES`` would silently
 #: absorb a rule added upstream instead of making this repo decide about it. A rule leaves by gaining a
@@ -52,8 +59,10 @@ _ABSENT: Final = frozenset({
     'AUTO-MODE-RUNS-THE-DOORS', 'VERDICTS-FROM-THE-FORGE', 'MAIN-SESSION-PUBLISHES',
     'SUBAGENT-NO-PUSH', 'WORKTREES-STAY-INSIDE', 'ONE-BOX-ONE-LOCK',
     # One trunk, no integration branch: main moves by a direct merge, so none of these has a subject.
-    'DOWNSTREAM-SYNCS-INTEGRATION', 'INTEGRATION-LIVES-IN-THE-MAIN-CHECKOUT', 'MERGE-OR-DELETE',
-    'PRS-TARGET-INTEGRATION', 'TRUNK-MOVES-BY-FAST-FORWARD', 'PUSH-FROM-ITS-OWN-BRANCH',
+    'DOWNSTREAM-SYNCS-INTEGRATION', 'MERGE-OR-DELETE', 'PRS-TARGET-INTEGRATION', 'TRUNK-MOVES-BY-FAST-FORWARD',
+    # Persisted formats: the ledger and the price snapshots have only ever had one schema, so there is no
+    # older one to upgrade; the rule gains a mechanism with the first schema change.
+    'FORMATS-UPGRADE-ON-READ',
     # The environment: no own venv yet (the agent guard refuses creating one until a door is declared),
     # so nothing installs hooks or dependencies through a checked door here.
     'HOOKS-ARE-WIRED', 'INSTALL-DOOR-DELIVERS-THE-DECLARATION', 'ENV-MUTATION-THROUGH-THE-DOOR',
@@ -74,8 +83,9 @@ _ABSENT: Final = frozenset({
 #: The size of the set as of 2026-10-08 (41), re-based 2026-10-13 when the registry added six rules with
 #: no subject here (the five integration-branch rules and REPORTS-LIVE-IN-MEMORY), and again (48) for
 #: PUSH-FROM-ITS-OWN-BRANCH, an integration-line rule with no line here; lowering it is the only
-#: legal edit.
-_ABSENT_CEILING: Final = 48
+#: legal edit. Lowered to 47 on 2026-10-19: the registry retired INTEGRATION-LIVES-IN-THE-MAIN-CHECKOUT and
+#: PUSH-FROM-ITS-OWN-BRANCH and added FORMATS-UPGRADE-ON-READ.
+_ABSENT_CEILING: Final = 47
 
 
 def test_every_rule_is_enforced_or_declared_absent() -> None:

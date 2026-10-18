@@ -105,7 +105,9 @@ def test_an_http_provider_needs_a_model():
         connect('openai')
 
 
-def test_a_cli_provider_goes_through_run(request_):
+def test_a_cli_provider_goes_through_run(request_, monkeypatch):
+    # A subscription CLI is refused on a Slurm compute node (tested on its own); this is the local path.
+    monkeypatch.delenv('SLURM_JOB_ID', raising=False)
     seen = []
 
     def run(call, **_):

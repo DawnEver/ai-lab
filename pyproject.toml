@@ -14,13 +14,13 @@ authors = [{ name = "Mingyang Bao" }]
 # HTTP is urllib, the provider table is tomllib, the CLIs are subprocesses. lab-commons supplies what
 # the family already owns: the config search path (`paths`) and ending a process TREE (`proc`).
 dependencies = [
-    "lab-commons[paths] @ git+https://github.com/DawnEver/lab-commons.git",
+    "lab-commons[paths] @ git+https://gitea.mingyangbao.site/Tianjie-Zou-Team/lab-commons.git",
 ]
 
 [project.optional-dependencies]
 # The family's development kit: rules registry, rendered configs, shared test bodies, verify entry.
 dev = [
-    "lab-commons[dev] @ git+https://github.com/DawnEver/lab-commons.git",
+    "lab-commons[dev] @ git+https://gitea.mingyangbao.site/Tianjie-Zou-Team/lab-commons.git",
     "pytest",
     "ruff",
 ]
@@ -63,7 +63,22 @@ ignore = ["COM812", "D203", "D213", "D400", "D401", "N818", "PLR0913", "Q000", "
 
 [tool.lab_commons.branchset]
 trunk = 'main'
-sessions = []
+sessions = ['integrate/main']
+prune_merged = true
+
+[tool.lab_commons.parts]
+output = "output/logs"
+
+[tool.lab_commons.tests]
+produce = ["-m", "lab_commons.dev.verify", "--part", "{part}"]
+
+# The family branch flow: integrate/main coordinates; main moves only by `integrate promote` (fast-forward)
+# on a full forge PASS. Adopted 2026-10-18 (user ruling: every repo runs the lab-commons principles):
+# integrate/main is cut at the adoption commit (the first with a committed lock), every later commit a merge.
+[tool.lab_commons.integrator]
+trunk = "main"
+integration = "integrate/main"
+merges_only_since = "12eea4061dfa1fc6caf0a8a95d0fe517bce6d367"  # INTEGRATION-IS-MERGES-ONLY from here on
 
 # Git hooks: the family base (lab_commons/dev/githooks/base.toml) as is; ai-lab adds no row.
 [tool.lab_commons.hooks]

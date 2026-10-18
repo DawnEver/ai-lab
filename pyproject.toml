@@ -66,6 +66,13 @@ trunk = 'main'
 sessions = ['integrate/main']
 prune_merged = true
 
+[tool.lab_commons.hpc]
+# PIN + FRESHNESS (user ruling 2026-10-17): the venv is exactly the committed lock, and the lock keys it.
+install = 'uv sync --frozen --extra dev'
+dependency_inputs = ['pyproject.toml', 'uv.lock']
+source_roots = ['src']
+collect = 'tests'
+
 [tool.lab_commons.parts]
 output = "output/logs"
 

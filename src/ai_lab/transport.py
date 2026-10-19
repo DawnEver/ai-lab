@@ -8,9 +8,9 @@ EVERY WAIT HAS A CEILING, AND A CLI THAT OUTLIVES ITS CEILING IS ENDED AS A TREE
 started -- the children are orphaned and keep a model session (and a core) busy. So the CLI is run
 with :class:`subprocess.Popen` and, past :data:`CLI_CEILING_S`, ended by
 :func:`lab_commons.proc.kill_process_tree` from its root pid, descendants first. A kill is a REQUEST on
-POSIX -- SIGKILL is delivered asynchronously, and a reparented grandchild was measured still running the
-instant the kill returned (Ada, 2026-10-19) -- so the tree is waited on until it is gone before the
-refusal says it was ended.
+POSIX -- SIGKILL is delivered asynchronously -- so lab-commons waits, up to its own
+:data:`lab_commons.proc.KILL_EXIT_CEILING_S`, and returns only the pids it saw gone. A member of the
+tree missing from that set and still alive is a survivor, and the refusal names it.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from lab_commons.proc import kill_process_tree, pid_alive
+from lab_commons.proc import KILL_EXIT_CEILING_S, kill_process_tree, pid_alive, process_tree
 
 from ai_lab.errors import ProviderError, Unsupported
 
@@ -35,8 +35,6 @@ __all__ = ['CLI_CEILING_S', 'HTTP_CEILING_S', 'CliCall', 'CliResult', 'HttpCall'
 #: The longest one HTTP attempt may take, and the longest a local CLI may run, in seconds.
 HTTP_CEILING_S = 120.0
 CLI_CEILING_S = 600.0
-#: How long a killed tree may take to exit and its pipes to close.
-_REAP_CEILING_S = 10.0
 
 #: Statuses worth another attempt: rate limit, overload, transient server failure.
 _RETRYABLE = frozenset({408, 409, 429, 500, 502, 503, 504, 529})
@@ -115,16 +113,6 @@ def post(call: HttpCall, *, timeout_s: float = HTTP_CEILING_S, attempts: int = 3
     raise ProviderError(msg, kind=last_kind)
 
 
-def _await_exit(pids: frozenset[int], *, poll_s: float = 0.05) -> None:
-    """Return once every pid in *pids* has exited; raise :class:`ProviderError` naming any still alive."""
-    deadline = time.monotonic() + _REAP_CEILING_S
-    while alive := sorted(pid for pid in pids if pid_alive(pid)):
-        if time.monotonic() > deadline:
-            msg = f'pid(s) {alive} survived a kill for {_REAP_CEILING_S} s'
-            raise ProviderError(msg)
-        time.sleep(poll_s)
-
-
 def run(call: CliCall, *, timeout_s: float = CLI_CEILING_S) -> CliResult:
     """Run a local CLI in an empty temporary directory, prompt on stdin, no shell; end its TREE on timeout."""
     binary = shutil.which(call.argv[0])
@@ -147,9 +135,12 @@ def run(call: CliCall, *, timeout_s: float = CLI_CEILING_S) -> CliResult:
         try:
             stdout, stderr = process.communicate(call.stdin, timeout=timeout_s)
         except subprocess.TimeoutExpired:
+            tree = process_tree(process.pid)
             ended = kill_process_tree(process.pid)
-            process.communicate(timeout=_REAP_CEILING_S)
-            _await_exit(ended)
+            process.communicate(timeout=KILL_EXIT_CEILING_S)
+            if survivors := sorted(pid for pid in tree - ended if pid_alive(pid)):
+                msg = f'{call.argv[0]}: pid(s) {survivors} survived a kill for {KILL_EXIT_CEILING_S} s'
+                raise ProviderError(msg) from None
             msg = f'{call.argv[0]} did not finish within {timeout_s} s; ended its process tree ({len(ended)} pid(s))'
             raise ProviderError(msg) from None
         if process.returncode != 0:

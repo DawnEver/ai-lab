@@ -79,7 +79,7 @@ def test_the_key_is_read_from_the_store_by_the_endpoint_host(credential_store, r
 
 
 def test_a_keyless_provider_never_asks_the_store(monkeypatch):
-    def refuse(host, slot):
+    def refuse(host, slot, task=None):
         raise AssertionError(host)
 
     monkeypatch.setattr('ai_lab.client._slot_key', refuse)

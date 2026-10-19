@@ -31,10 +31,10 @@ slot when it fails at the ACCOUNT level (``ProviderError.kind``: exhausted, auth
 every slot fails, the error lists each slot's failure kind -- never a key. The slot that served a
 call is on its :class:`~ai_lab.answers.Decision` / :class:`~ai_lab.answers.Response`.
 
-A TASK OWNS ITS KEY (user ruling 2026-10-19). ``connect(spec, task='optimization')`` sends only that
-task's key -- username ``api-key-<task>`` under the same host, a declared task of
-:data:`lab_commons.credentials.API_KEY_TASKS` -- with no slots and never the default key: missing, the
-call is refused naming ``login <provider> --task <task>``. Its answers report slot 1, its one key.
+A TASK OWNS ITS KEYS (user rulings 2026-10-19). ``connect(spec, task='optimization')`` walks that task's
+slots -- usernames ``api-key-<task>``, ``api-key-<task>-2``... under the same host
+(:func:`lab_commons.credentials.key_username`) -- in the same fall-over order, and only those: never another
+task's slot, never the default's. A task with no slot 1 is refused naming ``login <provider> --task <task>``.
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ from importlib.resources import files
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from lab_commons.credentials import API_KEY_USERNAME, NoCredential, api_key, credential_for, task_username
+from lab_commons.credentials import NoCredential, api_key, key_username
 from lab_commons.paths import config_root
 
 from ai_lab import emulate, transport
@@ -67,7 +67,6 @@ __all__ = [
     'Provider',
     'connect',
     'providers',
-    'slot_username',
     'stored_slots',
     'user_providers_file',
 ]
@@ -148,25 +147,17 @@ def _refuse_retired(name: str, model: str, origin: str) -> None:
         raise Unsupported(msg)
 
 
-def slot_username(slot: int) -> str:
-    """The credential-store username of key slot *slot*: ``api-key``, ``api-key-2``, ``api-key-3``..."""
-    if slot < 1:
-        msg = f'a key slot is 1 or more, not {slot}'
-        raise ValueError(msg)
-    return API_KEY_USERNAME if slot == 1 else f'{API_KEY_USERNAME}-{slot}'
+def _slot_key(host: str, slot: int, task: str | None = None) -> str:
+    """The secret in *task*'s (else the default's) *slot* for *host*; :class:`NoCredential` naming why."""
+    return api_key(host, task=task, slot=slot)
 
 
-def _slot_key(host: str, slot: int) -> str:
-    """The secret stored in *slot* for *host*; :class:`NoCredential` naming why when there is none."""
-    return credential_for(host, username=slot_username(slot))[1]
-
-
-def stored_slots(host: str) -> int:
-    """How many key slots *host* holds, counted up to the first missing one."""
+def stored_slots(host: str, task: str | None = None) -> int:
+    """How many of *task*'s (else the default's) key slots *host* holds, up to the first missing one."""
     slot = 0
     while True:
         try:
-            _slot_key(host, slot + 1)
+            _slot_key(host, slot + 1, task)
         except NoCredential:
             return slot
         slot += 1
@@ -228,7 +219,7 @@ class Client:
     ) -> None:
         """Bind ``provider``, ``model`` and the wire serving that model; refuse an HTTP provider with no model."""
         if task is not None:
-            task_username(task)  # an undeclared task is refused here, not at the first call
+            key_username(task)  # an undeclared task is refused here, not at the first call
         self.wire: Wire = WIRES[provider.wire_for(model)]
         if not model and not self.wire.cli:
             msg = f'{provider.name} needs a model: connect("{provider.name}:<model>")'
@@ -298,22 +289,16 @@ class Client:
         if not self.provider.keyed:
             return self._dispatch(build('')), 0
         host, failures, last = self.provider.host, [], None
-        if self.task is not None:
-            try:
-                key = api_key(host, task=self.task)
-            except NoCredential as missing:
-                msg = f'{self.provider.name} has no {self.task} task key for {host} ({missing}); run: '
-                raise Unsupported(msg + login_command(self.provider.name, self.task)) from None
-            return self._dispatch(build(key)), 1
+        whose = '' if self.task is None else f'{self.task} task '
         slot = 0
         while True:
             slot += 1
             try:
-                key = _slot_key(host, slot)
+                key = _slot_key(host, slot, self.task)
             except NoCredential as missing:
                 if slot == 1:
-                    msg = f'{self.provider.name} has no key stored for {host} ({missing}); run: '
-                    raise Unsupported(msg + login_command(self.provider.name)) from None
+                    msg = f'{self.provider.name} has no {whose}key stored for {host} ({missing}); run: '
+                    raise Unsupported(msg + login_command(self.provider.name, self.task)) from None
                 break
             try:
                 return self._dispatch(build(key)), slot
@@ -322,7 +307,7 @@ class Client:
                     raise
                 failures.append(f'slot {slot}: {error.kind}')
                 last = error
-        msg = f'{self.provider.name}: every key slot for {host} failed ({", ".join(failures)}); last: {last}'
+        msg = f'{self.provider.name}: every {whose}key slot for {host} failed ({", ".join(failures)}); last: {last}'
         raise ProviderError(msg, kind=last.kind) from last
 
     def _dispatch(self, call: transport.HttpCall | transport.CliCall) -> object:

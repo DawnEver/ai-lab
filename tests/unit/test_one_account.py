@@ -5,9 +5,10 @@ Every secret here is a fake.
 """
 
 import pytest
+from lab_commons.credentials import key_username
 
 from ai_lab import Provider, ProviderError, ResponseRequest, Text, Unsupported, connect, providers
-from ai_lab.client import slot_username, stored_slots
+from ai_lab.client import stored_slots
 
 DECISIONS_RAW = {'answers': [
     {'type': 'predicate', 'name': 'worth_fea', 'probability': 0.9},
@@ -61,7 +62,7 @@ def test_the_retired_decisions_provider_is_refused_naming_its_replacement():
 
 
 def test_slot_usernames():
-    assert [slot_username(n) for n in (1, 2, 3)] == ['api-key', 'api-key-2', 'api-key-3']
+    assert [key_username(None, n) for n in (1, 2, 3)] == ['api-key', 'api-key-2', 'api-key-3']
 
 
 def test_slot_discovery_stops_at_the_first_gap(credential_store):

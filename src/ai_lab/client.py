@@ -30,6 +30,11 @@ the endpoint host, read up to the first missing slot. A call starts on slot 1 an
 slot when it fails at the ACCOUNT level (``ProviderError.kind``: exhausted, auth, rate limit); when
 every slot fails, the error lists each slot's failure kind -- never a key. The slot that served a
 call is on its :class:`~ai_lab.answers.Decision` / :class:`~ai_lab.answers.Response`.
+
+A TASK OWNS ITS KEY (user ruling 2026-10-19). ``connect(spec, task='optimization')`` sends only that
+task's key -- username ``api-key-<task>`` under the same host, a declared task of
+:data:`lab_commons.credentials.API_KEY_TASKS` -- with no slots and never the default key: missing, the
+call is refused naming ``login <provider> --task <task>``. Its answers report slot 1, its one key.
 """
 
 from __future__ import annotations
@@ -43,8 +48,7 @@ from importlib.resources import files
 from pathlib import Path
 from urllib.parse import urlsplit
 
-# The private pair is the one way to fill BY USERNAME until lab_commons' credential_for takes one.
-from lab_commons.credentials import NoCredential, _credential, _why_no_credential
+from lab_commons.credentials import API_KEY_USERNAME, NoCredential, api_key, credential_for, task_username
 from lab_commons.paths import config_root
 
 from ai_lab import emulate, transport
@@ -149,16 +153,12 @@ def slot_username(slot: int) -> str:
     if slot < 1:
         msg = f'a key slot is 1 or more, not {slot}'
         raise ValueError(msg)
-    return 'api-key' if slot == 1 else f'api-key-{slot}'
+    return API_KEY_USERNAME if slot == 1 else f'{API_KEY_USERNAME}-{slot}'
 
 
 def _slot_key(host: str, slot: int) -> str:
     """The secret stored in *slot* for *host*; :class:`NoCredential` naming why when there is none."""
-    done = _credential('fill', {'host': host, 'username': slot_username(slot)}, cwd=None, env=None)
-    fields = dict(line.partition('=')[::2] for line in done.stdout.splitlines())
-    if fields.get('password'):
-        return fields['password']
-    raise NoCredential(_why_no_credential(host, done))
+    return credential_for(host, username=slot_username(slot))[1]
 
 
 def stored_slots(host: str) -> int:
@@ -172,9 +172,9 @@ def stored_slots(host: str) -> int:
         slot += 1
 
 
-def login_command(provider: str) -> str:
-    """The command that stores *provider*'s key -- the remedy every missing-key refusal names."""
-    return f'python -m ai_lab.auth login {provider}'
+def login_command(provider: str, task: str | None = None) -> str:
+    """The command that stores *provider*'s key, or *task*'s own -- the remedy a missing-key refusal names."""
+    return f'python -m ai_lab.auth login {provider}' + (f' --task {task}' if task else '')
 
 
 def user_providers_file() -> Path:
@@ -222,10 +222,13 @@ class Client:
         model: str,
         *,
         effort: str = '',
+        task: str | None = None,
         post: Callable[..., dict] = transport.post,
         run: Callable[..., transport.CliResult] = transport.run,
     ) -> None:
         """Bind ``provider``, ``model`` and the wire serving that model; refuse an HTTP provider with no model."""
+        if task is not None:
+            task_username(task)  # an undeclared task is refused here, not at the first call
         self.wire: Wire = WIRES[provider.wire_for(model)]
         if not model and not self.wire.cli:
             msg = f'{provider.name} needs a model: connect("{provider.name}:<model>")'
@@ -239,6 +242,7 @@ class Client:
         self.provider = provider
         self.model = model
         self.effort = effort
+        self.task = task
         self._post = post
         self._run = run
 
@@ -294,6 +298,13 @@ class Client:
         if not self.provider.keyed:
             return self._dispatch(build('')), 0
         host, failures, last = self.provider.host, [], None
+        if self.task is not None:
+            try:
+                key = api_key(host, task=self.task)
+            except NoCredential as missing:
+                msg = f'{self.provider.name} has no {self.task} task key for {host} ({missing}); run: '
+                raise Unsupported(msg + login_command(self.provider.name, self.task)) from None
+            return self._dispatch(build(key)), 1
         slot = 0
         while True:
             slot += 1
@@ -328,7 +339,7 @@ class Client:
         return self._post(call)
 
 
-def connect(spec: str, **options: Callable) -> Client:
+def connect(spec: str, *, task: str | None = None, **options: Callable) -> Client:
     """``'openai:gpt-6-luna'``, ``'openai:gpt-x@high'``, ``'claude_code'``..."""
     spec, _, effort = spec.partition('@')
     name, _, model = spec.partition(':')
@@ -337,4 +348,4 @@ def connect(spec: str, **options: Callable) -> Client:
     if name not in table:
         msg = f'unknown provider {name!r}; known: {sorted(table)} (add one in {user_providers_file()})'
         raise Unsupported(msg)
-    return Client(table[name], model, effort=effort, **options)
+    return Client(table[name], model, effort=effort, task=task, **options)

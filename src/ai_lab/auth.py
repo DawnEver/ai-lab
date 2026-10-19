@@ -15,6 +15,11 @@ SLOTS ARE FALLBACK KEYS OF ONE ACCOUNT. ``login <provider> --slot N`` stores use
 (slot 1, the default, is ``api-key``); a call falls over to the next slot on an account-level failure
 (:mod:`ai_lab.client`). ``status`` counts each provider's slots up to the first gap.
 
+A TASK OWNS ITS KEY. ``login <provider> --task <task>`` stores username ``api-key-<task>`` under the same
+host (:func:`lab_commons.credentials.task_username`; the tasks are declared in ``API_KEY_TASKS``), the key
+``connect(spec, task=...)`` sends and nothing else does. A task key has no slots. ``status`` lists, per
+provider, the tasks whose key is stored.
+
 The key never travels in argv: ``login <provider>`` reads it from the terminal without echo, or from
 stdin when piped; ``--from-file -`` reads a key file from stdin (``ssh box python -m ai_lab.auth login
 --from-file - < keys``).
@@ -29,7 +34,7 @@ import sys
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
-from lab_commons.credentials import NoCredential, store_credential
+from lab_commons.credentials import API_KEY_TASKS, NoCredential, api_key, store_credential, task_username
 
 from ai_lab.client import Provider, providers, slot_username, stored_slots
 
@@ -67,18 +72,31 @@ def _keyed() -> dict[str, Provider]:
     return {name: row for name, row in providers().items() if row.keyed}
 
 
-def _store(host: str, secret: str, slot: int = 1) -> bool:
+def _store(host: str, secret: str, username: str) -> bool:
     try:
-        store_credential(host, slot_username(slot), secret)
+        store_credential(host, username, secret)
     except NoCredential as failed:
         sys.stderr.write(f'{failed}\n')
         return False
     return True
 
 
-def _login_one(name: str, slot: int) -> int:
+def _username(slot: int, task: str | None) -> str:
+    """The username a login stores: slot *slot*'s, or *task*'s own; :class:`ValueError` naming why not."""
     if slot < 1:
-        sys.stderr.write(f'--slot is 1 or more, not {slot}\n')
+        msg = f'--slot is 1 or more, not {slot}'
+        raise ValueError(msg)
+    if task is not None and slot != 1:
+        msg = 'a --task key has no slots: drop --slot or --task'
+        raise ValueError(msg)
+    return slot_username(slot) if task is None else task_username(task)
+
+
+def _login_one(name: str, slot: int, task: str | None) -> int:
+    try:
+        username = _username(slot, task)
+    except ValueError as refused:
+        sys.stderr.write(f'{refused}\n')
         return 1
     table = providers()
     if name not in table:
@@ -88,15 +106,16 @@ def _login_one(name: str, slot: int) -> int:
     if not provider.keyed:
         sys.stderr.write(f'{name} needs no key\n')
         return 1
-    prompt = f'{provider.key_name} for {provider.host} (slot {slot}): '
+    which = f'slot {slot}' if task is None else f'task {task}'
+    prompt = f'{provider.key_name} for {provider.host} ({which}): '
     secret = (getpass.getpass(prompt) if sys.stdin.isatty() else sys.stdin.readline()).strip()
     if not secret:
         sys.stderr.write('empty key; nothing stored\n')
         return 1
-    if not _store(provider.host, secret, slot):
+    if not _store(provider.host, secret, username):
         return 1
     sharing = sorted(n for n, row in _keyed().items() if row.host == provider.host)
-    sys.stdout.write(f'stored key slot {slot} for {provider.host} ({", ".join(sharing)})\n')
+    sys.stdout.write(f'stored key {which} for {provider.host} ({", ".join(sharing)})\n')
     return 0
 
 
@@ -114,7 +133,7 @@ def _login_file(source: str) -> int:
             sys.stderr.write(f'{name}: no provider names this key; skipped\n')
             continue
         for host in sorted({row.host for row in by_name[name]}):
-            if not _store(host, secret):
+            if not _store(host, secret, slot_username(1)):
                 return 1
             sharing = sorted(row.name for row in by_name[name] if row.host == host)
             sys.stdout.write(f'{name}: stored for {host} ({", ".join(sharing)})\n')
@@ -124,13 +143,22 @@ def _login_file(source: str) -> int:
     return 0 if stored else 1
 
 
+def _holds(host: str, task: str) -> bool:
+    try:
+        api_key(host, task=task)
+    except NoCredential:
+        return False
+    return True
+
+
 def _status_lines(rows: Iterable[Provider]) -> list[str]:
     lines = []
     for row in rows:
         if not row.keyed:
-            lines.append(f'{row.name:20} {row.auth:13} {"-":45} -')
+            lines.append(f'{row.name:20} {row.auth:13} {"-":45} - -')
             continue
-        lines.append(f'{row.name:20} {row.auth:13} {row.host:45} {stored_slots(row.host)}')
+        tasks = ','.join(sorted(task for task in API_KEY_TASKS if _holds(row.host, task))) or '-'
+        lines.append(f'{row.name:20} {row.auth:13} {row.host:45} {stored_slots(row.host)} {tasks}')
     return lines
 
 
@@ -145,12 +173,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     login.add_argument(
         '--slot', type=int, default=1, help='the fallback key slot to store (1 = api-key, N = api-key-N)'
     )
-    verbs.add_parser('status', help='each provider: auth kind, and how many key slots a keyed one holds (never a key)')
+    login.add_argument(
+        '--task', help=f'store the key one task owns (api-key-<task>), not a slot: {sorted(API_KEY_TASKS)}'
+    )
+    verbs.add_parser(
+        'status', help='each provider: auth kind, its key slots and the tasks with their own key (never a key)'
+    )
     args = parser.parse_args(argv)
     if args.verb == 'status':
         sys.stdout.write('\n'.join(_status_lines(providers().values())) + '\n')
         return 0
-    return _login_file(args.from_file) if args.from_file else _login_one(args.provider, args.slot)
+    return _login_file(args.from_file) if args.from_file else _login_one(args.provider, args.slot, args.task)
 
 
 if __name__ == '__main__':

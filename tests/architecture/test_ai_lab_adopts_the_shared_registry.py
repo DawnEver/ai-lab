@@ -58,6 +58,13 @@ _MECHANISMS: Final = {
     'MERGE-OR-DELETE': (
         TestPath('pyproject.toml'), TestPath('tests/architecture/test_the_branches_are_the_declared_set.py'),
     ),
+    # Adopted 2026-10-19 with the lab-commons ef06ab3 relock: both are the forge's server-side steps
+    # (lab_commons.dev.forgemerge, lab_commons.dev.forgereview) over every repo whose integrator table
+    # declares an integration branch; ai-lab declares it, so its PRs merge and are reviewed by the kit alone.
+    'INTEGRATION-TAKES-ONLY-FORGE-MERGES': (
+        TestPath('pyproject.toml'), TestPath('tests/architecture/test_session_branch_pushes_are_guarded.py'),
+    ),
+    'PR-REVIEW-IS-ADVISORY': (TestPath('pyproject.toml'),),
 }  # fmt: skip
 
 #: Rules with no subject in this library today, BY NAME -- deriving it from ``RULES`` would silently

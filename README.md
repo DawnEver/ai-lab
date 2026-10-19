@@ -127,12 +127,17 @@ to the next slot when it fails at the account level -- exhausted balance, 401/40
 retries; when every slot fails the error lists each slot's failure kind, never a key. The slot that
 served a call is the `key_slot` of its `Decision`/`Response` and of its ledger entry.
 
+A TASK owns its own key: username `api-key-<task>` under the same host, for a task declared in
+`lab_commons.credentials.API_KEY_TASKS` (`pr-review`, `optimization`). `connect(spec, task=...)` sends
+only that key -- no slots, and never the default: a missing task key is refused by name.
+
 ```
 python -m ai_lab.auth login openai                 # prompts without echo (or reads one line from stdin)
 python -m ai_lab.auth login openai --slot 2        # a fallback key, stored as api-key-2
+python -m ai_lab.auth login anthropic --task pr-review   # one task's own key, stored as api-key-pr-review
 python -m ai_lab.auth login --from-file keys.env   # NAME=value, export NAME=value, or NAME value lines
 ssh box python -m ai_lab.auth login --from-file - < keys.env   # the same file over stdin
-python -m ai_lab.auth status                       # each provider: auth kind; how many key slots it holds, never a key
+python -m ai_lab.auth status                       # each provider: auth kind, key slots, tasks with their own key; never a key
 ```
 
 A key file maps names to providers through each row's `key_name` (`OPENAI_API_KEY`,

@@ -47,6 +47,17 @@ _MECHANISMS: Final = {
          'INTEGRATION-IS-MERGES-ONLY'),
         (TestPath('pyproject.toml'), TestPath('tests/architecture/test_session_branch_pushes_are_guarded.py')),
     ),
+    # Adopted 2026-10-19, as optimi-lab: `[tool.lab_commons.integrator]` declares integrate/main and main.
+    # `forge sync` merges integrate/main only and `forge integration` retargets a PR opened against main
+    # (both read that table); main moves only by `integrate promote`, whose admission is the kit's with no
+    # local copy; MERGE-OR-DELETE is the branch-set apply over `prune_merged = true`, policed on origin.
+    **dict.fromkeys(('DOWNSTREAM-SYNCS-INTEGRATION', 'PRS-TARGET-INTEGRATION'), (TestPath('pyproject.toml'),)),
+    'TRUNK-MOVES-BY-FAST-FORWARD': (
+        TestPath('pyproject.toml'), TestPath('tests/architecture/test_push_admission_is_delegated.py'),
+    ),
+    'MERGE-OR-DELETE': (
+        TestPath('pyproject.toml'), TestPath('tests/architecture/test_the_branches_are_the_declared_set.py'),
+    ),
 }  # fmt: skip
 
 #: Rules with no subject in this library today, BY NAME -- deriving it from ``RULES`` would silently
@@ -58,8 +69,6 @@ _ABSENT: Final = frozenset({
     'VERDICT-AS-STATUS', 'ISSUE-IS-INTENT', 'ONE-BRANCH-PER-SESSION', 'MERGE-DEVIATIONS-NAMED',
     'AUTO-MODE-RUNS-THE-DOORS', 'VERDICTS-FROM-THE-FORGE', 'MAIN-SESSION-PUBLISHES',
     'SUBAGENT-NO-PUSH', 'WORKTREES-STAY-INSIDE', 'ONE-BOX-ONE-LOCK',
-    # One trunk, no integration branch: main moves by a direct merge, so none of these has a subject.
-    'DOWNSTREAM-SYNCS-INTEGRATION', 'MERGE-OR-DELETE', 'PRS-TARGET-INTEGRATION', 'TRUNK-MOVES-BY-FAST-FORWARD',
     # Persisted formats: the ledger and the price snapshots have only ever had one schema, so there is no
     # older one to upgrade; the rule gains a mechanism with the first schema change.
     'FORMATS-UPGRADE-ON-READ',
@@ -84,8 +93,9 @@ _ABSENT: Final = frozenset({
 #: no subject here (the five integration-branch rules and REPORTS-LIVE-IN-MEMORY), and again (48) for
 #: PUSH-FROM-ITS-OWN-BRANCH, an integration-line rule with no line here; lowering it is the only
 #: legal edit. Lowered to 47 on 2026-10-19: the registry retired INTEGRATION-LIVES-IN-THE-MAIN-CHECKOUT and
-#: PUSH-FROM-ITS-OWN-BRANCH and added FORMATS-UPGRADE-ON-READ.
-_ABSENT_CEILING: Final = 47
+#: PUSH-FROM-ITS-OWN-BRANCH and added FORMATS-UPGRADE-ON-READ. Lowered to 43 the same day: the four
+#: branch-flow rules gained mechanisms once integrate/main was declared.
+_ABSENT_CEILING: Final = 43
 
 
 def test_every_rule_is_enforced_or_declared_absent() -> None:

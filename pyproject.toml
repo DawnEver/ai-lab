@@ -39,7 +39,10 @@ ai_lab = ["providers.toml"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-m 'not live'"
-markers = ["live: calls a real model (network or a local CLI); run with -m live"]
+markers = [
+    "live: calls a real model (network or a local CLI); run with -m live",
+    "dev_checkout: asserts a developer-checkout invariant (hooks installed, branches on origin, worktree placement)",
+]
 
 [tool.ruff]
 line-length = 120
@@ -78,6 +81,7 @@ output = "output/logs"
 
 [tool.lab_commons.tests]
 produce = ["-m", "lab_commons.dev.verify", "--part", "{part}"]
+resources = ["dev_checkout"]
 
 # The family branch flow: integrate/main coordinates; main moves only by `integrate promote` (fast-forward)
 # on a full forge PASS. Adopted 2026-10-18 (user ruling: every repo runs the lab-commons principles):

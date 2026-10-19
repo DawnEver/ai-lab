@@ -105,11 +105,11 @@ def test_status_lists_each_provider_with_its_auth_kind_and_key_state_never_the_s
     assert auth.main(['status']) == 0
     out = capsys.readouterr().out
     lines = {line.split()[0]: line for line in out.splitlines() if line.strip()}
-    assert lines['openai'].split()[-1] == '1'
-    assert lines['anthropic'].split()[-1] == '0'
+    assert lines['openai'].split()[-2:] == ['1', '-']
+    assert lines['anthropic'].split()[-2:] == ['0', '-']
     assert 'openai_decisions' not in lines
     assert lines['openai'].split()[1] == 'api'
-    assert lines['claude_code'].split()[1:] == ['subscription', '-', '-']
+    assert lines['claude_code'].split()[1:] == ['subscription', '-', '-', '-']
     assert lines['ollama'].split()[1] == 'local'
     assert 'sk-fake-status' not in out
 
@@ -120,7 +120,7 @@ def test_status_counts_slots_up_to_the_first_gap(credential_store, capsys):
     credential_store('api.openai.com', 'sk-d', 'api-key-4')
     assert auth.main(['status']) == 0
     line = next(x for x in capsys.readouterr().out.splitlines() if x.startswith('openai '))
-    assert line.split()[-1] == '2'
+    assert line.split()[-2] == '2'
 
 
 def test_the_module_runs_as_a_cli():

@@ -20,7 +20,7 @@ def test_origin_carries_only_the_declared_branches() -> None:
     branchset.assert_origin_branches_declared(root=_ROOT, branchset=declared_branchset(_ROOT))
 
 
-@pytest.mark.dev_checkout
+@pytest.mark.workstation
 def test_this_box_carries_only_the_declared_branches() -> None:
     """An undeclared local branch origin already holds reds; one holding unpushed work is reported."""
     branchset.assert_local_branches_declared(root=_ROOT, branchset=declared_branchset(_ROOT))

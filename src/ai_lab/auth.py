@@ -20,6 +20,12 @@ under the same host (:func:`lab_commons.credentials.key_username`, the one rule;
 ``API_KEY_TASKS``): the slots ``connect(spec, task=...)`` walks, and nothing else does. ``-s``, ``--slot``
 and ``--seat`` are one argument. ``status`` lists, per provider, each task's stored slot count.
 
+EVERY TASK GETS ITS OWN KEY (user ruling 2026-10-19). ``login`` refuses a key that another credential of
+the same host already holds -- another task, another slot of the same task, or the default (which counts
+as its own task) -- naming that credential and the key's fingerprint (a sha256 prefix; never the key).
+Re-storing the identical key into the same credential is a no-op. ``status`` lists every group of
+credentials sharing one key. The stored keys are read through :func:`lab_commons.credentials.api_keys`.
+
 The key never travels in argv: ``login <provider>`` reads it from the terminal without echo, or from
 stdin when piped; ``--from-file -`` reads a key file from stdin (``ssh box python -m ai_lab.auth login
 --from-file - < keys``).
@@ -29,12 +35,13 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import hashlib
 import re
 import sys
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
-from lab_commons.credentials import API_KEY_TASKS, NoCredential, key_username, store_credential
+from lab_commons.credentials import API_KEY_TASKS, NoCredential, api_keys, key_username, store_credential
 
 from ai_lab.client import Provider, providers, stored_slots
 
@@ -72,7 +79,37 @@ def _keyed() -> dict[str, Provider]:
     return {name: row for name, row in providers().items() if row.keyed}
 
 
-def _store(host: str, secret: str, username: str) -> bool:
+#: Hex digits of a key's sha256 shown to a person: enough to tell keys apart, never enough to be one.
+_FINGERPRINT_CHARS = 12
+
+
+def _fingerprint(secret: str) -> str:
+    return hashlib.sha256(secret.encode()).hexdigest()[:_FINGERPRINT_CHARS]
+
+
+def _held(host: str) -> dict[str, str]:
+    """``{username: key}`` for every key *host* holds: the default's slots, then each task's."""
+    held = {}
+    for task in (None, *sorted(API_KEY_TASKS)):
+        try:
+            keys = api_keys(host, task=task)
+        except NoCredential:
+            continue
+        held |= {key_username(task, slot): key for slot, key in enumerate(keys, start=1)}
+    return held
+
+
+def _store(host: str, secret: str, username: str) -> bool | None:
+    """Store *secret* as *username*; ``None`` when that credential already holds it, ``False`` on refusal."""
+    held = _held(host)
+    if held.get(username) == secret:
+        return None
+    if clash := sorted(other for other, key in held.items() if key == secret):
+        sys.stderr.write(
+            f'refused: {host} already holds this key (sha256 {_fingerprint(secret)}...) as '
+            f'{", ".join(map(repr, clash))}; every task and slot gets its own key\n'
+        )
+        return False
     try:
         store_credential(host, username, secret)
     except NoCredential as failed:
@@ -101,10 +138,15 @@ def _login_one(name: str, slot: int, task: str | None) -> int:
     if not secret:
         sys.stderr.write('empty key; nothing stored\n')
         return 1
-    if not _store(provider.host, secret, username):
+    stored = _store(provider.host, secret, username)
+    if stored is False:
         return 1
     sharing = sorted(n for n, row in _keyed().items() if row.host == provider.host)
-    sys.stdout.write(f'stored key {which} for {provider.host} ({", ".join(sharing)})\n')
+    sys.stdout.write(
+        f'{provider.host} already holds this key as {username!r} ({which}); nothing changed\n'
+        if stored is None
+        else f'stored key {which} for {provider.host} ({", ".join(sharing)})\n'
+    )
     return 0
 
 
@@ -122,7 +164,7 @@ def _login_file(source: str) -> int:
             sys.stderr.write(f'{name}: no provider names this key; skipped\n')
             continue
         for host in sorted({row.host for row in by_name[name]}):
-            if not _store(host, secret, key_username()):
+            if _store(host, secret, key_username()) is False:
                 return 1
             sharing = sorted(row.name for row in by_name[name] if row.host == host)
             sys.stdout.write(f'{name}: stored for {host} ({", ".join(sharing)})\n')
@@ -144,6 +186,26 @@ def _status_lines(rows: Iterable[Provider]) -> list[str]:
     return lines
 
 
+def _shared_lines(rows: Iterable[Provider]) -> list[str]:
+    """One line per group of credentials of one host that hold the same key."""
+    lines = []
+    for host in sorted({row.host for row in rows if row.keyed}):
+        groups: dict[str, list[str]] = {}
+        for username, key in _held(host).items():
+            groups.setdefault(key, []).append(username)
+        lines += [
+            f'shared key sha256 {_fingerprint(key)}... on {host}: {", ".join(map(repr, names))}'
+            for key, names in groups.items()
+            if len(names) > 1
+        ]
+    if lines:
+        lines.append(
+            'each task needs its own key; a default<->task pair is expected after a migration '
+            'and is resolved by deleting the default copy'
+        )
+    return lines
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run ``login <provider>``, ``login --from-file PATH|-`` or ``status``."""
     parser = argparse.ArgumentParser(prog='python -m ai_lab.auth', description=__doc__.split('\n', 1)[0])
@@ -162,7 +224,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     if args.verb == 'status':
-        sys.stdout.write('\n'.join(_status_lines(providers().values())) + '\n')
+        rows = list(providers().values())
+        sys.stdout.write('\n'.join(_status_lines(rows) + _shared_lines(rows)) + '\n')
         return 0
     return _login_file(args.from_file) if args.from_file else _login_one(args.provider, args.slot, args.task)
 

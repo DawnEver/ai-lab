@@ -1,3 +1,6 @@
+import os
+from pathlib import Path
+
 import pytest
 from lab_commons.credentials import store_credential
 
@@ -52,3 +55,16 @@ def keys(credential_store):
     credential_store('api.anthropic.com', 'ak-test')
     credential_store('api.typesafe.ai', 'k')
     return credential_store
+
+
+#: Where sharp-review's method data lives when ``SHARP_REVIEW_METHOD`` does not say: the cc-market checkout.
+_METHOD_DEFAULT = Path.home() / 'Documents' / 'AI' / 'cc-config' / 'cc-market' / 'sharp-review' / 'method'
+
+
+@pytest.fixture(scope='session')
+def method_dir() -> Path:
+    """sharp-review's method directory, read IN PLACE (never vendored); absent is a failure naming it."""
+    path = Path(os.environ.get('SHARP_REVIEW_METHOD') or _METHOD_DEFAULT)
+    if not (path / 'method.json').is_file():
+        pytest.fail(f'no sharp-review method at {path}: set SHARP_REVIEW_METHOD to cc-market/sharp-review/method')
+    return path

@@ -7,7 +7,7 @@ Every secret here is a fake.
 import pytest
 from lab_commons.credentials import key_username
 
-from ai_lab import Provider, ProviderError, ResponseRequest, Text, Unsupported, connect, providers
+from ai_lab import Provider, ProviderError, ResponseRequest, Text, Unsupported, catalogue, connect
 from ai_lab.client import stored_slots
 
 DECISIONS_RAW = {'answers': [
@@ -47,7 +47,7 @@ def test_any_other_openai_model_routes_to_responses(keys):
 
 
 def test_the_model_wire_table_is_declared_on_the_openai_row():
-    assert providers()['openai'].model_wires == {'gpt-6-luna': 'openai_decisions'}
+    assert catalogue()['openai'].model_wires == {'gpt-6-luna': 'openai_decisions'}
 
 
 def test_a_model_wire_naming_an_unknown_wire_is_refused():
@@ -58,7 +58,7 @@ def test_a_model_wire_naming_an_unknown_wire_is_refused():
 def test_the_retired_decisions_provider_is_refused_naming_its_replacement():
     with pytest.raises(Unsupported, match=r"use 'openai'"):
         connect('openai_decisions:gpt-6-luna')
-    assert 'openai_decisions' not in providers()
+    assert 'openai_decisions' not in catalogue()
 
 
 def test_slot_usernames():

@@ -48,7 +48,6 @@ import time
 import tomllib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from importlib.resources import files
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -70,8 +69,9 @@ __all__ = [
     'ROLES',
     'Client',
     'Provider',
+    'catalogue',
     'connect',
-    'providers',
+    'packaged_providers_file',
     'stored_slots',
     'user_providers_file',
 ]
@@ -235,9 +235,14 @@ def _rows(text: str, origin: str) -> dict[str, Provider]:
         raise Unsupported(msg) from None
 
 
-def providers() -> dict[str, Provider]:
+def packaged_providers_file() -> Path:
+    """The packaged baseline ``providers.toml``."""
+    return Path(__file__).with_name('providers.toml')
+
+
+def catalogue() -> dict[str, Provider]:
     """The packaged table, with every row of :func:`user_providers_file` replacing its namesake."""
-    table = _rows(files('ai_lab').joinpath('providers.toml').read_text('utf-8'), 'the packaged providers.toml')
+    table = _rows(packaged_providers_file().read_text('utf-8'), 'the packaged providers.toml')
     user = user_providers_file()
     if user.is_file():
         table.update(_rows(user.read_text('utf-8'), str(user)))
@@ -361,7 +366,7 @@ def connect(spec: str, *, task: str | None = None, protocol: str | None = None, 
     spec, _, effort = spec.partition('@')
     name, _, model = spec.partition(':')
     retired.refuse('provider', name, f'connect({spec!r})')
-    table = providers()
+    table = catalogue()
     if name not in table:
         msg = f'unknown provider {name!r}; known: {sorted(table)} (add one in {user_providers_file()})'
         raise Unsupported(msg)

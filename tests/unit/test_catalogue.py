@@ -7,7 +7,7 @@ is picked by protocol -- never a second provider.
 
 import pytest
 
-from ai_lab import Provider, ResponseRequest, Text, Unsupported, connect, providers
+from ai_lab import Provider, ResponseRequest, Text, Unsupported, catalogue, connect
 from ai_lab.client import PROTOCOLS, ROLES
 from ai_lab.wire import WIRES
 
@@ -30,16 +30,16 @@ def test_every_wire_declares_a_known_protocol():
 
 
 def test_deepseek_is_one_row_serving_two_protocols():
-    row = providers()['deepseek']
+    row = catalogue()['deepseek']
     assert row.url == 'https://api.deepseek.com'
     assert row.endpoint('openai') == 'https://api.deepseek.com/v1'
     assert row.endpoint('anthropic') == 'https://api.deepseek.com/anthropic'
     assert row.protocols == frozenset({'openai', 'anthropic'})
-    assert not any(name != 'deepseek' and r.host == row.host for name, r in providers().items())
+    assert not any(name != 'deepseek' and r.host == row.host for name, r in catalogue().items())
 
 
 def test_the_claude_role_models_are_catalogue_data():
-    assert providers()['deepseek'].models == {
+    assert catalogue()['deepseek'].models == {
         'base': 'deepseek-v4-flash[1m]',
         'fable': 'deepseek-v4-pro[1m]',
         'opus': 'deepseek-v4-flash[1m]',

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from ai_lab import Unsupported, connect, providers
+from ai_lab import Unsupported, catalogue, connect
 from ai_lab.retired import RETIRED, Retired, refuse
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -46,7 +46,7 @@ def _row_using(retired: Retired) -> str:
 def test_a_user_row_using_a_retired_spelling_is_refused_naming_the_replacement(retired, tmp_path, monkeypatch):
     _user_rows(tmp_path, monkeypatch, _row_using(retired))
     with pytest.raises(Unsupported, match=re.escape(f'use {retired.replacement!r}')):
-        providers()
+        catalogue()
 
 
 @pytest.mark.parametrize('retired', [r for r in RETIRED if r.kind == 'provider'], ids=lambda r: r.spelling)
@@ -58,7 +58,7 @@ def test_a_retired_provider_is_refused_at_connect(retired):
 def test_the_planted_control_a_live_row_loads(tmp_path, monkeypatch):
     """THE PLANTED CONTROL: the same row with no retired spelling is accepted, so the refusals above are real."""
     _user_rows(tmp_path, monkeypatch, f'[mine]\n{_ROW}')
-    assert providers()['mine'].wire == 'openai_chat'
+    assert catalogue()['mine'].wire == 'openai_chat'
     refuse('provider', 'mine', 'here')
 
 

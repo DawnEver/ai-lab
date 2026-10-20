@@ -43,7 +43,7 @@ from pathlib import Path
 
 from lab_commons.credentials import API_KEY_TASKS, NoCredential, api_keys, key_username, store_credential
 
-from ai_lab.client import Provider, providers, stored_slots
+from ai_lab.client import Provider, catalogue, stored_slots
 
 __all__ = ['main', 'parse_key_file']
 
@@ -76,7 +76,7 @@ def parse_key_file(text: str) -> tuple[list[tuple[str, str]], list[int]]:
 
 
 def _keyed() -> dict[str, Provider]:
-    return {name: row for name, row in providers().items() if row.keyed}
+    return {name: row for name, row in catalogue().items() if row.keyed}
 
 
 #: Hex digits of a key's sha256 shown to a person: enough to tell keys apart, never enough to be one.
@@ -124,7 +124,7 @@ def _login_one(name: str, slot: int, task: str | None) -> int:
     except ValueError as refused:
         sys.stderr.write(f'{refused}\n')
         return 1
-    table = providers()
+    table = catalogue()
     if name not in table:
         sys.stderr.write(f'unknown provider {name!r}; known: {sorted(table)}\n')
         return 1
@@ -224,7 +224,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     if args.verb == 'status':
-        rows = list(providers().values())
+        rows = list(catalogue().values())
         sys.stdout.write('\n'.join(_status_lines(rows) + _shared_lines(rows)) + '\n')
         return 0
     return _login_file(args.from_file) if args.from_file else _login_one(args.provider, args.slot, args.task)

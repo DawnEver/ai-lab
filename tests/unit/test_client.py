@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from ai_lab import Basis, Provider, ResponseRequest, Text, Unsupported, connect, providers
+from ai_lab import Basis, Provider, ResponseRequest, Text, Unsupported, catalogue, connect
 from ai_lab.client import Client
 from ai_lab.transport import HttpCall
 
@@ -19,7 +19,7 @@ def _post_returning(payload):
 
 
 def test_every_packaged_provider_names_a_shipped_wire():
-    assert {'openai', 'typesafe', 'anthropic', 'gemini', 'deepseek', 'ollama'} <= set(providers())
+    assert {'openai', 'typesafe', 'anthropic', 'gemini', 'deepseek', 'ollama'} <= set(catalogue())
 
 
 def test_a_native_endpoint_decides_natively(keys, request_):
@@ -83,7 +83,7 @@ def test_a_keyless_provider_never_asks_the_store(monkeypatch):
         raise AssertionError(host)
 
     monkeypatch.setattr('ai_lab.client._slot_key', refuse)
-    client = Client(providers()['ollama'], 'llama', post=lambda call, **_: dict(call.headers))
+    client = Client(catalogue()['ollama'], 'llama', post=lambda call, **_: dict(call.headers))
     assert client._send(lambda key: HttpCall('http://x', {}, {'key': key})) == ({'key': ''}, 0)
 
 
@@ -105,7 +105,7 @@ def test_a_user_table_in_the_family_config_root_adds_and_replaces_rows(tmp_path,
         '[ollama]\nwire = "openai_chat"\nurl = "http://gpu:11434"\nopenai_path = "/v1"\nauth = "local"\n'
     )
     (tmp_path / 'config' / 'providers.toml').write_text(rows, encoding='utf-8')
-    table = providers()
+    table = catalogue()
     assert table['mylab'] == Provider('mylab', 'openai_chat', 'http://box:8000', 'local', openai_path='/v1')
     assert table['ollama'].endpoint('openai') == 'http://gpu:11434/v1'
 
@@ -116,7 +116,7 @@ def test_a_row_naming_an_unknown_wire_is_refused():
 
 
 def test_the_client_repr_holds_no_key(keys):
-    assert 'sk-test' not in repr(Client(providers()['openai'], 'gpt-x'))
+    assert 'sk-test' not in repr(Client(catalogue()['openai'], 'gpt-x'))
 
 
 def _user_rows(tmp_path, monkeypatch, rows):
@@ -126,7 +126,7 @@ def _user_rows(tmp_path, monkeypatch, rows):
 
 
 def test_every_packaged_row_declares_its_auth_kind():
-    kinds = {name: row.auth for name, row in providers().items()}
+    kinds = {name: row.auth for name, row in catalogue().items()}
     assert {name for name, kind in kinds.items() if kind == 'local'} == {'ollama'}
     assert set(kinds.values()) == {'api', 'local'}
 
@@ -134,7 +134,7 @@ def test_every_packaged_row_declares_its_auth_kind():
 def test_a_row_without_auth_is_refused(tmp_path, monkeypatch):
     _user_rows(tmp_path, monkeypatch, '[mylab]\nwire = "openai_chat"\nurl = "http://box:8000"\nopenai_path = "/v1"\n')
     with pytest.raises(Unsupported, match='missing'):
-        providers()
+        catalogue()
 
 
 def test_a_row_with_an_unknown_auth_is_refused(tmp_path, monkeypatch):
@@ -142,4 +142,4 @@ def test_a_row_with_an_unknown_auth_is_refused(tmp_path, monkeypatch):
         tmp_path, monkeypatch, '[mylab]\nwire = "openai_chat"\nurl = "http://e"\nopenai_path = "/v1"\nauth = "magic"\n'
     )
     with pytest.raises(Unsupported, match="unknown auth 'magic'"):
-        providers()
+        catalogue()

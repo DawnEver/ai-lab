@@ -15,7 +15,7 @@ from ai_lab.answers import (
     Response,
     ScoreAnswer,
 )
-from ai_lab.client import Client, Provider, connect, providers
+from ai_lab.client import Client, Provider, catalogue, connect
 from ai_lab.errors import ProviderError, ReplayMiss, Unsupported
 from ai_lab.ledger import Ledger, Mode, Recorded
 from ai_lab.protocols import Decider, Responder
@@ -63,6 +63,6 @@ __all__ = [
     'ScoreAnswer',
     'Text',
     'Unsupported',
+    'catalogue',
     'connect',
-    'providers',
 ]

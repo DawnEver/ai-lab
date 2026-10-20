@@ -32,7 +32,7 @@ from pathlib import Path
 
 from lab_commons.paths import config_root, user_cache_path
 
-from ai_lab.client import providers
+from ai_lab.client import catalogue
 from ai_lab.usage import Usage
 
 __all__ = [
@@ -261,7 +261,7 @@ def cost(usage: Usage | None, price: Price | None) -> float | None:
 def quote_for(client: str, *, at: datetime | None = None, **options: object) -> Quote | None:
     """:func:`quote` for a client name (``provider:model[@effort]``) -- effort moves tokens, not the rate."""
     provider, _, model = client.partition('@')[0].partition(':')
-    row = providers().get(provider)
+    row = catalogue().get(provider)
     return quote(provider, '' if row is None else row.vendor, model, at=at, **options)
 
 

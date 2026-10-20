@@ -64,6 +64,37 @@ ai-lab is the pay-per-token API layer ONLY. The logged-in vendor CLIs were retir
 never through ai-lab. Every retired spelling -- providers, wires, row fields, auth kinds -- is listed
 with its replacement in `ai_lab.retired` and refused by name, never aliased.
 
+## One call from any language: `python -m ai_lab.call` (protocol version 1)
+
+A process in another language (a Node host harness) makes one call by writing ONE JSON request to
+stdin and reading ONE JSON reply from stdout. Version 1 of the contract, `ai_lab.call.CALL_SCHEMA_VERSION`:
+
+```jsonc
+// request; any field not listed here is refused
+{"verb": "respond" | "decide", "provider": "anthropic", "model": "claude-sonnet-5-5",
+ "task": "pr-review",            // optional: walk that task's key slots only
+ "effort": "high",               // optional: refused by a wire with no effort hook
+ "instructions": "...",          // decide: becomes the first text of the context
+ "context": [{"kind": "text", "text": "..."}, {"kind": "fields", "values": {"n": 1}}],
+ "schema": {"type": "object"},   // respond only, required
+ "questions": [{"kind": "predicate", "name": "p", "instructions": "..."}],  // decide only, required
+ "images": [{"mime": "image/png", "data": "<base64>"}]}                      // optional
+
+// reply
+{"schema_version": 1, "ok": true,
+ "kind": "" | "exhausted" | "auth" | "rate_limit" | "unsupported" | "timeout",
+ "result": {...} | null,         // respond: the schema object; decide: {"basis", "answers": {name: answer}}
+ "usage": {"input_tokens", "output_tokens", "cached_tokens", "reasoning_tokens", "cost_usd"} | null,
+ "key_slot": 1, "error": ""}
+```
+
+A provider failure is a REPLY, not a crash: `ok` is false, `kind` classifies it (`""` when the failure
+is not one of the named kinds; `unsupported` for a missing key, provider or capability), `error`
+names it without a key, and the exit status is 0. Only a malformed request (not JSON, an unknown or
+missing field, a wrong type, an undeclared task) exits 2, with the reason on stderr. `--ledger PATH`
+records every call with its usage and key slot through the ledger (record mode: a request already in
+the file is served from it).
+
 ## Replay
 
 ```python

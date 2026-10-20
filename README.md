@@ -227,6 +227,7 @@ python -m ai_lab.auth login anthropic --task pr-review        # a task's own key
 python -m ai_lab.auth login anthropic --task pr-review -s 2   # its backup, stored as api-key-pr-review-2
 python -m ai_lab.auth login --from-file keys.env   # NAME=value, export NAME=value, or NAME value lines
 ssh box python -m ai_lab.auth login --from-file - < keys.env   # the same file over stdin
+python -m ai_lab.auth login openai --from-file keys.env --task pr-review -s 2   # one line, into a task slot
 python -m ai_lab.auth status                       # auth kind, key slots, task slots, shared keys; never a key
 ```
 

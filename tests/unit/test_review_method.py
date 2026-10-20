@@ -8,6 +8,7 @@ import pytest
 from ai_lab.review.method import METHOD_SCHEMA_VERSIONS, Method, UnknownMethodVersion, load_method
 
 
+@pytest.mark.sharp_review
 def test_the_method_is_read_in_place(method_dir):
     method = load_method(method_dir)
     assert isinstance(method, Method)
@@ -18,6 +19,7 @@ def test_the_method_is_read_in_place(method_dir):
     assert method.text('prompts/diff.md').startswith('{{framing}}')
 
 
+@pytest.mark.sharp_review
 def test_an_unknown_schema_version_is_refused_by_name(method_dir, tmp_path):
     copy = tmp_path / 'method'
     shutil.copytree(method_dir, copy)

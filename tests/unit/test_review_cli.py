@@ -3,7 +3,11 @@
 import json
 import shutil
 
+import pytest
+
 from ai_lab.review.__main__ import main
+
+pytestmark = pytest.mark.sharp_review  # reads the method data in place
 
 OK = {'schema_version': 1, 'ok': True, 'kind': '', 'result': {'findings': []}, 'usage': None, 'key_slot': 1,
       'error': ''}  # fmt: skip

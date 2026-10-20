@@ -13,7 +13,9 @@ from ai_lab.review.method import load_method
 from ai_lab.review.rules import merge, pick, render, render_prompt
 from tests.conftest import method_path
 
-_ROOT = method_path() / 'conformance'
+pytestmark = pytest.mark.sharp_review
+
+_ROOT = (method_path() or Path('<no sharp_review capability>')) / 'conformance'
 _KINDS = ('merge', 'pick', 'prompt')
 
 
@@ -24,7 +26,7 @@ def _cases(kind: str) -> list:
 
 
 def _fixture(path: Path) -> dict:
-    assert path.is_file(), f'no conformance fixtures at {path}: set SHARP_REVIEW_METHOD'
+    assert path.is_file(), f'no conformance fixtures at {path}: no method under [capabilities.sharp_review] path'
     data = json.loads(path.read_text(encoding='utf-8'))
     assert set(data) == {'description', 'input', 'expected'}, path
     return data

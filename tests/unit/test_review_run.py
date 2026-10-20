@@ -11,6 +11,8 @@ import pytest
 from ai_lab.review.method import load_method
 from ai_lab.review.run import run
 
+pytestmark = pytest.mark.sharp_review  # reads the method data in place
+
 _KEYWORDS = {'$schema', 'title', 'description', 'type', 'const', 'enum', 'required', 'properties',
              'additionalProperties', 'items', 'pattern'}  # fmt: skip
 _TYPES = {'object': dict, 'array': list, 'string': str, 'integer': int, 'null': type(None)}

@@ -42,6 +42,7 @@ addopts = "-m 'not live'"
 markers = [
     "live: calls a real model (network or a local CLI); run with -m live",
     "workstation: needs a developer workstation -- the live checkout (hooks, branches on origin, worktree placement); the cluster's per-sha tree has none",
+    "sharp_review: reads sharp-review's method data in place -- the host's [capabilities.sharp_review] path, a cc-market checkout's sharp-review/method",
 ]
 
 [tool.ruff]
@@ -82,7 +83,7 @@ output = "output/logs"
 
 [tool.lab_commons.tests]
 produce = ["-m", "lab_commons.dev.verify", "--part", "{part}"]
-resources = ["workstation"]
+resources = ["workstation", "sharp_review"]
 
 # The family branch flow: integrate/main coordinates; main moves only by `integrate promote` (fast-forward)
 # on a full forge PASS. Adopted 2026-10-18 (user ruling: every repo runs the lab-commons principles):

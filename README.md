@@ -1,8 +1,7 @@
 # ai-lab
 
 Typed decisions and schema-bound responses from any model, through one interface. Part of the
-lab-commons family: its config search path and process-tree reaping are lab-commons', and so are the
-lint set, the rendered project files and the verify entry point.
+lab-commons family: its config search path and its key store are lab-commons', and so are the lint set, the rendered project files and the verify entry point.
 
 ## Two verbs
 
@@ -33,13 +32,11 @@ decision['fidelity'].choice, decision['fidelity'].probabilities
 
 ## Providers are data, wires are protocols
 
-`connect('<provider>:<model>')` reads `providers.toml`: each row names a wire, an endpoint (a URL
-or a CLI binary), the conventional name of its key (`key_name`, `""` for none), and whether it reads images. Put a
+`connect('<provider>:<model>')` reads `providers.toml`: each row names a wire, an endpoint (a URL), the conventional name of its key (`key_name`, `""` for none), and whether it reads images. Put a
 `providers.toml` in the family config root (`$AI_LAB_HOME/config`, else the platform's user config
 directory for `ai_lab`) to add rows or replace one of the same name.
 
-One provider is ONE ACCOUNT KIND OF ONE VENDOR: `openai` and `anthropic` are API accounts, `codex` and
-`claude_code` the same vendors' subscriptions. A vendor endpoint that only some models of an account
+One provider is ONE ACCOUNT KIND OF ONE VENDOR: `openai` and `anthropic` are API accounts. A vendor endpoint that only some models of an account
 serve is not a second provider: the row's `model_wires = {model = wire}` routes those models, so
 `openai:gpt-6-luna` goes to OpenAI's `/decisions` and any other `openai:<model>` to `/responses`. The
 retired spelling `openai_decisions:<model>` is refused naming `openai:<model>`.
@@ -52,21 +49,20 @@ retired spelling `openai_decisions:<model>` is refused naming `openai:<model>`.
 | `openai_chat` | emulated | yes | `openrouter`, `deepseek`, `qwen`, `ollama` |
 | `anthropic_messages` | emulated | yes | `anthropic` |
 | `gemini` | emulated | yes | `gemini` |
-| `claude_code` | emulated | yes | `claude_code` (local `claude`, your login) |
-| `codex` | emulated | yes | `codex` (local `codex`, your login) |
 
 A wire's verbs are read off its code. "Emulated" means the questions become one derived strict
 JSON schema; the answers are then `stated`. A capability the provider lacks (a verb, images, a key)
 raises `Unsupported` naming the remedy.
 
-Local CLIs run in an empty temporary directory with every tool, MCP server and settings source
-off (`claude`) or a read-only ephemeral sandbox (`codex`): they answer, they cannot act.
-
 Every provider row declares its `auth` kind; a row without one, or with an unknown one, is refused:
 
 - `api` -- a keyed account billed per token (`anthropic`, `openai`, `deepseek`, ...); the key is in the git credential store.
-- `subscription` -- a logged-in vendor CLI (`claude_code`, `codex`). LOCAL ONLY: on a Slurm compute node (`SLURM_JOB_ID` set) a request is refused and names the row's `api_provider` (`anthropic`, `openai`) to use instead.
 - `local` -- a keyless server you run yourself (`ollama`).
+
+ai-lab is the pay-per-token API layer ONLY. The logged-in vendor CLIs were retired as providers on
+2026-10-20: a subscription is used inside a host session (Claude Code, Codex, or fabric's agent mode),
+never through ai-lab. Every retired spelling -- providers, wires, row fields, auth kinds -- is listed
+with its replacement in `ai_lab.retired` and refused by name, never aliased.
 
 ## Replay
 
@@ -96,7 +92,7 @@ Cost is derived, never stored: tokens times the rate in force at the call. Rates
 catalogs (models.dev, LiteLLM, Portkey; OpenRouter only for the `openrouter` vendor -- a reseller's
 route price is not the vendor's), cross-checked to their median and flagged DISPUTED beyond 5%,
 kept as dated snapshots in the user cache and refreshed at most daily. A provider row's `vendor`
-says who bills it (`""` = unmetered, e.g. a CLI on a subscription). A row in your own `prices.toml`
+says who bills it (`""` = unmetered, e.g. a keyless local server). A row in your own `prices.toml`
 beside `providers.toml` (US dollars per million tokens, keyed `provider:model`) is a contract rate
 and wins:
 
@@ -148,15 +144,15 @@ A key file maps names to providers through each row's `key_name` (`OPENAI_API_KE
 depends on the configured `credential.helper`: Git Credential Manager on Windows, and on Linux a
 keychain or `git config --global credential.helper store` with `~/.git-credentials` set to mode 600.
 
-A user `providers.toml` that still has the retired `key_env` field is refused. Rename it to
-`key_name` and run `auth login`.
+A user `providers.toml` that still uses a retired field is refused naming its replacement
+(`ai_lab.retired`); the key itself goes into the store with `auth login`.
 
 ## Develop
 
 ```
 uv pip install -e ".[dev]"     # the family dev kit (lab-commons[dev]), pytest, ruff
 make verify                    # python -m lab_commons.dev.verify: ruff, the suite, hook wiring
-python -m pytest -m live       # real calls: local CLIs and every provider whose key is stored
+python -m pytest -m live       # real calls: every provider whose key is stored
 ```
 
 `.gitignore`, `.gitattributes`, `.rgignore` and `Makefile` are RENDERED from

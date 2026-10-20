@@ -4,7 +4,7 @@ import pytest
 
 from ai_lab import Basis, Provider, ResponseRequest, Text, Unsupported, connect, providers
 from ai_lab.client import Client
-from ai_lab.transport import CliResult, HttpCall
+from ai_lab.transport import HttpCall
 
 
 def _post_returning(payload):
@@ -19,7 +19,7 @@ def _post_returning(payload):
 
 
 def test_every_packaged_provider_names_a_shipped_wire():
-    assert {'openai', 'typesafe', 'anthropic', 'gemini', 'claude_code', 'codex'} <= set(providers())
+    assert {'openai', 'typesafe', 'anthropic', 'gemini', 'deepseek', 'ollama'} <= set(providers())
 
 
 def test_a_native_endpoint_decides_natively(keys, request_):
@@ -87,14 +87,6 @@ def test_a_keyless_provider_never_asks_the_store(monkeypatch):
     assert client._send(lambda key: HttpCall('http://x', {}, {'key': key})) == ({'key': ''}, 0)
 
 
-def test_a_user_row_naming_the_retired_key_env_is_refused_with_the_remedy(credential_store, tmp_path):
-    (tmp_path / 'home' / 'config').mkdir(parents=True)
-    row = '[mylab]\nwire = "openai_chat"\nendpoint = "https://box/v1"\nkey_env = "MYLAB_KEY"\n'
-    (tmp_path / 'home' / 'config' / 'providers.toml').write_text(row, encoding='utf-8')
-    with pytest.raises(Unsupported, match=r'key_env.*key_name.*ai_lab\.auth login mylab'):
-        providers()
-
-
 def test_an_unknown_provider_lists_the_known_ones():
     with pytest.raises(Unsupported, match='known'):
         connect('nope:x')
@@ -103,20 +95,6 @@ def test_an_unknown_provider_lists_the_known_ones():
 def test_an_http_provider_needs_a_model():
     with pytest.raises(Unsupported, match='needs a model'):
         connect('openai')
-
-
-def test_a_cli_provider_goes_through_run(request_, monkeypatch):
-    # A subscription CLI is refused on a Slurm compute node (tested on its own); this is the local path.
-    monkeypatch.delenv('SLURM_JOB_ID', raising=False)
-    seen = []
-
-    def run(call, **_):
-        seen.append(call)
-        return CliResult(json.dumps({'worth_fea': True, 'fidelity': 'fea2d', 'risk': 'medium'}))
-
-    d = connect('codex', run=run).decide(request_)
-    assert d.basis is Basis.STATED and d['fidelity'].choice == 'fea2d'
-    assert seen[0].argv[:2] == ('codex', 'exec')
 
 
 def test_a_user_table_in_the_family_config_root_adds_and_replaces_rows(tmp_path, monkeypatch):
@@ -149,9 +127,8 @@ def _user_rows(tmp_path, monkeypatch, rows):
 
 def test_every_packaged_row_declares_its_auth_kind():
     kinds = {name: row.auth for name, row in providers().items()}
-    assert kinds['claude_code'] == kinds['codex'] == 'subscription'
-    assert {kinds[n] for n in ('anthropic', 'openai')} == {'api'}
-    assert kinds['ollama'] == 'local'
+    assert {name for name, kind in kinds.items() if kind == 'local'} == {'ollama'}
+    assert set(kinds.values()) == {'api', 'local'}
 
 
 def test_a_row_without_auth_is_refused(tmp_path, monkeypatch):
@@ -164,39 +141,3 @@ def test_a_row_with_an_unknown_auth_is_refused(tmp_path, monkeypatch):
     _user_rows(tmp_path, monkeypatch, '[mylab]\nwire = "openai_chat"\nendpoint = "e"\nauth = "magic"\n')
     with pytest.raises(Unsupported, match="unknown auth 'magic'"):
         providers()
-
-
-def _cli_ok(call, **_):
-    _cli_ok.calls.append(call)
-    return CliResult(
-        json.dumps({'type': 'result', 'is_error': False, 'result': '{"ok": true}', 'structured_output': {'ok': True}})
-    )
-
-
-REQ_OK = ResponseRequest('i', (Text('x'),), {'type': 'object', 'properties': {'ok': {'type': 'boolean'}}})
-
-
-def test_a_subscription_provider_refuses_on_a_slurm_node_and_names_the_api_provider(monkeypatch):
-    monkeypatch.setenv('SLURM_JOB_ID', '42')
-    _cli_ok.calls = []
-    with pytest.raises(Unsupported) as refused:
-        connect('claude_code', run=_cli_ok).respond(REQ_OK)
-    assert not _cli_ok.calls
-    text = str(refused.value)
-    assert 'claude_code' in text and 'local-only' in text and "'anthropic'" in text
-    with pytest.raises(Unsupported, match="'openai'"):
-        connect('codex', run=_cli_ok).respond(REQ_OK)
-
-
-def test_a_subscription_provider_runs_off_the_cluster(monkeypatch):
-    monkeypatch.delenv('SLURM_JOB_ID', raising=False)
-    _cli_ok.calls = []
-    connect('claude_code', run=_cli_ok).respond(REQ_OK)
-    assert _cli_ok.calls
-
-
-def test_an_api_provider_runs_on_a_slurm_node(keys, monkeypatch):
-    monkeypatch.setenv('SLURM_JOB_ID', '42')
-    post = _post_returning({'content': [{'type': 'text', 'text': '{"ok": true}'}]})
-    connect('anthropic:m', post=post).respond(REQ_OK)
-    assert post.calls

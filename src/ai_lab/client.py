@@ -16,14 +16,12 @@ else the platform's user config directory -- adds rows and replaces a row of the
 the family's config search path, so ai-lab carries no second convention for where a user's file is.
 
 EVERY ROW DECLARES ITS AUTH KIND (:data:`AUTH_KINDS`); a missing or unknown one is refused, never
-inferred from an empty ``key_name``. A ``subscription`` row (the logged-in ``claude`` / ``codex`` CLIs)
-is LOCAL ONLY: a request through one on a Slurm compute node (``SLURM_JOB_ID`` set) is refused, naming
-the row's ``api_provider`` -- the same vendor's keyed ``api`` row -- as the one to use there.
+inferred from an empty ``key_name``. ai-lab is the pay-per-token API layer: a row is a keyed ``api``
+account or a keyless ``local`` server, and every retired spelling is refused by name (:mod:`ai_lab.retired`).
 
 ONE PROVIDER IS ONE ACCOUNT KIND OF ONE VENDOR (user ruling 2026-10-16). A vendor endpoint that only
 some models of the account serve (OpenAI's ``/decisions``) is not a second row: the row declares
 ``model_wires = {model = wire}`` and :meth:`Provider.wire_for` picks the wire by the MODEL, as data.
-A retired provider spelling (:data:`RETIRED_PROVIDERS`) is refused naming its replacement.
 
 AN API ACCOUNT'S KEYS ARE ORDERED SLOTS: usernames ``api-key``, ``api-key-2``, ``api-key-3``... under
 the endpoint host, read up to the first missing slot. A call starts on slot 1 and moves to the next
@@ -39,7 +37,6 @@ task's slot, never the default's. A task with no slot 1 is refused naming ``logi
 
 from __future__ import annotations
 
-import os
 import time
 import tomllib
 from collections.abc import Callable, Mapping
@@ -51,7 +48,7 @@ from urllib.parse import urlsplit
 from lab_commons.credentials import NoCredential, api_key, key_username
 from lab_commons.paths import config_root
 
-from ai_lab import emulate, transport
+from ai_lab import emulate, retired, transport
 from ai_lab.answers import Basis, Decision, Response
 from ai_lab.errors import ProviderError, Unsupported
 from ai_lab.spec import DecisionRequest, ResponseRequest
@@ -62,7 +59,6 @@ from ai_lab.wire.base import Wire
 __all__ = [
     'APP',
     'AUTH_KINDS',
-    'RETIRED_PROVIDERS',
     'Client',
     'Provider',
     'connect',
@@ -75,9 +71,8 @@ __all__ = [
 APP = 'ai_lab'
 
 
-#: How a provider authenticates: a keyed per-token ``api`` account, a logged-in vendor CLI on a
-#: ``subscription`` (local only), or a keyless ``local`` server you run yourself.
-AUTH_KINDS = frozenset({'api', 'subscription', 'local'})
+#: How a provider authenticates: a keyed per-token ``api`` account, or a keyless ``local`` server you run.
+AUTH_KINDS = frozenset({'api', 'local'})
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,22 +93,19 @@ class Provider:
     vision: bool = False
     #: Who bills this provider's tokens, as the price catalogs name it; ``''`` is unmetered.
     vendor: str = ''
-    #: For a ``subscription`` row, the same vendor's ``api`` row -- the alternative off the laptop.
-    api_provider: str = ''
     #: ``{model: wire}`` -- a model of this account served by another wire than :attr:`wire`.
     model_wires: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Refuse a row naming a wire this package does not ship, or an auth kind it does not know."""
         for wire in (self.wire, *self.model_wires.values()):
+            retired.refuse('wire', wire, f'provider {self.name!r}')
             if wire not in WIRES:
                 msg = f'provider {self.name!r} names unknown wire {wire!r}; the wires are {sorted(WIRES)}'
                 raise Unsupported(msg)
+        retired.refuse('auth', self.auth, f'provider {self.name!r}')
         if self.auth not in AUTH_KINDS:
             msg = f'provider {self.name!r} names unknown auth {self.auth!r}; the kinds are {sorted(AUTH_KINDS)}'
-            raise Unsupported(msg)
-        if (self.auth == 'subscription') != bool(self.api_provider):
-            msg = f'provider {self.name!r}: api_provider is declared by, and only by, a subscription row'
             raise Unsupported(msg)
 
     def wire_for(self, model: str) -> str:
@@ -129,22 +121,6 @@ class Provider:
     def host(self) -> str:
         """The host the key is stored under: providers sharing it share one key."""
         return urlsplit(self.endpoint).hostname or ''
-
-
-#: The field a key USED to be named by (an environment variable), retired 2026-10-13 for the store.
-_RETIRED_KEY_FIELD = 'key_env'
-
-#: Provider names that USED to exist, each with the provider that replaced it -- refused, never aliased.
-#: ``openai_decisions`` was a second door into the one OpenAI API account (retired 2026-10-16): its
-#: wire is now chosen by ``openai``'s ``model_wires``.
-RETIRED_PROVIDERS: Mapping[str, str] = {'openai_decisions': 'openai'}
-
-
-def _refuse_retired(name: str, model: str, origin: str) -> None:
-    if name in RETIRED_PROVIDERS:
-        replacement = f'{RETIRED_PROVIDERS[name]}:{model}' if model else RETIRED_PROVIDERS[name]
-        msg = f'provider {name!r} ({origin}) is retired: one provider is one account; use {replacement!r}'
-        raise Unsupported(msg)
 
 
 def _slot_key(host: str, slot: int, task: str | None = None) -> str:
@@ -176,13 +152,9 @@ def user_providers_file() -> Path:
 def _rows(text: str, origin: str) -> dict[str, Provider]:
     table = tomllib.loads(text)
     for name, row in table.items():
-        _refuse_retired(name, '', origin)
-        if _RETIRED_KEY_FIELD in row:
-            msg = (
-                f'provider {name!r} in {origin} names {_RETIRED_KEY_FIELD!r}, retired: keys are no longer read from '
-                f'the environment. Rename it to key_name (same value), then store the key: {login_command(name)}'
-            )
-            raise Unsupported(msg)
+        retired.refuse('provider', name, origin)
+        for key in row:
+            retired.refuse('field', key, f'provider {name!r} in {origin}')
     try:
         return {name: Provider(name=name, **row) for name, row in table.items()}
     except TypeError as error:
@@ -196,11 +168,6 @@ def providers() -> dict[str, Provider]:
     user = user_providers_file()
     if user.is_file():
         table.update(_rows(user.read_text('utf-8'), str(user)))
-    for row in table.values():
-        twin = table.get(row.api_provider)
-        if row.api_provider and (twin is None or twin.auth != 'api'):
-            msg = f'provider {row.name!r} names api_provider {row.api_provider!r}, which is not an api row'
-            raise Unsupported(msg)
     return table
 
 
@@ -215,13 +182,12 @@ class Client:
         effort: str = '',
         task: str | None = None,
         post: Callable[..., dict] = transport.post,
-        run: Callable[..., transport.CliResult] = transport.run,
     ) -> None:
-        """Bind ``provider``, ``model`` and the wire serving that model; refuse an HTTP provider with no model."""
+        """Bind ``provider``, ``model`` and the wire serving that model; refuse a provider with no model."""
         if task is not None:
             key_username(task)  # an undeclared task is refused here, not at the first call
         self.wire: Wire = WIRES[provider.wire_for(model)]
-        if not model and not self.wire.cli:
+        if not model:
             msg = f'{provider.name} needs a model: connect("{provider.name}:<model>")'
             raise Unsupported(msg)
         if effort and self.wire.effort is None:
@@ -235,7 +201,6 @@ class Client:
         self.effort = effort
         self.task = task
         self._post = post
-        self._run = run
 
     @property
     def name(self) -> str:
@@ -284,7 +249,7 @@ class Client:
             msg = f'{self.provider.name} does not read images; drop the Image parts or pick one that does'
             raise Unsupported(msg)
 
-    def _send(self, build: Callable[[str], transport.HttpCall | transport.CliCall]) -> tuple[object, int]:
+    def _send(self, build: Callable[[str], transport.HttpCall]) -> tuple[object, int]:
         """``build(key)``'s reply and the key slot that served it, moving on a slot at an account failure."""
         if not self.provider.keyed:
             return self._dispatch(build('')), 0
@@ -310,25 +275,17 @@ class Client:
         msg = f'{self.provider.name}: every {whose}key slot for {host} failed ({", ".join(failures)}); last: {last}'
         raise ProviderError(msg, kind=last.kind) from last
 
-    def _dispatch(self, call: transport.HttpCall | transport.CliCall) -> object:
-        if self.provider.auth == 'subscription' and os.environ.get('SLURM_JOB_ID'):
-            msg = (
-                f'{self.provider.name} uses subscription auth, which is local-only and refused on a Slurm '
-                f'compute node; use the API provider {self.provider.api_provider!r} there'
-            )
-            raise Unsupported(msg)
+    def _dispatch(self, call: transport.HttpCall) -> object:
         if self.effort:
             call = self.wire.effort(call, self.effort)
-        if isinstance(call, transport.CliCall):
-            return self._run(call)
         return self._post(call)
 
 
 def connect(spec: str, *, task: str | None = None, **options: Callable) -> Client:
-    """``'openai:gpt-6-luna'``, ``'openai:gpt-x@high'``, ``'claude_code'``..."""
+    """``'openai:gpt-6-luna'``, ``'openai:gpt-x@high'``, ``'anthropic:<model>'``..."""
     spec, _, effort = spec.partition('@')
     name, _, model = spec.partition(':')
-    _refuse_retired(name, model, 'connect')
+    retired.refuse('provider', name, f'connect({spec!r})')
     table = providers()
     if name not in table:
         msg = f'unknown provider {name!r}; known: {sorted(table)} (add one in {user_providers_file()})'

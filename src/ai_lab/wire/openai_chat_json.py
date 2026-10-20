@@ -42,7 +42,6 @@ def _effort(call: Call, effort: str) -> Call:
 
 WIRE = Wire(
     name='openai_chat_json',
-    cli=False,
     respond=_respond,
     parse_response=parse_message,
     parse_usage=chat_usage,

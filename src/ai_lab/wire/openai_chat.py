@@ -69,7 +69,6 @@ def parse_message(raw: dict) -> dict:
 
 WIRE = Wire(
     name='openai_chat',
-    cli=False,
     respond=_respond,
     parse_response=parse_message,
     parse_usage=chat_usage,

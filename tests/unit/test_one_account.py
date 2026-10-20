@@ -56,7 +56,7 @@ def test_a_model_wire_naming_an_unknown_wire_is_refused():
 
 
 def test_the_retired_decisions_provider_is_refused_naming_its_replacement():
-    with pytest.raises(Unsupported, match=r"'openai:gpt-6-luna'"):
+    with pytest.raises(Unsupported, match=r"use 'openai'"):
         connect('openai_decisions:gpt-6-luna')
     assert 'openai_decisions' not in providers()
 

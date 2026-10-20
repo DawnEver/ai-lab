@@ -1,4 +1,4 @@
-"""Real calls. Deselected by default; ``pytest -m live``. A provider whose CLI or key is absent
+"""Real calls. Deselected by default; ``pytest -m live``. A provider whose key is absent
 FAILS here with the Unsupported message naming what is missing -- it is never skipped."""
 
 import pytest
@@ -16,16 +16,20 @@ SCHEMA = {
 }
 
 
-@pytest.mark.parametrize('spec', ['claude_code:haiku', 'codex'])
-def test_local_cli_responds_and_decides(spec, request_):
+#: The API rows that respond in a schema and read images, one model each.
+_API = ['anthropic:claude-sonnet-5-5']
+
+
+@pytest.mark.parametrize('spec', _API)
+def test_an_api_row_responds_and_decides(spec, request_):
     client = connect(spec)
     assert client.respond(ResponseRequest('Answer.', (Text('Is 9 prime?'),), SCHEMA)).value == {'prime': False}
     d = client.decide(request_)
     assert d.basis is Basis.STATED and set(d.answers) == {'worth_fea', 'fidelity', 'risk'}
 
 
-@pytest.mark.parametrize('spec', ['claude_code:haiku', 'codex'])
-def test_local_cli_reads_an_image(spec):
+@pytest.mark.parametrize('spec', _API)
+def test_an_api_row_reads_an_image(spec):
     schema = {
         'type': 'object',
         'properties': {'colour': {'type': 'string', 'enum': ['red', 'green', 'blue']}},

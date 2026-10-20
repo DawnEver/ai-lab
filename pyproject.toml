@@ -11,8 +11,8 @@ description = "Vendor-neutral typed decisions and schema-bound responses from an
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [{ name = "Mingyang Bao" }]
-# HTTP is urllib, the provider table is tomllib, the CLIs are subprocesses. lab-commons supplies what
-# the family already owns: the config search path (`paths`) and ending a process TREE (`proc`).
+# HTTP is urllib and the provider table is tomllib. lab-commons supplies what the family already owns:
+# the config search path (`paths`) and the key store (`credentials`).
 dependencies = [
     "lab-commons[paths] @ git+https://gitea.mingyangbao.site/Tianjie-Zou-Team/lab-commons.git",
 ]

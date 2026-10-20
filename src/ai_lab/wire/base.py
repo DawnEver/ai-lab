@@ -15,13 +15,13 @@ from dataclasses import dataclass, replace
 
 from ai_lab.answers import Answer
 from ai_lab.spec import Context, DecisionRequest, Fields, Image, ResponseRequest, Text
-from ai_lab.transport import CliCall, HttpCall
+from ai_lab.transport import HttpCall
 from ai_lab.usage import Usage
 
 __all__ = ['Wire', 'body_effort', 'is_closed', 'joined_text', 'text_of']
 
-Call = HttpCall | CliCall
-#: ``(request, model, endpoint, key) -> call``: the endpoint is a base URL or a CLI binary name.
+Call = HttpCall
+#: ``(request, model, endpoint, key) -> call``: the endpoint is the base URL of the wire's protocol.
 Build = Callable[[ResponseRequest, str, str, str], Call]
 BuildDecision = Callable[[DecisionRequest, str, str, str], Call]
 
@@ -31,7 +31,6 @@ class Wire:
     """One protocol. ``decide`` is ``None`` unless the vendor answers typed questions natively."""
 
     name: str
-    cli: bool
     respond: Build | None = None
     parse_response: Callable[[object], Mapping] | None = None
     decide: BuildDecision | None = None
@@ -56,9 +55,6 @@ def body_effort(*path: str) -> Callable[[Call, str], Call]:
     """An ``effort`` hook writing the effort at ``path`` inside an HTTP body (``('reasoning', 'effort')``)."""
 
     def apply(call: Call, effort: str) -> Call:
-        if not isinstance(call, HttpCall):
-            msg = 'a body effort applies to an HTTP call'
-            raise TypeError(msg)
         body = dict(call.body)
         node = body
         for step in path[:-1]:

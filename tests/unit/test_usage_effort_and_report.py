@@ -10,12 +10,11 @@ from ai_lab import DecisionRequest, Ledger, Predicate, ResponseRequest, Text, co
 from ai_lab.errors import Unsupported
 from ai_lab.prices import Price, Quote
 from ai_lab.report import summarize
-from ai_lab.transport import CliCall, HttpCall
+from ai_lab.transport import HttpCall
 from ai_lab.usage import (
     Usage,
     anthropic_usage,
     chat_usage,
-    claude_code_usage,
     gemini_usage,
     responses_usage,
 )
@@ -47,13 +46,12 @@ def test_each_vendor_shape_is_read_into_one_usage() -> None:
     assert anthropic_usage(anthropic) == Usage(10, 4, 3, 0)
     gemini = {'usageMetadata': {'promptTokenCount': 9, 'candidatesTokenCount': 2, 'thoughtsTokenCount': 6}}
     assert gemini_usage(gemini) == Usage(9, 8, 0, 6)
-    assert claude_code_usage({**anthropic, 'total_cost_usd': 0.0123}).cost_usd == 0.0123
     assert responses_usage({'answers': []}) is None
 
 
-def test_every_http_wire_reads_usage_and_every_effort_hook_is_declared_data() -> None:
-    assert {n for n, w in WIRES.items() if w.parse_usage is None} == {'codex'}
-    assert {n for n, w in WIRES.items() if w.effort} == {'openai_responses', 'openai_chat', 'openai_chat_json', 'codex'}
+def test_every_wire_reads_usage_and_every_effort_hook_is_declared_data() -> None:
+    assert {n for n, w in WIRES.items() if w.parse_usage is None} == set()
+    assert {n for n, w in WIRES.items() if w.effort} == {'openai_responses', 'openai_chat', 'openai_chat_json'}
 
 
 def test_a_native_decision_carries_the_vendors_usage(keys) -> None:
@@ -77,11 +75,6 @@ def test_effort_is_part_of_the_name_and_reaches_the_body(keys) -> None:
 def test_a_wire_with_no_effort_refuses_one() -> None:
     with pytest.raises(Unsupported, match='takes no effort'):
         connect('openai:gpt-6-luna@high')
-
-
-def test_codex_effort_goes_before_the_prompt_dash() -> None:
-    call = CliCall(argv=('codex', 'exec', '-'), stdin='')
-    assert WIRES['codex'].effort(call, 'low').argv == ('codex', 'exec', '-c', 'model_reasoning_effort="low"', '-')
 
 
 def test_a_body_effort_nests_without_touching_the_original() -> None:

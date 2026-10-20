@@ -63,7 +63,7 @@ def test_the_users_rate_wins_and_an_unmetered_provider_is_unpriced(tmp_path) -> 
         quote('openai', 'openai', 'm', directory=tmp_path, get=_catalogs(0.1, 0.1, []), user=user).origin
         == 'prices.toml'
     )
-    assert quote('claude_code', '', 'haiku', directory=tmp_path, get=_catalogs(0.1, 0.1, []), user={}) is None
+    assert quote('ollama', '', 'llama3', directory=tmp_path, get=_catalogs(0.1, 0.1, []), user={}) is None
 
 
 def test_cost_bills_cached_input_at_its_rate_and_the_clis_own_dollars_win() -> None:

@@ -61,10 +61,15 @@ def keys(credential_store):
 _METHOD_DEFAULT = Path.home() / 'Documents' / 'AI' / 'cc-config' / 'cc-market' / 'sharp-review' / 'method'
 
 
+def method_path() -> Path:
+    """Where the method is looked for: ``SHARP_REVIEW_METHOD``, else the cc-market checkout."""
+    return Path(os.environ.get('SHARP_REVIEW_METHOD') or _METHOD_DEFAULT)
+
+
 @pytest.fixture(scope='session')
 def method_dir() -> Path:
     """sharp-review's method directory, read IN PLACE (never vendored); absent is a failure naming it."""
-    path = Path(os.environ.get('SHARP_REVIEW_METHOD') or _METHOD_DEFAULT)
+    path = method_path()
     if not (path / 'method.json').is_file():
         pytest.fail(f'no sharp-review method at {path}: set SHARP_REVIEW_METHOD to cc-market/sharp-review/method')
     return path

@@ -121,6 +121,31 @@ Version 2 removed `usage.cost_usd` (2026-10-20): a version-1 reader expects that
 object, so the reply's shape changed and the version moved. A caller prices the tokens itself (see
 "Effort, usage and cost").
 
+## A headless code review: `python -m ai_lab.review`
+
+```
+python -m ai_lab.review --method <sharp-review method dir> --range main...HEAD --model <model id>
+                        [--providers anthropic ...] [--repo <path>]
+```
+
+The review METHOD is data owned by sharp-review (cc-market `sharp-review/method/`): profiles, prompt
+templates, the finding schema and the merge rules under one `schema_version`. `--method` names that
+directory and it is read in place; ai-lab keeps no copy. The run follows `run_modes.headless`: it picks
+`pick.count` diff-context profiles by weight, renders each prompt over `git diff <range>`, assigns
+reviewer i the provider `providers[i mod n]` (default `["anthropic"]`), and makes each call as a
+`respond` under task `pr-review` whose schema is `{"findings": [<finding schema>]}`. `--model` serves
+every provider the run mode's `models` does not name (the method names none headless).
+
+stdout is ONE findings JSON document, the method's `findings-output.schema.json` (version 1), exit 0
+whatever the reviewers did. Each reviewer's `status`: `ok` (a findings array; `[]` is a clean pass);
+the failed call's kind (`exhausted`, `auth`, `rate_limit`, `timeout`, `unsupported`); `unavailable` (the
+provider is not in the catalogue -- never substituted -- or the failure was unclassified); `skipped` (an
+empty diff, no call made). A refused invocation -- no `method.json`, an unknown `schema_version`, a range
+git cannot diff -- exits 2 naming it on stderr with nothing on stdout. The rules the data cannot state
+(pick, templating, status precedence, merge) are pinned by the method's `conformance/` fixtures, which
+this test suite reads in place (the host's `[capabilities.sharp_review] path`) and the Node
+executor runs too; the two share no code.
+
 ## Replay
 
 ```python

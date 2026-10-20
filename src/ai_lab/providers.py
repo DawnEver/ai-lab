@@ -19,10 +19,10 @@ import json
 import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from importlib.metadata import version
 
 from lab_commons.credentials import API_KEY_TASKS, key_username
 
-from ai_lab.__version__ import __version__
 from ai_lab.client import PROTOCOLS, Provider, catalogue, packaged_providers_file, user_providers_file
 from ai_lab.wire import WIRES
 
@@ -67,7 +67,7 @@ def document(*, now: datetime | None = None) -> dict:
     return {
         'schema_version': CATALOGUE_SCHEMA_VERSION,
         'generated_at': (now or datetime.now(UTC)).isoformat(),
-        'ai_lab_version': __version__,
+        'ai_lab_version': version('ai_lab'),  # the installed metadata; __version__.py is a build artefact
         'python': sys.executable,
         'inputs': inputs,
         'source_sha256': digest.hexdigest(),

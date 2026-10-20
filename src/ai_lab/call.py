@@ -12,7 +12,7 @@ without a vendor SDK, a key or a retry loop of its own. The request::
 
 and the reply, always one JSON object::
 
-    {"schema_version": 1, "ok": bool, "kind": "" | "exhausted" | "auth" | "rate_limit" | "unsupported"
+    {"schema_version": 2, "ok": bool, "kind": "" | "exhausted" | "auth" | "rate_limit" | "unsupported"
      | "timeout", "result": object | null, "usage": {...} | null, "key_slot": int, "error": str}
 
 ``result`` is the schema object (respond) or ``{"basis", "answers": {name: answer}}`` (decide). A
@@ -45,7 +45,7 @@ from ai_lab.spec import DecisionRequest, Fields, Image, ResponseRequest, Text, d
 __all__ = ['CALL_SCHEMA_VERSION', 'REPLY_KINDS', 'Malformed', 'answer']
 
 #: The version of the reply :func:`answer` writes and of the request it reads.
-CALL_SCHEMA_VERSION: Final = 1
+CALL_SCHEMA_VERSION: Final = 2
 
 #: Every ``kind`` a reply may carry; ``''`` is success or an unclassified provider failure.
 REPLY_KINDS: Final = ERROR_KINDS | {'', 'unsupported'}

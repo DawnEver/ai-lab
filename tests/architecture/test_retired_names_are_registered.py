@@ -1,12 +1,13 @@
 """Every retired spelling is REFUSED BY NAME where it would be read, and a scanned one appears nowhere else.
 
 The registry is :data:`ai_lab.retired.RETIRED`. Each row is driven through the entry point its kind is
-read at -- a ``connect`` spec, a user provider row's name, wire, field or auth -- and must be refused
-naming its replacement. A scanned spelling found in any other tracked file is a leftover.
+read at -- a ``connect`` spec, a user provider row's name, wire, field or auth, a ledger entry's usage --
+and must be refused naming its replacement. A scanned spelling found in any other tracked file is a leftover.
 """
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
@@ -14,7 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from ai_lab import Unsupported, catalogue, connect
+from ai_lab import Ledger, Unsupported, catalogue, connect
+from ai_lab.ledger import LEDGER_SCHEMA_VERSION
 from ai_lab.retired import RETIRED, Retired, refuse
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -42,7 +44,7 @@ def _row_using(retired: Retired) -> str:
     return f'[mine]\n{_ROW}{retired.spelling} = "x"\n'
 
 
-@pytest.mark.parametrize('retired', RETIRED, ids=lambda r: f'{r.kind}:{r.spelling}')
+@pytest.mark.parametrize('retired', [r for r in RETIRED if r.kind != 'usage'], ids=lambda r: f'{r.kind}:{r.spelling}')
 def test_a_user_row_using_a_retired_spelling_is_refused_naming_the_replacement(retired, tmp_path, monkeypatch):
     _user_rows(tmp_path, monkeypatch, _row_using(retired))
     with pytest.raises(Unsupported, match=re.escape(f'use {retired.replacement!r}')):
@@ -53,6 +55,15 @@ def test_a_user_row_using_a_retired_spelling_is_refused_naming_the_replacement(r
 def test_a_retired_provider_is_refused_at_connect(retired):
     with pytest.raises(Unsupported, match=re.escape(f'use {retired.replacement!r}')):
         connect(f'{retired.spelling}:m')
+
+
+@pytest.mark.parametrize('retired', [r for r in RETIRED if r.kind == 'usage'], ids=lambda r: r.spelling)
+def test_a_retired_usage_field_is_refused_in_a_current_ledger_entry(retired, tmp_path):
+    usage = {'input_tokens': 1, retired.spelling: 0}
+    entry = {'schema_version': LEDGER_SCHEMA_VERSION, 'key': 'k', 'usage': usage}
+    (tmp_path / 'l.jsonl').write_text(json.dumps(entry), encoding='utf-8')
+    with pytest.raises(Unsupported, match=re.escape(f'use {retired.replacement!r}')):
+        Ledger(tmp_path / 'l.jsonl')
 
 
 def test_the_planted_control_a_live_row_loads(tmp_path, monkeypatch):

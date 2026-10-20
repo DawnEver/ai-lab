@@ -86,10 +86,10 @@ protocol), `auth`, `key_name`, `key_usernames` (`{"default": "api-key", "<task>"
 slot 1; never a key), `vision`, `vendor`, `model_wires`, `models`. A host launcher's setup cache is
 built from it; without arguments the command prints one line per provider.
 
-## One call from any language: `python -m ai_lab.call` (protocol version 1)
+## One call from any language: `python -m ai_lab.call` (protocol version 2)
 
 A process in another language (a Node host harness) makes one call by writing ONE JSON request to
-stdin and reading ONE JSON reply from stdout. Version 1 of the contract, `ai_lab.call.CALL_SCHEMA_VERSION`:
+stdin and reading ONE JSON reply from stdout. Version 2 of the contract, `ai_lab.call.CALL_SCHEMA_VERSION`:
 
 ```jsonc
 // request; any field not listed here is refused
@@ -103,10 +103,10 @@ stdin and reading ONE JSON reply from stdout. Version 1 of the contract, `ai_lab
  "images": [{"mime": "image/png", "data": "<base64>"}]}                      // optional
 
 // reply
-{"schema_version": 1, "ok": true,
+{"schema_version": 2, "ok": true,
  "kind": "" | "exhausted" | "auth" | "rate_limit" | "unsupported" | "timeout",
  "result": {...} | null,         // respond: the schema object; decide: {"basis", "answers": {name: answer}}
- "usage": {"input_tokens", "output_tokens", "cached_tokens", "reasoning_tokens", "cost_usd"} | null,
+ "usage": {"input_tokens", "output_tokens", "cached_tokens", "reasoning_tokens"} | null,  // dollars are derived, never carried
  "key_slot": 1, "error": ""}
 ```
 
@@ -116,6 +116,10 @@ names it without a key, and the exit status is 0. Only a malformed request (not 
 missing field, a wrong type, an undeclared task) exits 2, with the reason on stderr. `--ledger PATH`
 records every call with its usage and key slot through the ledger (record mode: a request already in
 the file is served from it).
+
+Version 2 removed `usage.cost_usd` (2026-10-20): a version-1 reader expects that key in every usage
+object, so the reply's shape changed and the version moved. A caller prices the tokens itself (see
+"Effort, usage and cost").
 
 ## A headless code review: `python -m ai_lab.review`
 
@@ -139,7 +143,7 @@ provider is not in the catalogue -- never substituted -- or the failure was uncl
 empty diff, no call made). A refused invocation -- no `method.json`, an unknown `schema_version`, a range
 git cannot diff -- exits 2 naming it on stderr with nothing on stdout. The rules the data cannot state
 (pick, templating, status precedence, merge) are pinned by the method's `conformance/` fixtures, which
-this test suite reads in place (`SHARP_REVIEW_METHOD`, default the cc-market checkout) and the Node
+this test suite reads in place (the host's `[capabilities.sharp_review] path`) and the Node
 executor runs too; the two share no code.
 
 ## Replay

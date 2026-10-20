@@ -66,8 +66,7 @@ def test_the_users_rate_wins_and_an_unmetered_provider_is_unpriced(tmp_path) -> 
     assert quote('ollama', '', 'llama3', directory=tmp_path, get=_catalogs(0.1, 0.1, []), user={}) is None
 
 
-def test_cost_bills_cached_input_at_its_rate_and_the_clis_own_dollars_win() -> None:
+def test_cost_bills_cached_input_at_its_rate_and_is_unpriced_without_a_price() -> None:
     price = Price(1.0, 4.0, 0.1)
     assert cost(Usage(1_000_000, 500_000, 1_000_000), price) == pytest.approx(2.1)
     assert cost(Usage(10, 10), None) is None
-    assert cost(Usage(1, 1, cost_usd=0.5), None) == 0.5

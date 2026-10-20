@@ -3,6 +3,10 @@
 The key is the SHA-256 of the verb, the client name and the canonical request (images by digest),
 so an entry answers only the request that produced it. ``RECORD`` serves a hit and records a miss;
 ``REPLAY`` serves a hit and raises :class:`ReplayMiss` on a miss -- it never reaches a model.
+
+An entry carries :data:`LEDGER_SCHEMA_VERSION`. An older entry is UPGRADED on read, one declared step
+per schema (:data:`UPGRADES`), and the file is written back at the current schema; only a schema this
+reader does not know is refused.
 """
 
 from __future__ import annotations
@@ -13,13 +17,15 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
+from typing import Final
 
+from ai_lab import retired
 from ai_lab.answers import Answer, Basis, ChoiceAnswer, Decision, PredicateAnswer, Refusal, Response, ScoreAnswer
-from ai_lab.errors import ReplayMiss
+from ai_lab.errors import ReplayMiss, Unsupported
 from ai_lab.spec import DecisionRequest, ResponseRequest, canonical
 from ai_lab.usage import Usage
 
-__all__ = ['Ledger', 'Mode', 'Recorded']
+__all__ = ['LEDGER_SCHEMA_VERSION', 'UPGRADES', 'Ledger', 'Mode', 'Recorded', 'read_entry']
 
 _ANSWERS = {cls.__name__: cls for cls in (PredicateAnswer, ChoiceAnswer, ScoreAnswer, Refusal)}
 
@@ -33,6 +39,31 @@ class Mode(StrEnum):
 
 def _key(verb: str, client: str, request: DecisionRequest | ResponseRequest) -> str:
     return hashlib.sha256('\n'.join((verb, client, canonical(request))).encode()).hexdigest()
+
+
+def _v1_to_v2(entry: dict) -> dict:
+    """Schema 1 (no ``schema_version``) carried vendor dollars in ``usage``; dollars are derived now."""
+    usage = entry.get('usage')
+    return {**entry, 'usage': None if usage is None else {k: v for k, v in usage.items() if k != 'cost_usd'}}
+
+
+#: The schema an entry is written at, and the step that lifts each older schema to the next.
+LEDGER_SCHEMA_VERSION: Final = 2
+UPGRADES: Final = {1: _v1_to_v2}
+
+
+def read_entry(entry: dict, origin: str) -> dict:
+    """*entry* at :data:`LEDGER_SCHEMA_VERSION`; :class:`Unsupported` for a schema this reader does not know."""
+    version = entry.get('schema_version', 1)
+    if version not in UPGRADES and version != LEDGER_SCHEMA_VERSION:
+        msg = f'{origin} holds a ledger entry at schema {version}; this reader knows 1..{LEDGER_SCHEMA_VERSION}'
+        raise Unsupported(msg)
+    while version != LEDGER_SCHEMA_VERSION:
+        entry = UPGRADES[version](entry)
+        version += 1
+    for field in entry.get('usage') or ():
+        retired.refuse('usage', field, origin)
+    return {**entry, 'schema_version': version}
 
 
 def _usage_to(usage: Usage | None) -> dict | None:
@@ -60,11 +91,20 @@ class Ledger:
         self.path = Path(path)
         self.mode = Mode(mode)
         self._entries: dict[str, dict] = {}
-        if self.path.exists():
-            for line in self.path.read_text('utf-8').splitlines():
-                if line.strip():
-                    entry = json.loads(line)
-                    self._entries[entry['key']] = entry
+        if not self.path.exists():
+            return
+        stale = False
+        for line in self.path.read_text('utf-8').splitlines():
+            if line.strip():
+                raw = json.loads(line)
+                entry = read_entry(raw, str(self.path))
+                stale = stale or entry != raw
+                self._entries[entry['key']] = entry
+        if stale:
+            fresh = self.path.with_name(self.path.name + '.upgrading')
+            lines = (json.dumps(e, ensure_ascii=False) + '\n' for e in self._entries.values())
+            fresh.write_text(''.join(lines), 'utf-8')
+            fresh.replace(self.path)
 
     def __len__(self) -> int:
         """How many entries the file holds."""
@@ -107,6 +147,7 @@ class Recorded:
         if entry is None:
             d = self.client.decide(request)
             entry = {
+                'schema_version': LEDGER_SCHEMA_VERSION,
                 'key': key,
                 'verb': 'decide',
                 'client': self.name,
@@ -139,6 +180,7 @@ class Recorded:
         if entry is None:
             r = self.client.respond(request)
             entry = {
+                'schema_version': LEDGER_SCHEMA_VERSION,
                 'key': key,
                 'verb': 'respond',
                 'client': self.name,

@@ -48,7 +48,7 @@ def test_respond_returns_the_object_with_its_usage_and_key_slot(keys):
     assert set(reply) == _REPLY_KEYS
     assert reply == {
         'schema_version': CALL_SCHEMA_VERSION, 'ok': True, 'kind': '', 'result': {'ok': True},
-        'usage': {'input_tokens': 7, 'output_tokens': 2, 'cached_tokens': 0, 'reasoning_tokens': 0, 'cost_usd': None},
+        'usage': {'input_tokens': 7, 'output_tokens': 2, 'cached_tokens': 0, 'reasoning_tokens': 0},
         'key_slot': 1, 'error': '',
     }  # fmt: skip
     assert post.calls[0].body['system'] == 'Be brief.'

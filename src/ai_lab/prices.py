@@ -10,7 +10,7 @@ WHO BILLS YOU DECIDES WHICH PRICE IS TRUE. A provider row names its billing ``ve
 are asked about that vendor's model. A reseller (OpenRouter) quotes its own route and is a source
 only for the ``openrouter`` vendor -- measured 2026-10-09, it quoted deepseek-v4-flash input at
 $0.017/M against the vendor's $0.14-0.30. A provider with no vendor (a keyless local server) is
-unpriced; a vendor that reports its own dollars in the usage it returns is billed at that figure.
+unpriced.
 
 CROSS-CHECK. The vendor-direct catalogs (models.dev, LiteLLM, Portkey) are read; the consensus is
 their median, AGREED when they all sit within 5% of it, DISPUTED otherwise -- measured 2026-10-09:
@@ -246,12 +246,8 @@ def _user_prices() -> dict[str, Mapping[str, float]]:
 
 
 def cost(usage: Usage | None, price: Price | None) -> float | None:
-    """US dollars for ``usage`` at ``price``; the vendor's own reported dollars win; ``None`` when unpriced."""
-    if usage is None:
-        return None
-    if usage.cost_usd is not None:
-        return usage.cost_usd
-    if price is None:
+    """US dollars for ``usage`` at ``price``; ``None`` when unpriced."""
+    if usage is None or price is None:
         return None
     fresh = usage.input_tokens - usage.cached_tokens
     cached_rate = price.input if price.cached_input is None else price.cached_input

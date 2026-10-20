@@ -1,8 +1,8 @@
 """What a call consumed, as the vendor reported it.
 
 TOKENS ARE THE FACT; COST IS DERIVED (:mod:`ai_lab.prices`). Every wire reads its vendor's usage
-block into one :class:`Usage` and the ledger records it with the call's time. A vendor that reports its
-own dollar figure carries it in :attr:`Usage.cost_usd`.
+block into one :class:`Usage` and the ledger records it with the call's time. Dollars are never
+carried; :func:`ai_lab.prices.cost` derives them from the tokens.
 """
 
 from __future__ import annotations
@@ -30,7 +30,6 @@ class Usage:
     output_tokens: int = 0
     cached_tokens: int = 0
     reasoning_tokens: int = 0
-    cost_usd: float | None = None
 
 
 def _int(block: Mapping, *path: str) -> int:

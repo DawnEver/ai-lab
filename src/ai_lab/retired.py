@@ -17,7 +17,7 @@ from ai_lab.errors import Unsupported
 __all__ = ['KINDS', 'RETIRED', 'Retired', 'refuse']
 
 #: What a retired spelling named.
-KINDS: Final = frozenset({'provider', 'wire', 'field', 'auth'})
+KINDS: Final = frozenset({'provider', 'wire', 'field', 'auth', 'usage'})
 
 #: Why the two subscription doors left (user ruling 2026-10-20): ai-lab is the pay-per-token API layer.
 _API_ONLY = (
@@ -64,6 +64,11 @@ RETIRED: Final = (
         'one row serves each protocol of its account at its own path', '2026-10-20', scanned=False,
     ),
     Retired('field', 'api_provider', '(nothing: every row is an api or local account)', _API_ONLY, '2026-10-20'),
+    Retired(
+        'usage', 'cost_usd', '(nothing: ai_lab.prices.cost derives dollars from the tokens)',
+        'no wire reports its own dollars any more; a schema-1 ledger entry is upgraded on read', '2026-10-20',
+        scanned=False,  # still the live name of a report row's derived dollars
+    ),
 )  # fmt: skip
 
 _BY_NAME: Final = {(r.kind, r.spelling): r for r in RETIRED}

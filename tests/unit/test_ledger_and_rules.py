@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from ai_lab import (
@@ -18,6 +20,9 @@ from ai_lab import (
     Text,
     Unsupported,
 )
+from ai_lab.ledger import LEDGER_SCHEMA_VERSION, UPGRADES
+from ai_lab.report import summarize
+from ai_lab.usage import Usage
 
 
 class Counting:
@@ -104,3 +109,55 @@ def test_everything_satisfies_the_two_verbs(tmp_path):
     assert isinstance(Rules({}), Decider)
     recorded = Ledger(tmp_path / 'l.jsonl').wrap(Counting())
     assert isinstance(recorded, Decider) and isinstance(recorded, Responder)
+
+
+_V1_USAGE = {'input_tokens': 7, 'output_tokens': 2, 'cached_tokens': 0, 'reasoning_tokens': 0, 'cost_usd': 0.5}
+
+
+def _rewrite(path, **changes):
+    entry = json.loads(path.read_text('utf-8'))
+    entry.update(changes)
+    entry = {k: v for k, v in entry.items() if v is not None}
+    path.write_text(json.dumps(entry) + '\n', 'utf-8')
+
+
+def _v1_entry(path, request_):
+    """A schema-1 ledger line: no ``schema_version``, and a usage block carrying vendor dollars."""
+    Ledger(path).wrap(Counting()).decide(request_)
+    _rewrite(path, schema_version=None, usage=dict(_V1_USAGE))
+
+
+def test_a_schema_1_entry_is_upgraded_on_read_and_written_back_at_the_current_schema(tmp_path, request_):
+    path = tmp_path / 'l.jsonl'
+    _v1_entry(path, request_)
+    assert Ledger(path, 'replay').wrap(Counting()).decide(request_).usage == Usage(7, 2, 0, 0)
+    stored = json.loads(path.read_text('utf-8'))
+    assert stored['schema_version'] == LEDGER_SCHEMA_VERSION
+    assert 'cost_usd' not in stored['usage']
+
+
+def test_a_schema_the_reader_does_not_know_is_refused(tmp_path, request_):
+    path = tmp_path / 'l.jsonl'
+    Ledger(path).wrap(Counting()).decide(request_)
+    _rewrite(path, schema_version=99)
+    with pytest.raises(Unsupported, match='schema 99'):
+        Ledger(path)
+
+
+def test_a_current_entry_carrying_the_retired_usage_field_is_refused_by_name(tmp_path, request_):
+    path = tmp_path / 'l.jsonl'
+    Ledger(path).wrap(Counting()).decide(request_)
+    _rewrite(path, usage=dict(_V1_USAGE))
+    with pytest.raises(Unsupported, match="usage 'cost_usd'"):
+        Ledger(path)
+
+
+def test_the_report_reads_a_schema_1_ledger_through_the_same_upgrade(tmp_path, request_):
+    path = tmp_path / 'l.jsonl'
+    _v1_entry(path, request_)
+    (row,) = summarize([path], price=lambda *_a, **_k: None)
+    assert (row.input_tokens, row.cost_usd) == (7, None)
+
+
+def test_every_older_ledger_schema_declares_its_upgrade_step():
+    assert set(UPGRADES) == set(range(1, LEDGER_SCHEMA_VERSION))

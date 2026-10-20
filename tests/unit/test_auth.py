@@ -133,3 +133,36 @@ def test_the_module_runs_as_a_cli():
     )
     assert done.returncode == 0, done.stderr
     assert 'login' in done.stdout and 'status' in done.stdout
+
+
+def test_from_file_honours_task_and_slot(credential_store, tmp_path, capsys):
+    keys = tmp_path / 'keys'
+    keys.write_text('OPENAI_API_KEY sk-task-two\n', encoding='utf-8')
+    assert auth.main(['login', '--from-file', str(keys), '--task', 'optimization', '-s', '2']) == 0
+    text = credential_store.file.read_text(encoding='utf-8')
+    assert 'https://api-key-optimization-2:sk-task-two@api.openai.com' in text
+    assert 'https://api-key:' not in text
+    out = capsys.readouterr()
+    assert 'task optimization slot 2' in out.out
+    assert 'sk-task-two' not in out.out + out.err
+
+
+def test_from_file_refuses_an_unknown_task_before_storing(credential_store, tmp_path, capsys):
+    keys = tmp_path / 'keys'
+    keys.write_text('OPENAI_API_KEY sk-x\n', encoding='utf-8')
+    assert auth.main(['login', '--from-file', str(keys), '--task', 'nope']) == 1
+    assert not credential_store.file.exists() or 'sk-x' not in credential_store.file.read_text(encoding='utf-8')
+
+
+def test_provider_with_from_file_imports_only_that_providers_key(credential_store, tmp_path):
+    keys = tmp_path / 'keys'
+    keys.write_text('OPENAI_API_KEY sk-o\nDEEPSEEK_API_KEY sk-d\n', encoding='utf-8')
+    assert auth.main(['login', 'openai', '--from-file', str(keys), '--task', 'pr-review']) == 0
+    text = credential_store.file.read_text(encoding='utf-8')
+    assert 'https://api-key-pr-review:sk-o@api.openai.com' in text
+    assert 'sk-d' not in text
+
+
+def test_login_needs_a_provider_or_a_file():
+    with pytest.raises(SystemExit):
+        auth.main(['login'])

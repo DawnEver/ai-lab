@@ -28,7 +28,8 @@ credentials sharing one key. The stored keys are read through :func:`lab_commons
 
 The key never travels in argv: ``login <provider>`` reads it from the terminal without echo, or from
 stdin when piped; ``--from-file -`` reads a key file from stdin (``ssh box python -m ai_lab.auth login
---from-file - < keys``).
+--from-file - < keys``). ``--task`` and ``--slot`` apply to a key file exactly as to a prompted key, and
+``login <provider> --from-file`` imports only that provider's line.
 """
 
 from __future__ import annotations
@@ -118,56 +119,71 @@ def _store(host: str, secret: str, username: str) -> bool | None:
     return True
 
 
-def _login_one(name: str, slot: int, task: str | None) -> int:
+def _not_keyed(name: str | None, keyed: dict[str, Provider]) -> bool:
+    """Whether *name* was given and is no keyed provider, saying why."""
+    if name is None or name in keyed:
+        return False
+    table = catalogue()
+    sys.stderr.write(
+        f'{name} needs no key\n' if name in table else f'unknown provider {name!r}; known: {sorted(table)}\n'
+    )
+    return True
+
+
+def _read_pairs(source: str | None, provider: Provider | None, which: str) -> list[tuple[str, str]] | None:
+    """``(NAME, key)`` pairs from the key file *source*, else *provider*'s one key read without echo."""
+    if source is not None:
+        text = sys.stdin.read() if source == '-' else Path(source).read_text(encoding='utf-8')
+        pairs, malformed = parse_key_file(text)
+        for number in malformed:
+            sys.stderr.write(f'line {number}: no value; skipped\n')
+        return pairs
+    prompt = f'{provider.key_name} for {provider.host} ({which}): '
+    secret = (getpass.getpass(prompt) if sys.stdin.isatty() else sys.stdin.readline()).strip()
+    if not secret:
+        sys.stderr.write('empty key; nothing stored\n')
+        return None
+    return [(provider.key_name, secret)]
+
+
+def _login(name: str | None, source: str | None, slot: int, task: str | None) -> int:
+    """Store keys as ``key_username(task, slot)``: *name*'s key from the terminal/stdin, or a key file's.
+
+    *source* (a path, ``-`` for stdin) supplies ``NAME value`` lines; *name* alone prompts for its key,
+    and *name* with *source* imports only that provider's line. One path, so ``--task``/``--slot`` mean
+    the same thing whichever way the key arrives.
+    """
     try:
         username = key_username(task, slot)
     except ValueError as refused:
         sys.stderr.write(f'{refused}\n')
         return 1
-    table = catalogue()
-    if name not in table:
-        sys.stderr.write(f'unknown provider {name!r}; known: {sorted(table)}\n')
-        return 1
-    provider = table[name]
-    if not provider.keyed:
-        sys.stderr.write(f'{name} needs no key\n')
+    keyed = _keyed()
+    if _not_keyed(name, keyed):
         return 1
     which = f'slot {slot}' if task is None else f'task {task} slot {slot}'
-    prompt = f'{provider.key_name} for {provider.host} ({which}): '
-    secret = (getpass.getpass(prompt) if sys.stdin.isatty() else sys.stdin.readline()).strip()
-    if not secret:
-        sys.stderr.write('empty key; nothing stored\n')
+    pairs = _read_pairs(source, keyed[name] if source is None else None, which)
+    if pairs is None:
         return 1
-    stored = _store(provider.host, secret, username)
-    if stored is False:
-        return 1
-    sharing = sorted(n for n, row in _keyed().items() if row.host == provider.host)
-    sys.stdout.write(
-        f'{provider.host} already holds this key as {username!r} ({which}); nothing changed\n'
-        if stored is None
-        else f'stored key {which} for {provider.host} ({", ".join(sharing)})\n'
-    )
-    return 0
-
-
-def _login_file(source: str) -> int:
-    text = sys.stdin.read() if source == '-' else Path(source).read_text(encoding='utf-8')
-    pairs, malformed = parse_key_file(text)
-    for number in malformed:
-        sys.stderr.write(f'line {number}: no value; skipped\n')
     by_name: dict[str, list[Provider]] = {}
-    for row in _keyed().values():
+    for row in keyed.values() if name is None else [keyed[name]]:
         by_name.setdefault(row.key_name, []).append(row)
+    scope = '' if name is None else f'{name!r} '
     stored = 0
-    for name, secret in pairs:
-        if name not in by_name:
-            sys.stderr.write(f'{name}: no provider names this key; skipped\n')
+    for key_name, secret in pairs:
+        if key_name not in by_name:
+            sys.stderr.write(f'{key_name}: no provider {scope}names this key; skipped\n')
             continue
-        for host in sorted({row.host for row in by_name[name]}):
-            if _store(host, secret, key_username()) is False:
+        for host in sorted({row.host for row in by_name[key_name]}):
+            outcome = _store(host, secret, username)
+            if outcome is False:
                 return 1
-            sharing = sorted(row.name for row in by_name[name] if row.host == host)
-            sys.stdout.write(f'{name}: stored for {host} ({", ".join(sharing)})\n')
+            sharing = sorted(n for n, row in keyed.items() if row.host == host)
+            sys.stdout.write(
+                f'{host} already holds this key as {username!r} ({which}); nothing changed\n'
+                if outcome is None
+                else f'{key_name}: stored key {which} for {host} ({", ".join(sharing)})\n'
+            )
             stored += 1
     if not stored:
         sys.stderr.write('no key in the file matched a provider; nothing stored\n')
@@ -211,9 +227,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog='python -m ai_lab.auth', description=__doc__.split('\n', 1)[0])
     verbs = parser.add_subparsers(dest='verb', required=True)
     login = verbs.add_parser('login', help='store a key: read from the terminal/stdin, or import a key file')
-    target = login.add_mutually_exclusive_group(required=True)
-    target.add_argument('provider', nargs='?', help='a keyed provider; the key is read without echo, never argv')
-    target.add_argument('--from-file', metavar='PATH', help='a NAME=value / NAME value file; "-" reads stdin')
+    login.add_argument(
+        'provider', nargs='?', help='a keyed provider; its key is read without echo (or its line of --from-file)'
+    )
+    login.add_argument('--from-file', metavar='PATH', help='a NAME=value / NAME value file; "-" reads stdin')
     login.add_argument(
         '-s', '--slot', '--seat', dest='slot', type=int, default=1,
         help='the key slot to store: 1 = api-key[-<task>], N = api-key[-<task>]-N, tried in order',
@@ -227,7 +244,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         rows = list(catalogue().values())
         sys.stdout.write('\n'.join(_status_lines(rows) + _shared_lines(rows)) + '\n')
         return 0
-    return _login_file(args.from_file) if args.from_file else _login_one(args.provider, args.slot, args.task)
+    if args.provider is None and args.from_file is None:
+        login.error('give a provider, --from-file, or both')
+    return _login(args.provider, args.from_file, args.slot, args.task)
 
 
 if __name__ == '__main__':

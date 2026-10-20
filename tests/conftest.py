@@ -1,4 +1,8 @@
+from pathlib import Path
+
 import pytest
+from lab_commons.box.machine import provided
+from lab_commons.config import section
 from lab_commons.credentials import store_credential
 
 from ai_lab import Choice, DecisionRequest, Fields, Image, Level, Option, Predicate, Score, Text
@@ -52,3 +56,25 @@ def keys(credential_store):
     credential_store('api.anthropic.com', 'ak-test')
     credential_store('api.typesafe.ai', 'k')
     return credential_store
+
+
+#: The resource marker and machine-file capability that provide sharp-review's method data (a cc-market checkout).
+METHOD_RESOURCE = 'sharp_review'
+
+
+def method_path() -> Path | None:
+    """The host's ``[capabilities.sharp_review] path`` (its cc-market ``sharp-review/method``), else ``None``."""
+    declared = provided(section('capabilities')).get(METHOD_RESOURCE, {}).get('path')
+    return Path(declared).expanduser() if declared else None
+
+
+@pytest.fixture(scope='session')
+def method_dir() -> Path:
+    """sharp-review's method directory, read IN PLACE (never vendored); absent is a failure naming the remedy."""
+    path = method_path()
+    if path is None or not (path / 'method.json').is_file():
+        pytest.fail(
+            f'no sharp-review method at {path}: the machine file needs [capabilities.{METHOD_RESOURCE}] '
+            'path = "<cc-market checkout>/sharp-review/method"'
+        )
+    return path

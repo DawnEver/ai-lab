@@ -22,10 +22,18 @@ HTTP_CEILING_S = 120.0
 
 #: Statuses worth another attempt: rate limit, overload, transient server failure.
 _RETRYABLE = frozenset({408, 409, 429, 500, 502, 503, 504, 529})
-#: A 429 whose body says the account is out of money is not transient: waiting will not refill it.
-_EXHAUSTED = ('insufficient_quota', 'credit_balance_exhausted')
+#: A body saying the account is out of money, whatever its status: waiting will not refill it. One
+#: marker per vendor spelling (OpenAI, Anthropic, DeepSeek, OpenRouter, DashScope).
+_EXHAUSTED = (
+    'insufficient_quota', 'credit_balance_exhausted', 'credit balance is too low', 'Insufficient Balance',
+    'Insufficient credits', 'Arrearage',
+)  # fmt: skip
+#: 402 Payment Required is exhaustion by status.
+_PAYMENT = 402
 #: Statuses that say THIS KEY may not call: another key of the account may.
 _AUTH = frozenset({401, 403})
+#: A body naming an invalid key under a generic status (Gemini answers a bad key with 400).
+_AUTH_MARKERS = ('API_KEY_INVALID',)
 _RATE_LIMIT = 429
 
 
@@ -36,6 +44,15 @@ class HttpCall:
     url: str
     body: Mapping
     headers: Mapping[str, str] = field(default_factory=dict, repr=False)
+
+
+def _final_kind(status: int, detail: str) -> str | None:
+    """The kind of a failure no retry will fix; ``None`` for a status worth another attempt."""
+    if status == _PAYMENT or any(marker in detail for marker in _EXHAUSTED):
+        return 'exhausted'
+    if status in _AUTH or any(marker in detail for marker in _AUTH_MARKERS):
+        return 'auth'
+    return None if status in _RETRYABLE else ''
 
 
 def post(call: HttpCall, *, timeout_s: float = HTTP_CEILING_S, attempts: int = 3, sleep: Callable = time.sleep) -> dict:
@@ -61,14 +78,14 @@ def post(call: HttpCall, *, timeout_s: float = HTTP_CEILING_S, attempts: int = 3
         except urllib.error.HTTPError as error:
             detail = error.read().decode('utf-8', 'replace')[:500]
             last = f'HTTP {error.code} from {call.url}: {detail}'
-            if any(marker in detail for marker in _EXHAUSTED):
-                raise ProviderError(last, kind='exhausted') from None
-            if error.code not in _RETRYABLE:
-                raise ProviderError(last, kind='auth' if error.code in _AUTH else '') from None
+            if (final := _final_kind(error.code, detail)) is not None:
+                raise ProviderError(last, kind=final) from None
             last_kind = 'rate_limit' if error.code == _RATE_LIMIT else ''
         except (urllib.error.URLError, TimeoutError) as error:
-            last = f'{call.url} unreachable: {error}'
-            last_kind = ''
+            reason = error.reason if isinstance(error, urllib.error.URLError) else error
+            timed_out = isinstance(reason, TimeoutError)
+            last = f'{call.url} {"timed out" if timed_out else "unreachable"}: {error}'
+            last_kind = 'timeout' if timed_out else ''
         if attempt + 1 < attempts:
             sleep(2.0**attempt)
     msg = f'{last} (after {attempts} attempts)'

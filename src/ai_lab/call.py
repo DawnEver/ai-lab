@@ -38,7 +38,7 @@ from dataclasses import asdict
 from typing import Final
 
 from ai_lab.client import connect
-from ai_lab.errors import ProviderError, Unsupported
+from ai_lab.errors import ERROR_KINDS, ProviderError, Unsupported
 from ai_lab.ledger import Ledger, Mode
 from ai_lab.spec import DecisionRequest, Fields, Image, ResponseRequest, Text, decision_request_from_json
 
@@ -48,7 +48,7 @@ __all__ = ['CALL_SCHEMA_VERSION', 'REPLY_KINDS', 'Malformed', 'answer']
 CALL_SCHEMA_VERSION: Final = 1
 
 #: Every ``kind`` a reply may carry; ``''`` is success or an unclassified provider failure.
-REPLY_KINDS: Final = frozenset({'', 'exhausted', 'auth', 'rate_limit', 'unsupported', 'timeout'})
+REPLY_KINDS: Final = ERROR_KINDS | {'', 'unsupported'}
 
 _VERBS: Final = frozenset({'respond', 'decide'})
 _REQUIRED: Final = frozenset({'verb', 'provider', 'model', 'instructions', 'context'})

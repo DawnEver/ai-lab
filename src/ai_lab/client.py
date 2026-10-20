@@ -56,7 +56,7 @@ from lab_commons.paths import config_root
 
 from ai_lab import emulate, retired, transport
 from ai_lab.answers import Basis, Decision, Response
-from ai_lab.errors import ProviderError, Unsupported
+from ai_lab.errors import ACCOUNT_KINDS, ProviderError, Unsupported
 from ai_lab.spec import DecisionRequest, ResponseRequest
 from ai_lab.usage import Usage
 from ai_lab.wire import WIRES
@@ -348,7 +348,7 @@ class Client:
             try:
                 return self._dispatch(build(key)), slot
             except ProviderError as error:
-                if not error.kind:
+                if error.kind not in ACCOUNT_KINDS:
                     raise
                 failures.append(f'slot {slot}: {error.kind}')
                 last = error

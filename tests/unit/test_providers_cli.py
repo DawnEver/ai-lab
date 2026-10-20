@@ -5,9 +5,9 @@ import json
 import subprocess
 import sys
 from datetime import UTC, datetime
+from importlib.metadata import version
 
 from ai_lab import catalogue
-from ai_lab.__version__ import __version__
 from ai_lab.client import packaged_providers_file, user_providers_file
 from ai_lab.providers import CATALOGUE_SCHEMA_VERSION, document, main
 
@@ -16,7 +16,7 @@ def test_the_document_is_versioned_and_names_its_inputs_and_producer(credential_
     doc = document(now=datetime(2026, 10, 20, tzinfo=UTC))
     assert doc['schema_version'] == CATALOGUE_SCHEMA_VERSION == 1
     assert doc['generated_at'] == '2026-10-20T00:00:00+00:00'
-    assert doc['ai_lab_version'] == __version__
+    assert doc['ai_lab_version'] == version('ai_lab')
     assert doc['python'] == sys.executable
     packaged, user = doc['inputs']
     assert packaged['path'] == str(packaged_providers_file()) and packaged['exists']

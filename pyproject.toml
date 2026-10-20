@@ -67,6 +67,7 @@ ignore = ["COM812", "D203", "D213", "D400", "D401", "N818", "PLR0913", "Q000", "
 [tool.lab_commons.branchset]
 trunk = 'main'
 sessions = ['integrate/main']
+ephemeral = ['pr/*']  # a short-lived PR head, pushed with no row and deleted by the forge with its merge
 prune_merged = true
 
 [tool.lab_commons.hpc]
@@ -89,7 +90,7 @@ resources = ["workstation"]
 [tool.lab_commons.integrator]
 trunk = "main"
 integration = "integrate/main"
-merges_only_since = "12eea4061dfa1fc6caf0a8a95d0fe517bce6d367"  # INTEGRATION-IS-MERGES-ONLY from here on
+pr_merges_since = "9d016300ccc6b19cad75729b8c4f22ad21817a03"  # INTEGRATION-TAKES-ONLY-FORGE-MERGES from here
 
 # Git hooks: the family base (lab_commons/dev/githooks/base.toml) as is; ai-lab adds no row.
 [tool.lab_commons.hooks]

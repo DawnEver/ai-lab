@@ -31,9 +31,6 @@ def _effort(call: Call, effort: str) -> Call:
     MEASURED 2026-10-14: deepseek-v4-flash thinks by DEFAULT -- 26k output tokens per decision whose
     answer is a few hundred tokens of JSON -- so a decider that must not think has to say so.
     """
-    if not isinstance(call, HttpCall):
-        msg = 'a body effort applies to an HTTP call'
-        raise TypeError(msg)
     if effort == 'off':
         return replace(call, body={**call.body, 'thinking': {'type': 'disabled'}})
     thinking = replace(call, body={**call.body, 'thinking': {'type': 'enabled'}})
@@ -42,7 +39,7 @@ def _effort(call: Call, effort: str) -> Call:
 
 WIRE = Wire(
     name='openai_chat_json',
-    cli=False,
+    protocol='openai',
     respond=_respond,
     parse_response=parse_message,
     parse_usage=chat_usage,

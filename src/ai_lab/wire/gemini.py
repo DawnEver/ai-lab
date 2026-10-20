@@ -42,4 +42,6 @@ def _parse_response(raw: dict) -> dict:
         raise ProviderError(msg) from None
 
 
-WIRE = Wire(name='gemini', cli=False, respond=_respond, parse_response=_parse_response, parse_usage=gemini_usage)
+WIRE = Wire(
+    name='gemini', protocol='gemini', respond=_respond, parse_response=_parse_response, parse_usage=gemini_usage
+)

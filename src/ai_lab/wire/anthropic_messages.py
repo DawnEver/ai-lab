@@ -65,5 +65,9 @@ def _parse_response(raw: dict) -> dict:
 
 
 WIRE = Wire(
-    name='anthropic_messages', cli=False, respond=_respond, parse_response=_parse_response, parse_usage=anthropic_usage
+    name='anthropic_messages',
+    protocol='anthropic',
+    respond=_respond,
+    parse_response=_parse_response,
+    parse_usage=anthropic_usage,
 )

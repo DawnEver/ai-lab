@@ -7,8 +7,7 @@ import json
 import pytest
 
 from ai_lab import Image, ProviderError, ResponseRequest, Text
-from ai_lab.transport import CliResult
-from ai_lab.wire import anthropic_messages, claude_code, codex, gemini, openai_chat, openai_chat_json, openai_responses
+from ai_lab.wire import anthropic_messages, gemini, openai_chat, openai_chat_json, openai_responses
 from tests.conftest import PNG
 
 SCHEMA = {
@@ -97,39 +96,6 @@ def test_gemini():
     assert gemini.WIRE.parse_response(raw) == {'ok': True}
     with pytest.raises(ProviderError, match='SAFETY'):
         gemini.WIRE.parse_response({'candidates': [{'finishReason': 'SAFETY'}]})
-
-
-def test_claude_code_runs_with_every_tool_and_setting_off():
-    call = claude_code.WIRE.respond(REQ, 'haiku', 'claude', '')
-    argv = list(call.argv)
-    assert argv[0] == 'claude'
-    assert argv[argv.index('--tools') + 1] == ''
-    assert argv[argv.index('--setting-sources') + 1] == ''
-    assert json.loads(argv[argv.index('--json-schema') + 1]) == SCHEMA
-    assert argv[argv.index('--model') + 1] == 'haiku'
-    message = json.loads(call.stdin)
-    assert message['message']['content'][1]['source']['data'] == B64
-    out = '{"type":"system"}\n{"type":"result","is_error":false,"structured_output":{"ok":true}}\n'
-    assert claude_code.WIRE.parse_response(CliResult(out)) == {'ok': True}
-    with pytest.raises(ProviderError, match='no structured output'):
-        claude_code.WIRE.parse_response(CliResult('{"type":"result","is_error":true,"result":"boom"}'))
-
-
-def test_claude_code_without_a_model_uses_the_cli_default():
-    assert '--model' not in claude_code.WIRE.respond(REQ, '', 'claude', '').argv
-
-
-def test_codex_is_read_only_and_reads_images_from_files():
-    call = codex.WIRE.respond(REQ, '', 'codex', '')
-    argv = list(call.argv)
-    assert argv[:2] == ['codex', 'exec']
-    assert argv[argv.index('--sandbox') + 1] == 'read-only'
-    assert argv[argv.index('-i') + 1] == '{dir}/image1.png'
-    assert call.files['image1.png'] == PNG
-    assert json.loads(call.files['schema.json']) == SCHEMA
-    assert call.stdin.startswith('Be brief.') and 'hello' in call.stdin
-    assert argv[-1] == '-'
-    assert codex.WIRE.parse_response(CliResult('{"ok": true}')) == {'ok': True}
 
 
 def test_openai_chat_json_asks_for_a_json_object_and_carries_the_schema_in_the_prompt():

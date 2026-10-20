@@ -37,9 +37,11 @@ _MECHANISMS: Final = {
     # An unknown provider or wire, a missing key, an image to a blind provider, a verb a wire lacks:
     # each RAISES Unsupported naming the remedy.
     'UNSUPPORTED-RAISES': (TestPath('tests/unit/test_client.py'),),
-    # Every wait has a ceiling and a CLI past it is ended as a TREE from its root pid (a planted
-    # grandchild must be dead afterwards).
-    'REFUSAL-NAMES-THE-REMEDY': (TestPath('tests/unit/test_transport.py'),),
+    # A missing key is refused naming the `auth login` command that stores it.
+    'REFUSAL-NAMES-THE-REMEDY': (TestPath('tests/unit/test_client.py'),),
+    # ai_lab.retired is the one registry; each row is refused by name at its entry point, and a scanned
+    # spelling found in any other tracked file reds (a planted leftover must be found).
+    'RETIRED-NAMES-REGISTERED': (TestPath('tests/architecture/test_retired_names_are_registered.py'),),
     # integrate/main and main are declared in pyproject.toml; the base table's `session-branch` pre-push
     # row refuses the three push-side violations, and the one writer is git's own (guarded from force by it).
     **dict.fromkeys(
@@ -88,7 +90,7 @@ _ABSENT: Final = frozenset({
     'REGISTRY-OWNS-THE-DECISION', 'PRODUCTION-ENTRY-POINT',
     # Docs and memory: no rules pages, injected docs or memory tree in this repo.
     'DOCS-SPLIT', 'MEMORY-SHAPE', 'INJECTED-DOC-WIDTH-CEILING', 'INJECTED-TEXT-IS-PROGRESSIVE',
-    'RETIRED-NAMES-REGISTERED', 'NO-CJK-IN-TRACKED-SOURCE', 'REPORTS-LIVE-IN-MEMORY',
+    'NO-CJK-IN-TRACKED-SOURCE', 'REPORTS-LIVE-IN-MEMORY',
     # Code placement and scratch: one src/ and one tests/ tree, no scratch.
     'CODE-IN-CODE-ROOTS', 'SCRATCH-ARCHIVED-OR-PROMOTED',
     # Meta-rules about guards: the guards above are the family's shared bodies, which carry them.
@@ -101,8 +103,9 @@ _ABSENT: Final = frozenset({
 #: PUSH-FROM-ITS-OWN-BRANCH, an integration-line rule with no line here; lowering it is the only
 #: legal edit. Lowered to 47 on 2026-10-19: the registry retired INTEGRATION-LIVES-IN-THE-MAIN-CHECKOUT and
 #: PUSH-FROM-ITS-OWN-BRANCH and added FORMATS-UPGRADE-ON-READ. Lowered to 43 the same day: the four
-#: branch-flow rules gained mechanisms once integrate/main was declared.
-_ABSENT_CEILING: Final = 43
+#: branch-flow rules gained mechanisms once integrate/main was declared. Lowered to 42 on 2026-10-20:
+#: RETIRED-NAMES-REGISTERED gained ai_lab.retired and its scan.
+_ABSENT_CEILING: Final = 42
 
 
 def test_every_rule_is_enforced_or_declared_absent() -> None:

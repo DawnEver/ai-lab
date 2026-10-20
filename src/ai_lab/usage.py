@@ -1,8 +1,8 @@
 """What a call consumed, as the vendor reported it.
 
 TOKENS ARE THE FACT; COST IS DERIVED (:mod:`ai_lab.prices`). Every wire reads its vendor's usage
-block into one :class:`Usage` and the ledger records it with the call's time. A CLI that reports its
-own dollar figure (``claude``) carries it in :attr:`Usage.cost_usd`.
+block into one :class:`Usage` and the ledger records it with the call's time. A vendor that reports its
+own dollar figure carries it in :attr:`Usage.cost_usd`.
 """
 
 from __future__ import annotations
@@ -14,7 +14,6 @@ __all__ = [
     'Usage',
     'anthropic_usage',
     'chat_usage',
-    'claude_code_usage',
     'gemini_usage',
     'responses_usage',
 ]
@@ -91,17 +90,4 @@ def gemini_usage(raw: object) -> Usage | None:
         _int(block, 'candidatesTokenCount') + thoughts,
         _int(block, 'cachedContentTokenCount'),
         thoughts,
-    )
-
-
-def claude_code_usage(event: Mapping) -> Usage:
-    """The ``claude`` CLI's ``result`` event: Anthropic usage plus the CLI's own ``total_cost_usd``."""
-    usage = anthropic_usage(event) or Usage()
-    reported = event.get('total_cost_usd')
-    return Usage(
-        usage.input_tokens,
-        usage.output_tokens,
-        usage.cached_tokens,
-        usage.reasoning_tokens,
-        float(reported) if isinstance(reported, int | float) else None,
     )

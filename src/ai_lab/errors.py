@@ -1,6 +1,11 @@
 """The three ways a call cannot produce what was asked, each naming its remedy."""
 
-__all__ = ['ProviderError', 'ReplayMiss', 'Unsupported']
+__all__ = ['ACCOUNT_KINDS', 'ERROR_KINDS', 'ProviderError', 'ReplayMiss', 'Unsupported']
+
+#: The failures another key of the same account may not share: a call moves to the next key slot on one.
+ACCOUNT_KINDS = frozenset({'exhausted', 'auth', 'rate_limit'})
+#: Every classified failure: the account kinds, and a ``timeout`` that another key would only repeat.
+ERROR_KINDS = ACCOUNT_KINDS | {'timeout'}
 
 
 class Unsupported(Exception):
@@ -10,13 +15,17 @@ class Unsupported(Exception):
 class ProviderError(Exception):
     """The provider was reached and failed, or returned something that is not the declared shape.
 
-    ``kind`` names an ACCOUNT-level failure -- ``'exhausted'`` (no balance), ``'auth'`` (401/403) or
-    ``'rate_limit'`` (429 past its retries) -- that another key of the same account may not share;
-    ``''`` is any other failure, which another key would only repeat.
+    ``kind`` is one of :data:`ERROR_KINDS`: an ACCOUNT-level failure (:data:`ACCOUNT_KINDS`) --
+    ``'exhausted'`` (no balance or quota), ``'auth'`` (a key refused) or ``'rate_limit'`` (429 past its
+    retries) -- that another key of the same account may not share; ``'timeout'`` (no answer within the
+    ceiling, past its retries); or ``''``, any other failure. Neither of the last two moves to another key.
     """
 
     def __init__(self, message: str, *, kind: str = '') -> None:
         """``message`` names what failed; ``kind`` classifies it (never the key)."""
+        if kind and kind not in ERROR_KINDS:
+            msg = f'unknown kind {kind!r}; the kinds are {sorted(ERROR_KINDS)}'
+            raise ValueError(msg)
         super().__init__(message)
         self.kind = kind
 

@@ -109,7 +109,6 @@ def test_status_lists_each_provider_with_its_auth_kind_and_key_state_never_the_s
     assert lines['anthropic'].split()[-2:] == ['0', '-']
     assert 'openai_decisions' not in lines
     assert lines['openai'].split()[1] == 'api'
-    assert lines['claude_code'].split()[1:] == ['subscription', '-', '-', '-']
     assert lines['ollama'].split()[1] == 'local'
     assert 'sk-fake-status' not in out
 

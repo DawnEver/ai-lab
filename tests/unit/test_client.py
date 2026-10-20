@@ -101,18 +101,18 @@ def test_a_user_table_in_the_family_config_root_adds_and_replaces_rows(tmp_path,
     monkeypatch.setenv('AI_LAB_HOME', str(tmp_path))
     (tmp_path / 'config').mkdir()
     rows = (
-        '[mylab]\nwire = "openai_chat"\nendpoint = "http://box:8000/v1"\nauth = "local"\n'
-        '[ollama]\nwire = "openai_chat"\nendpoint = "http://gpu:11434/v1"\nauth = "local"\n'
+        '[mylab]\nwire = "openai_chat"\nurl = "http://box:8000"\nopenai_path = "/v1"\nauth = "local"\n'
+        '[ollama]\nwire = "openai_chat"\nurl = "http://gpu:11434"\nopenai_path = "/v1"\nauth = "local"\n'
     )
     (tmp_path / 'config' / 'providers.toml').write_text(rows, encoding='utf-8')
     table = providers()
-    assert table['mylab'] == Provider('mylab', 'openai_chat', 'http://box:8000/v1', 'local')
-    assert table['ollama'].endpoint == 'http://gpu:11434/v1'
+    assert table['mylab'] == Provider('mylab', 'openai_chat', 'http://box:8000', 'local', openai_path='/v1')
+    assert table['ollama'].endpoint('openai') == 'http://gpu:11434/v1'
 
 
 def test_a_row_naming_an_unknown_wire_is_refused():
     with pytest.raises(Unsupported, match='unknown wire'):
-        Provider('x', 'smoke_signals', 'e', 'api')
+        Provider('x', 'smoke_signals', 'https://e', 'api')
 
 
 def test_the_client_repr_holds_no_key(keys):
@@ -132,12 +132,14 @@ def test_every_packaged_row_declares_its_auth_kind():
 
 
 def test_a_row_without_auth_is_refused(tmp_path, monkeypatch):
-    _user_rows(tmp_path, monkeypatch, '[mylab]\nwire = "openai_chat"\nendpoint = "http://box:8000/v1"\n')
+    _user_rows(tmp_path, monkeypatch, '[mylab]\nwire = "openai_chat"\nurl = "http://box:8000"\nopenai_path = "/v1"\n')
     with pytest.raises(Unsupported, match='missing'):
         providers()
 
 
 def test_a_row_with_an_unknown_auth_is_refused(tmp_path, monkeypatch):
-    _user_rows(tmp_path, monkeypatch, '[mylab]\nwire = "openai_chat"\nendpoint = "e"\nauth = "magic"\n')
+    _user_rows(
+        tmp_path, monkeypatch, '[mylab]\nwire = "openai_chat"\nurl = "http://e"\nopenai_path = "/v1"\nauth = "magic"\n'
+    )
     with pytest.raises(Unsupported, match="unknown auth 'magic'"):
         providers()

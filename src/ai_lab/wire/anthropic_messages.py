@@ -64,4 +64,10 @@ def _parse_response(raw: dict) -> dict:
         raise ProviderError(msg) from exc
 
 
-WIRE = Wire(name='anthropic_messages', respond=_respond, parse_response=_parse_response, parse_usage=anthropic_usage)
+WIRE = Wire(
+    name='anthropic_messages',
+    protocol='anthropic',
+    respond=_respond,
+    parse_response=_parse_response,
+    parse_usage=anthropic_usage,
+)

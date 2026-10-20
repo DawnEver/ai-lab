@@ -79,4 +79,10 @@ def _parse_decision(raw: dict, request: DecisionRequest) -> dict[str, Answer]:
 
 #: No ``effort``: MEASURED 2026-10-09, the endpoint answers ``reasoning`` and ``reasoning_effort`` with
 #: 400 unknown_parameter, and it bills input tokens only (``output_tokens`` 0).
-WIRE = Wire(name='openai_decisions', decide=_decide, parse_decision=_parse_decision, parse_usage=responses_usage)
+WIRE = Wire(
+    name='openai_decisions',
+    protocol='openai',
+    decide=_decide,
+    parse_decision=_parse_decision,
+    parse_usage=responses_usage,
+)

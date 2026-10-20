@@ -21,16 +21,21 @@ from ai_lab.usage import Usage
 __all__ = ['Wire', 'body_effort', 'is_closed', 'joined_text', 'text_of']
 
 Call = HttpCall
-#: ``(request, model, endpoint, key) -> call``: the endpoint is the base URL of the wire's protocol.
+#: ``(request, model, endpoint, key) -> call``: the endpoint is the row's base URL for the wire's protocol.
 Build = Callable[[ResponseRequest, str, str, str], Call]
 BuildDecision = Callable[[DecisionRequest, str, str, str], Call]
 
 
 @dataclass(frozen=True, slots=True)
 class Wire:
-    """One protocol. ``decide`` is ``None`` unless the vendor answers typed questions natively."""
+    """One wire of one protocol. ``decide`` is ``None`` unless the vendor answers typed questions natively.
+
+    ``protocol`` names the API family the wire speaks (``openai``, ``anthropic``...): a provider row
+    reaches it at its ``<protocol>_path``, so one account serving two protocols is one row.
+    """
 
     name: str
+    protocol: str
     respond: Build | None = None
     parse_response: Callable[[object], Mapping] | None = None
     decide: BuildDecision | None = None

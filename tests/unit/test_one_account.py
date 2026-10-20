@@ -52,7 +52,7 @@ def test_the_model_wire_table_is_declared_on_the_openai_row():
 
 def test_a_model_wire_naming_an_unknown_wire_is_refused():
     with pytest.raises(Unsupported, match='unknown wire'):
-        Provider('p', 'openai_responses', 'https://x', 'api', model_wires={'m': 'nope'})
+        Provider('p', 'openai_responses', 'https://x', 'api', openai_path='/v1', model_wires={'m': 'nope'})
 
 
 def test_the_retired_decisions_provider_is_refused_naming_its_replacement():

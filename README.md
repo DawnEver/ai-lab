@@ -32,7 +32,7 @@ decision['fidelity'].choice, decision['fidelity'].probabilities
 
 ## Providers are data, wires are protocols
 
-`connect('<provider>:<model>')` reads `providers.toml`: each row names a wire, an endpoint (a URL), the conventional name of its key (`key_name`, `""` for none), and whether it reads images. Put a
+`connect('<provider>:<model>')` reads `providers.toml`, the ONE provider catalogue: each row names a default wire, a `url` origin plus a `<protocol>_path` per protocol the account serves (`openai`, `anthropic`, `gemini`, `typesafe`; `connect(spec, protocol=...)` picks the wire by protocol), a Claude-role `models` map (`base` required; `fable`, `opus`, `sonnet`, `haiku`, `subagent`, `codex`), the conventional name of its key (`key_name`, `""` for none), and whether it reads images. Put a
 `providers.toml` in the family config root (`$AI_LAB_HOME/config`, else the platform's user config
 directory for `ai_lab`) to add rows or replace one of the same name.
 

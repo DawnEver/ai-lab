@@ -53,6 +53,7 @@ def _parse_response(raw: dict) -> dict:
 
 WIRE = Wire(
     name='openai_responses',
+    protocol='openai',
     respond=_respond,
     parse_response=_parse_response,
     parse_usage=responses_usage,

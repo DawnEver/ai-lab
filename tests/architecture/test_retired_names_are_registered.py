@@ -22,7 +22,7 @@ _ROOT = Path(__file__).resolve().parents[2]
 #: (``.claude/``) is history, and history names what was true then.
 _HOMES = frozenset({'src/ai_lab/retired.py', 'tests/architecture/test_retired_names_are_registered.py'})
 
-_ROW = 'endpoint = "https://x.test/v1"\nwire = "openai_chat"\nauth = "local"\n'
+_ROW = 'url = "https://x.test"\nopenai_path = "/v1"\nwire = "openai_chat"\nauth = "local"\n'
 
 
 def _user_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rows: str) -> None:

@@ -71,4 +71,6 @@ def _parse_decision(raw: dict, request: DecisionRequest) -> dict[str, Answer]:
 
 
 #: Usage measured 2026-10-09: `usage.input_tokens` / `output_tokens`, the Responses shape.
-WIRE = Wire(name='typesafe', decide=_decide, parse_decision=_parse_decision, parse_usage=responses_usage)
+WIRE = Wire(
+    name='typesafe', protocol='typesafe', decide=_decide, parse_decision=_parse_decision, parse_usage=responses_usage
+)

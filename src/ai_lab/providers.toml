@@ -1,5 +1,8 @@
-# Vendors are DATA. A row names its wire (a protocol module in ai_lab/wire), where it is reached
-# (a base URL), the conventional name of its key ("" = none needed; the key itself is in the git
+# THE ONE PROVIDER CATALOGUE (published by `python -m ai_lab.providers --json`). Vendors are DATA. A
+# row names its default wire (a module in ai_lab/wire, speaking one protocol), where it is reached (a
+# `url` origin plus a `<protocol>_path` for each protocol the account serves: openai, anthropic, gemini,
+# typesafe), the Claude-class role models a host launcher projects (`models`, keys base fable opus
+# sonnet haiku subagent codex; base is required and the default of the rest), the conventional name of its key ("" = none needed; the key itself is in the git
 # credential store under the endpoint's host, never in the environment -- `python -m ai_lab.auth login
 # <provider>`), whether it reads images, the billing vendor the price catalogs know it as ("" =
 # unmetered), and its AUTH KIND (ai_lab.client.AUTH_KINDS): "api" (a keyed account, billed per token)
@@ -13,7 +16,8 @@
 
 [openai]
 wire = "openai_responses"
-endpoint = "https://api.openai.com/v1"
+url = "https://api.openai.com"
+openai_path = "/v1"
 key_name = "OPENAI_API_KEY"
 vision = true
 vendor = "openai"
@@ -22,14 +26,16 @@ model_wires = { "gpt-6-luna" = "openai_decisions" }
 
 [typesafe]
 wire = "typesafe"
-endpoint = "https://api.typesafe.ai/v1"
+url = "https://api.typesafe.ai"
+typesafe_path = "/v1"
 key_name = "TYPESAFE_API_KEY"
 vision = false
 auth = "api"
 
 [anthropic]
 wire = "anthropic_messages"
-endpoint = "https://api.anthropic.com/v1"
+url = "https://api.anthropic.com"
+anthropic_path = "/v1"
 key_name = "ANTHROPIC_API_KEY"
 vision = true
 vendor = "anthropic"
@@ -37,7 +43,8 @@ auth = "api"
 
 [gemini]
 wire = "gemini"
-endpoint = "https://generativelanguage.googleapis.com/v1beta"
+url = "https://generativelanguage.googleapis.com"
+gemini_path = "/v1beta"
 key_name = "GEMINI_API_KEY"
 vision = true
 vendor = "google"
@@ -45,7 +52,8 @@ auth = "api"
 
 [openrouter]
 wire = "openai_chat"
-endpoint = "https://openrouter.ai/api/v1"
+url = "https://openrouter.ai"
+openai_path = "/api/v1"
 key_name = "OPENROUTER_API_KEY"
 vision = true
 vendor = "openrouter"
@@ -53,15 +61,19 @@ auth = "api"
 
 [deepseek]
 wire = "openai_chat_json"
-endpoint = "https://api.deepseek.com/v1"
+url = "https://api.deepseek.com"
+openai_path = "/v1"
+anthropic_path = "/anthropic"
 key_name = "DEEPSEEK_API_KEY"
 vision = false
 vendor = "deepseek"
 auth = "api"
+models = { base = "deepseek-v4-flash[1m]", fable = "deepseek-v4-pro[1m]", opus = "deepseek-v4-flash[1m]", sonnet = "deepseek-v4-flash[1m]", haiku = "deepseek-v4-flash[1m]", subagent = "deepseek-v4-flash[1m]" }
 
 [qwen]
 wire = "openai_chat"
-endpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+url = "https://dashscope.aliyuncs.com"
+openai_path = "/compatible-mode/v1"
 key_name = "DASHSCOPE_API_KEY"
 vision = true
 vendor = "alibaba"
@@ -69,7 +81,8 @@ auth = "api"
 
 [ollama]
 wire = "openai_chat"
-endpoint = "http://localhost:11434/v1"
+url = "http://localhost:11434"
+openai_path = "/v1"
 key_name = ""
 vision = true
 auth = "local"

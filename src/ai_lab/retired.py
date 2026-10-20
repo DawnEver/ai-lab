@@ -59,6 +59,10 @@ RETIRED: Final = (
     Retired('wire', 'claude_code', 'anthropic_messages', _API_ONLY, '2026-10-20'),
     Retired('wire', 'codex', 'openai_responses', _API_ONLY, '2026-10-20', scanned=False),
     Retired('auth', 'subscription', 'api', _API_ONLY, '2026-10-20', scanned=False),
+    Retired(
+        'field', 'endpoint', 'url and <protocol>_path',
+        'one row serves each protocol of its account at its own path', '2026-10-20', scanned=False,
+    ),
     Retired('field', 'api_provider', '(nothing: every row is an api or local account)', _API_ONLY, '2026-10-20'),
 )  # fmt: skip
 

@@ -42,6 +42,8 @@ _MECHANISMS: Final = {
     # ai_lab.retired is the one registry; each row is refused by name at its entry point, and a scanned
     # spelling found in any other tracked file reds (a planted leftover must be found).
     'RETIRED-NAMES-REGISTERED': (TestPath('tests/architecture/test_retired_names_are_registered.py'),),
+    # Adopted 2026-10-20 with the ledger's first schema change (schema 2 dropped usage.cost_usd).
+    'FORMATS-UPGRADE-ON-READ': (TestPath('tests/unit/test_ledger_and_rules.py'),),
     # integrate/main and main are declared in pyproject.toml; the base table's `session-branch` pre-push
     # row refuses the three push-side violations, and the one writer is git's own (guarded from force by it).
     **dict.fromkeys(
@@ -78,9 +80,6 @@ _ABSENT: Final = frozenset({
     'VERDICT-AS-STATUS', 'ISSUE-IS-INTENT', 'ONE-BRANCH-PER-SESSION', 'MERGE-DEVIATIONS-NAMED',
     'AUTO-MODE-RUNS-THE-DOORS', 'VERDICTS-FROM-THE-FORGE', 'MAIN-SESSION-PUBLISHES',
     'SUBAGENT-NO-PUSH', 'WORKTREES-STAY-INSIDE', 'ONE-BOX-ONE-LOCK',
-    # Persisted formats: the ledger and the price snapshots have only ever had one schema, so there is no
-    # older one to upgrade; the rule gains a mechanism with the first schema change.
-    'FORMATS-UPGRADE-ON-READ',
     # The environment: no own venv yet (the agent guard refuses creating one until a door is declared),
     # so nothing installs hooks or dependencies through a checked door here.
     'HOOKS-ARE-WIRED', 'INSTALL-DOOR-DELIVERS-THE-DECLARATION', 'ENV-MUTATION-THROUGH-THE-DOOR',
@@ -104,8 +103,9 @@ _ABSENT: Final = frozenset({
 #: legal edit. Lowered to 47 on 2026-10-19: the registry retired INTEGRATION-LIVES-IN-THE-MAIN-CHECKOUT and
 #: PUSH-FROM-ITS-OWN-BRANCH and added FORMATS-UPGRADE-ON-READ. Lowered to 43 the same day: the four
 #: branch-flow rules gained mechanisms once integrate/main was declared. Lowered to 42 on 2026-10-20:
-#: RETIRED-NAMES-REGISTERED gained ai_lab.retired and its scan.
-_ABSENT_CEILING: Final = 42
+#: RETIRED-NAMES-REGISTERED gained ai_lab.retired and its scan. Lowered to 41 the same day:
+#: FORMATS-UPGRADE-ON-READ gained the ledger's declared upgrade steps.
+_ABSENT_CEILING: Final = 41
 
 
 def test_every_rule_is_enforced_or_declared_absent() -> None:

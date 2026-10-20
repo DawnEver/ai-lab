@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from ai_lab.ledger import read_entry
 from ai_lab.prices import Quote, cost, quote_for
 from ai_lab.usage import Usage
 
@@ -52,7 +53,7 @@ def summarize(paths: Iterable[Path], *, price: Callable[..., Quote | None] = quo
         for line in Path(path).read_text('utf-8').splitlines():
             if not line.strip():
                 continue
-            entry = json.loads(line)
+            entry = read_entry(json.loads(line), str(path))
             name = entry.get('client') or f'{entry["provider"]}:{entry["model"]}'
             row = rows.setdefault(name, ClientSummary(name))
             row.calls += 1

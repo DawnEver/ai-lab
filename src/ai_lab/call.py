@@ -19,8 +19,9 @@ and the reply, always one JSON object::
 provider failure is CLASSIFIED, not crashed: ``ok`` is false, ``kind`` is :attr:`ProviderError.kind`
 (``""`` for an unclassified one) or ``unsupported`` for :class:`Unsupported`, ``error`` names it --
 never a key -- and the exit status is 0. Only a MALFORMED request (not JSON, an unknown or missing
-field, a wrong type, an undeclared task) exits non-zero (2), with the reason on stderr and nothing on
-stdout. For ``decide`` the instructions are the first text of the context.
+field, a wrong type, an undeclared task, an EMPTY CONTEXT) exits non-zero (2), with the reason on stderr
+and nothing on stdout -- no vendor is called. A context is empty when no part has non-blank text,
+non-empty fields or an image. For ``decide`` the instructions are the first text of the context.
 
 ``--ledger PATH`` sees the client through :class:`ai_lab.ledger.Ledger` in ``record`` mode: every call is
 recorded with its usage and key slot, and a request already in the file is served from it.
@@ -40,7 +41,16 @@ from typing import Final
 from ai_lab.client import connect
 from ai_lab.errors import ERROR_KINDS, ProviderError, Unsupported
 from ai_lab.ledger import Ledger, Mode
-from ai_lab.spec import DecisionRequest, Fields, Image, ResponseRequest, Text, decision_request_from_json
+from ai_lab.spec import (
+    DecisionRequest,
+    EmptyContext,
+    Fields,
+    Image,
+    ResponseRequest,
+    Text,
+    decision_request_from_json,
+    has_content,
+)
 
 __all__ = ['CALL_SCHEMA_VERSION', 'REPLY_KINDS', 'Malformed', 'answer']
 
@@ -124,12 +134,17 @@ def _typed(verb: str, request: Mapping, context: tuple) -> DecisionRequest | Res
             raise Malformed(msg)
         if request['instructions']:
             context = (Text(request['instructions']), *context)
+        if not has_content(context):
+            msg = 'empty context: a decide needs non-blank instructions or context, or an image'
+            raise EmptyContext(msg)
         questions = _field(request, 'questions', list)
         parsed = decision_request_from_json({'context': [], 'questions': questions})
         return DecisionRequest(context, parsed.questions)
     except (KeyError, TypeError, ValueError) as bad:
         if isinstance(bad, Malformed):
             raise
+        if isinstance(bad, EmptyContext):
+            raise Malformed(str(bad)) from None
         msg = f'the request does not describe a valid {verb}: {bad!r}'
         raise Malformed(msg) from None
 

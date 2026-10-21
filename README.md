@@ -143,7 +143,8 @@ stdout is ONE findings JSON document, the method's `findings-output.schema.json`
 whatever the reviewers did. Each reviewer's `status`: `ok` (a findings array; `[]` is a clean pass);
 the failed call's kind (`exhausted`, `auth`, `rate_limit`, `timeout`, `unsupported`); `unavailable` (the
 provider is not in the catalogue -- never substituted -- or the failure was unclassified); `skipped` (an
-empty diff, no call made). A refused invocation -- no `method.json`, an unknown `schema_version`, a range
+empty diff, no call made). Every reviewer but an `ok` or `skipped` one carries `error`, saying why: the
+failed call's error text verbatim (never a key), else the method's reason for its status. A refused invocation -- no `method.json`, an unknown `schema_version`, a range
 git cannot diff -- exits 2 naming it on stderr with nothing on stdout. The rules the data cannot state
 (pick, templating, status precedence, merge) are pinned by the method's `conformance/` fixtures, which
 this test suite reads in place (the host's `[capabilities.sharp_review] path`) and the Node

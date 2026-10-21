@@ -110,6 +110,11 @@ _STEPS: Final = {
 
 def reviewer_status(method: Method, planned: str, result: Mapping | None) -> str:
     """The reviewer's final status by ``reviewer_status.precedence``: the first step that applies decides."""
+    return _decide(method, planned, result)[0]
+
+
+def _decide(method: Method, planned: str, result: Mapping | None) -> tuple[str, str]:
+    """The final status and the precedence step that decided it."""
     spec = method.spec['reviewer_status']
     for step in spec['precedence']:
         name, _, status = step.partition(':')
@@ -119,13 +124,30 @@ def reviewer_status(method: Method, planned: str, result: Mapping | None) -> str
         if not _STEPS[name](spec, planned, result):
             continue
         if name == 'planned_final':
-            return planned
+            return planned, name
         if name == 'error_kind':
             kind = result['error_kind']
-            return kind if kind in spec['failure_kinds'] else 'unavailable'
-        return status
+            return (kind if kind in spec['failure_kinds'] else 'unavailable'), name
+        return status, name
     msg = 'reviewer_status.precedence ends without an otherwise step'
     raise ValueError(msg)
+
+
+def _error(method: Method, status: str, step: str, reviewer: Mapping, result: Mapping | None) -> str | None:
+    """Why a reviewer that is neither ok nor skipped has no findings (``reviewer_status.error``).
+
+    The recorded error text -- the result's, else the planned reviewer's -- copied verbatim, else the
+    deciding step's reason. The text is the call reply's ``error``, which names a failure without a key.
+    """
+    if status in {'ok', 'skipped'}:
+        return None
+    for recorded in ((result or {}).get('error'), reviewer.get('error')):
+        if isinstance(recorded, str) and recorded.strip():
+            return recorded
+    reasons = method.spec['reviewer_status']['reasons']
+    if step == 'planned_final':
+        return reasons[step][status]
+    return reasons[step].replace('{error_kind}', str((result or {}).get('error_kind', '')))
 
 
 def valid_finding(schema: Mapping, finding: object) -> bool:
@@ -172,7 +194,7 @@ def merge(
     out_reviewers, groups = [], {}
     for reviewer in reviewers:
         result = by_name.get(reviewer['name'])
-        status = reviewer_status(method, reviewer['status'], result)
+        status, step = _decide(method, reviewer['status'], result)
         dropped = 0
         if status == 'ok':
             who = {'name': reviewer['name'], 'provider': reviewer['provider']}
@@ -184,9 +206,15 @@ def merge(
                 group = groups.setdefault(key, {'finding': finding, 'reviewers': []})
                 if who not in group['reviewers']:
                     group['reviewers'].append(who)
-        out_reviewers.append({
-            'name': reviewer['name'], 'provider': reviewer['provider'], 'status': status, 'dropped_findings': dropped,
-        })  # fmt: skip
+        out = {
+            'name': reviewer['name'],
+            'provider': reviewer['provider'],
+            'status': status,
+            'dropped_findings': dropped,
+        }
+        if (error := _error(method, status, step, reviewer, result)) is not None:
+            out['error'] = error
+        out_reviewers.append(out)
     return {
         'schema_version': method.schema_version,
         'range': range_,

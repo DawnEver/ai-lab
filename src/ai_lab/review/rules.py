@@ -86,6 +86,9 @@ def render_prompt(method: Method, profile: Mapping, manifest: Mapping) -> dict:
         'manifest': manifest.get('manifest'),
         'finding_schema': schema,
     }
+    # method.json principles.list_item, once per principles.json entry, one per line.
+    item = method.spec['principles']['list_item']
+    variables['principle_list'] = '\n'.join(render(method, item, p) for p in method.principles)
     for name, path in method.spec['template']['partials'].items():
         variables[name] = render(method, method.text(path), variables)
     return {'call_mode': entry['call_mode'], 'prompt': render(method, method.text(entry['template']), variables)}
@@ -128,21 +131,25 @@ def reviewer_status(method: Method, planned: str, result: Mapping | None) -> str
     raise ValueError(msg)
 
 
+def _valid_value(rule: Mapping, value: object) -> bool:
+    if rule.get('type') == 'string' and not isinstance(value, str):
+        return False
+    if rule.get('type') == 'array' and not (
+        isinstance(value, list) and all(_valid_value(rule.get('items', {}), v) for v in value)
+    ):
+        return False
+    return 'enum' not in rule or value in rule['enum']
+
+
 def valid_finding(schema: Mapping, finding: object) -> bool:
-    """*finding* against the finding schema's subset: an object, required non-null, string types, enums."""
+    """*finding* against the finding schema's subset: an object, required non-null, string/array types, enums."""
     if schema.get('type') != 'object' or not isinstance(finding, dict):
         return False
     if any(finding.get(name) is None for name in schema.get('required', ())):
         return False
-    for name, rule in schema.get('properties', {}).items():
-        if name not in finding:
-            continue
-        value = finding[name]
-        if rule.get('type') == 'string' and not isinstance(value, str):
-            return False
-        if 'enum' in rule and value not in rule['enum']:
-            return False
-    return True
+    return all(
+        _valid_value(rule, finding[name]) for name, rule in schema.get('properties', {}).items() if name in finding
+    )
 
 
 def _key(spec: Mapping, finding: Mapping, defaults: Mapping) -> str:
@@ -167,7 +174,8 @@ def merge(
     """The findings JSON of one run: each planned reviewer's final status, and the deduplicated findings."""
     spec = method.spec['merge']
     schema = method.finding_schema
-    fields = list(schema['properties'])
+    union = spec['union']['fields']
+    fields = [name for name in schema['properties'] if name not in union]
     by_name = {r['name']: r for r in results}
     out_reviewers, groups = [], {}
     for reviewer in reviewers:
@@ -181,7 +189,9 @@ def merge(
                     dropped += 1
                     continue
                 key = _key(spec['dedup_key'], finding, spec['defaults'])
-                group = groups.setdefault(key, {'finding': finding, 'reviewers': []})
+                group = groups.setdefault(key, {'finding': finding, 'reviewers': [], 'union': {u: [] for u in union}})
+                for name, values in group['union'].items():
+                    values.extend(v for v in finding.get(name, ()) if v not in values)
                 if who not in group['reviewers']:
                     group['reviewers'].append(who)
         out_reviewers.append({
@@ -214,4 +224,6 @@ def _finding(spec: Mapping, fields: Sequence[str], date: str, seq: int, group: M
         'status': spec['defaults']['status'],
         'confidence': label,
         'reviewers': group['reviewers'],
+        # merge.union: every reviewer's values for the group, first-seen; an empty union is omitted.
+        **{name: values for name, values in group['union'].items() if values},
     }

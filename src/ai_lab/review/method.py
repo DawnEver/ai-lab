@@ -10,7 +10,7 @@ from typing import Final
 __all__ = ['METHOD_SCHEMA_VERSIONS', 'Method', 'UnknownMethodVersion', 'load_method']
 
 #: The ``method.json`` versions this executor reads; any other is refused, never guessed.
-METHOD_SCHEMA_VERSIONS: Final = frozenset({1})
+METHOD_SCHEMA_VERSIONS: Final = frozenset({2})
 
 
 class UnknownMethodVersion(ValueError):
@@ -26,6 +26,8 @@ class Method:
     profiles: tuple[dict, ...]
     finding_schema: dict
     output_schema: dict
+    #: ``principles.json``'s entries: the principle set every reviewer judges against.
+    principles: tuple[dict, ...]
 
     @property
     def schema_version(self) -> int:
@@ -62,10 +64,27 @@ def load_method(root: str | Path) -> Method:
         msg = f'{spec_file} declares schema_version {version!r}; this executor reads {sorted(METHOD_SCHEMA_VERSIONS)}'
         raise UnknownMethodVersion(msg)
     files = spec['files']
+    principles = tuple(_json(root / files['principles'])['principles'])
     return Method(
         root=root,
         spec=spec,
         profiles=tuple(_json(root / files['profiles'])['profiles']),
-        finding_schema=_json(root / files['finding_schema']),
+        finding_schema=_with_principle_ids(_json(root / files['finding_schema']), spec['principles'], principles),
         output_schema=_json(root / files['output_schema']),
+        principles=principles,
     )
+
+
+def _with_principle_ids(schema: dict, spec: dict, principles: tuple[dict, ...]) -> dict:
+    """``method.json principles.fills``: the schema names the field, ``principles.json`` alone lists its ids."""
+    field = spec['finding_field']
+    if field not in schema['properties']:
+        msg = f'the finding schema has no {field!r} property for principles.json to fill'
+        raise ValueError(msg)
+    ids = [p['id'] for p in principles]
+    if len(set(ids)) != len(ids):
+        msg = f'principles.json repeats an id: {ids}'
+        raise ValueError(msg)
+    rule = schema['properties'][field]
+    filled = {**rule, 'items': {**rule.get('items', {}), 'enum': ids}}
+    return {**schema, 'properties': {**schema['properties'], field: filled}}

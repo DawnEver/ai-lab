@@ -19,6 +19,11 @@ __all__ = ['REVIEW_TASK', 'run']
 #: The key task every review call is made under (its own key slots: ``auth login <provider> --task``).
 REVIEW_TASK = 'pr-review'
 
+#: The system turn of every review call. The rendered prompt (the profile's brief plus the diff) is the
+#: CONTEXT -- the user turn -- because a wire builds its user message from the context, and an empty one
+#: is refused (Anthropic: ``user messages must have non-empty content``).
+_INSTRUCTIONS = 'Review the change the user turn describes; respond with the findings object the schema declares.'
+
 
 def _plan(method: Method, mode: Mapping, rng: random.Random) -> list[str]:
     spec = method.spec['pick']
@@ -80,7 +85,8 @@ def run(
             continue
         reply = call({
             'verb': 'respond', 'provider': provider, 'model': mode['models'].get(provider, model),
-            'task': REVIEW_TASK, 'instructions': rendered['prompt'], 'context': [], 'schema': schema,
+            'task': REVIEW_TASK, 'instructions': _INSTRUCTIONS,
+            'context': [{'kind': 'text', 'text': rendered['prompt']}], 'schema': schema,
         })  # fmt: skip
         results.append(_result(key, reply))
     return merge(method, range_=range_, date=date, profiles=keys, reviewers=reviewers, results=results)

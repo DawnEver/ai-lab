@@ -111,7 +111,10 @@ def test_the_headless_default_reviews_the_diff_through_anthropic_and_validates(m
         assert request['task'] == 'pr-review'
         assert request['model'] == 'claude-test'
         assert request['schema']['properties']['findings']['items']['required'] == ['severity', 'summary', 'category']
-        assert '+x = 1' in request['instructions']
+        # The rendered prompt is the user turn: an empty context is an empty user message, which the
+        # Messages API refuses with a 400 (`user messages must have non-empty content`).
+        assert [part['kind'] for part in request['context']] == ['text']
+        assert '+x = 1' in request['context'][0]['text']
 
 
 @pytest.mark.parametrize('kind', ['exhausted', 'auth', 'rate_limit', 'timeout', 'unsupported'])

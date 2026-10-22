@@ -139,7 +139,7 @@ reviewer i the provider `providers[i mod n]` (default `["anthropic"]`), and make
 `respond` under task `pr-review` whose schema is `{"findings": [<finding schema>]}`. `--model` serves
 every provider the run mode's `models` does not name (the method names none headless).
 
-stdout is ONE findings JSON document, the method's `findings-output.schema.json` (version 1), exit 0
+stdout is ONE findings JSON document, the method's `findings-output.schema.json` (version 2), exit 0
 whatever the reviewers did. Each reviewer's `status`: `ok` (a findings array; `[]` is a clean pass);
 the failed call's kind (`exhausted`, `auth`, `rate_limit`, `timeout`, `unsupported`); `unavailable` (the
 provider is not in the catalogue -- never substituted -- or the failure was unclassified); `skipped` (an
@@ -155,7 +155,7 @@ executor runs too; the two share no code.
 ```python
 from ai_lab import Ledger
 
-client = Ledger('output/ai/ledger.jsonl', mode='record').wrap(connect('anthropic:claude-sonnet-5-5'))
+client = Ledger('<ledger.jsonl>', mode='record').wrap(connect('anthropic:claude-sonnet-5-5'))
 ```
 
 Every call is keyed by the SHA-256 of verb, client and canonical request (images by digest). `record`

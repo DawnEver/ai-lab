@@ -76,7 +76,7 @@ def render_prompt(method: Method, profile: Mapping, manifest: Mapping) -> dict:
     entry = _context_entry(method, profile, manifest)
     if 'template' not in entry:
         return {'status': entry['status']}
-    schema = json.dumps(method.finding_schema, separators=(',', ':'), ensure_ascii=False)
+    schema = json.dumps(method.prompt_schema, separators=(',', ':'), ensure_ascii=False)
     variables = {
         'framing': profile.get('framing'),
         'scope': profile.get('scope'),

@@ -25,6 +25,8 @@ class Method:
     spec: dict
     profiles: tuple[dict, ...]
     finding_schema: dict
+    #: The finding schema a reviewer prompt shows: ``method.json principles.prompt_schema`` picks filled or unfilled.
+    prompt_schema: dict
     output_schema: dict
     #: ``principles.json``'s entries: the principle set every reviewer judges against.
     principles: tuple[dict, ...]
@@ -65,11 +67,19 @@ def load_method(root: str | Path) -> Method:
         raise UnknownMethodVersion(msg)
     files = spec['files']
     principles = tuple(_json(root / files['principles'])['principles'])
+    raw_schema = _json(root / files['finding_schema'])
+    finding_schema = _with_principle_ids(raw_schema, spec['principles'], principles)
+    prompt_schemas = {'filled': finding_schema, 'unfilled': raw_schema}
+    choice = spec['principles'].get('prompt_schema')
+    if choice not in prompt_schemas:
+        msg = f'{spec_file} principles.prompt_schema is {choice!r}; it must be one of {sorted(prompt_schemas)}'
+        raise ValueError(msg)
     return Method(
         root=root,
         spec=spec,
         profiles=tuple(_json(root / files['profiles'])['profiles']),
-        finding_schema=_with_principle_ids(_json(root / files['finding_schema']), spec['principles'], principles),
+        finding_schema=finding_schema,
+        prompt_schema=prompt_schemas[choice],
         output_schema=_json(root / files['output_schema']),
         principles=principles,
     )

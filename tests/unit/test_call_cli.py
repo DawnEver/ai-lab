@@ -109,6 +109,29 @@ def test_a_malformed_request_is_refused(keys, request_):
         answer(request_, post=_post(_ANTHROPIC_OK))
 
 
+@pytest.mark.parametrize(
+    'request_',
+    [
+        {**RESPOND, 'context': []},
+        {**RESPOND, 'context': [{'kind': 'text', 'text': ' \n'}, {'kind': 'fields', 'values': {}}]},
+        {**DECIDE, 'instructions': '', 'context': []},
+        {**DECIDE, 'instructions': '  ', 'context': [{'kind': 'text', 'text': ''}]},
+    ],
+    ids=['respond-none', 'respond-blank', 'decide-none', 'decide-blank'],
+)  # fmt: skip
+def test_an_empty_context_is_refused_before_any_vendor_is_called(keys, request_):
+    post = _post(_ANTHROPIC_OK)
+    with pytest.raises(Malformed, match='empty context'):
+        answer(request_, post=post)
+    assert post.calls == []
+
+
+def test_an_image_alone_is_a_context(keys):
+    data = base64.b64encode(PNG).decode('ascii')
+    reply = answer({**RESPOND, 'context': [], 'images': [{'data': data}]}, post=_post(_ANTHROPIC_OK))
+    assert reply['ok']
+
+
 def test_main_exits_0_on_a_classified_failure_and_2_on_a_malformed_request(keys, monkeypatch, capsys):
     monkeypatch.setattr('sys.stdin', io.StringIO('{not json'))
     assert main([]) == 2

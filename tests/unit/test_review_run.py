@@ -14,7 +14,7 @@ from ai_lab.review.run import run
 pytestmark = pytest.mark.sharp_review  # reads the method data in place
 
 _KEYWORDS = {'$schema', 'title', 'description', 'type', 'const', 'enum', 'required', 'properties',
-             'additionalProperties', 'items', 'pattern'}  # fmt: skip
+             'additionalProperties', 'items', 'pattern', 'minLength', 'allOf', 'if', 'then', 'not'}  # fmt: skip
 _TYPES = {'object': dict, 'array': list, 'string': str, 'integer': int, 'null': type(None)}
 FINDING = {'severity': 'HIGH', 'file': 'a.py', 'summary': 'Null crashes parse', 'category': 'Bug'}
 
@@ -30,6 +30,8 @@ def _scalar_error(schema, value, at):
         return f'{at}: {value!r} not in {schema["enum"]}'
     if 'pattern' in schema and not re.search(schema['pattern'], value):
         return f'{at}: {value!r} does not match {schema["pattern"]}'
+    if 'minLength' in schema and len(value) < schema['minLength']:
+        return f'{at}: {value!r} is shorter than {schema["minLength"]}'
     return None
 
 
@@ -46,6 +48,11 @@ def _errors(schema, value, at='$'):
         errors += [e for k, sub in props.items() if k in value for e in _errors(sub, value[k], f'{at}.{k}')]
     if isinstance(value, list) and 'items' in schema:
         errors += [e for i, item in enumerate(value) for e in _errors(schema['items'], item, f'{at}[{i}]')]
+    errors += [e for sub in schema.get('allOf', ()) for e in _errors(sub, value, at)]
+    if 'if' in schema and not _errors(schema['if'], value, at):
+        errors += _errors(schema.get('then', {}), value, at)
+    if 'not' in schema and not _errors(schema['not'], value, at):
+        errors.append(f'{at}: matches a forbidden shape')
     return errors
 
 
@@ -122,12 +129,14 @@ def test_a_classified_failure_is_the_reviewers_status(method, kind):
     doc = _run(method, FakeCall({'anthropic': _failed(kind)}))
     assert _errors(method.output_schema, doc) == []
     assert {r['status'] for r in doc['reviewers']} == {kind}
+    assert {r['error'] for r in doc['reviewers']} == {'it failed'}  # the failed call's error, verbatim
     assert doc['findings'] == []
 
 
 def test_an_unclassified_failure_is_unavailable(method):
     doc = _run(method, FakeCall({'anthropic': _failed('')}))
-    assert {r['status'] for r in doc['reviewers']} == {'unavailable'}
+    assert _errors(method.output_schema, doc) == []
+    assert {(r['status'], r['error']) for r in doc['reviewers']} == {('unavailable', 'it failed')}
 
 
 def test_an_unavailable_provider_is_never_substituted(method):
@@ -135,6 +144,9 @@ def test_an_unavailable_provider_is_never_substituted(method):
     doc = _run(method, call, providers=['ghost', 'openai'])
     assert _errors(method.output_schema, doc) == []
     assert [(r['provider'], r['status']) for r in doc['reviewers']] == [('ghost', 'unavailable'), ('openai', 'ok')]
+    ghost, served = doc['reviewers']
+    assert ghost['error'] == method.spec['reviewer_status']['reasons']['planned_final']['unavailable']
+    assert 'error' not in served
     assert [r['provider'] for r in call.requests] == ['openai']
 
 
@@ -144,4 +156,5 @@ def test_an_empty_diff_is_skipped_without_a_call(method):
               providers=None, available={'anthropic'})  # fmt: skip
     assert _errors(method.output_schema, doc) == []
     assert {r['status'] for r in doc['reviewers']} == {'skipped'}
+    assert not any('error' in r for r in doc['reviewers'])
     assert call.requests == []

@@ -3,7 +3,8 @@
 ``method.json``'s ``run_modes.headless`` is the configuration: its providers (overridable), the contexts
 and call modes it can execute, its per-provider models. A reviewer is ``skipped`` when its context has
 nothing to review, ``unavailable`` when its provider is not in the available set (never substituted),
-``unsupported`` when the run mode cannot make its call; a failed call's ``kind`` is its status.
+``unsupported`` when the run mode cannot make its call; a failed call's ``kind`` is its status and its
+``error`` text (which never carries a key) is the reviewer's ``error``.
 """
 
 from __future__ import annotations
@@ -43,7 +44,7 @@ def _result(name: str, reply: Mapping) -> dict:
     if reply['ok']:
         findings = (reply['result'] or {}).get('findings')
         return {'name': name, 'findings': findings}
-    return {'name': name, 'error_kind': reply['kind'], 'text': reply['error']}
+    return {'name': name, 'error_kind': reply['kind'], 'error': reply['error']}
 
 
 def run(

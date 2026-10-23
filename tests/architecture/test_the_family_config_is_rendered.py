@@ -6,12 +6,12 @@ from pathlib import Path
 from typing import Final
 
 import pytest
-from lab_commons.dev.famtests import configrender, famfiles
+from dev_lab.dev.famtests import configrender, famfiles
 
 from tests.architecture._famconfig import DELTAS, REPO
 
 _ROOT: Final = Path(__file__).resolve().parents[2]
-_HINT: Final = 're-render it from tests/architecture/_famconfig.py through lab_commons.dev.famconfig.render'
+_HINT: Final = 're-render it from tests/architecture/_famconfig.py through dev_lab.dev.famconfig.render'
 
 #: The project-level files whose content is ai-lab's own -- none: every one has a family row.
 _OWNED_HERE: Final[dict[str, str]] = {}

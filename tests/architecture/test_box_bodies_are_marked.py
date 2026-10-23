@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Final
 
-from lab_commons.dev.famtests.boxneeds import assert_box_bodies_are_marked
+from dev_lab.dev.famtests.boxneeds import assert_box_bodies_are_marked
 
 _ROOT: Final = Path(__file__).resolve().parents[2]
 

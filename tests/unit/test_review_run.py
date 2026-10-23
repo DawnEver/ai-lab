@@ -9,6 +9,7 @@ import re
 import pytest
 
 from ai_lab.review.method import load_method
+from ai_lab.review.rules import merge
 from ai_lab.review.run import run
 
 pytestmark = pytest.mark.sharp_review  # reads the method data in place
@@ -158,3 +159,12 @@ def test_an_empty_diff_is_skipped_without_a_call(method):
     assert {r['status'] for r in doc['reviewers']} == {'skipped'}
     assert not any('error' in r for r in doc['reviewers'])
     assert call.requests == []
+
+
+def test_a_finding_lists_a_reviewer_once_by_name_whatever_its_provider(method):
+    reviewers = [{'name': 'diff', 'provider': 'a', 'status': 'pending'},
+                 {'name': 'diff', 'provider': 'b', 'status': 'pending'}]  # fmt: skip
+    results = [{'name': 'diff', 'findings': [FINDING]}]
+    doc = merge(method, range_='HEAD', date='2026-10-20', profiles=['diff'], reviewers=reviewers, results=results)
+    assert doc['findings'][0]['reviewers'] == [{'name': 'diff', 'provider': 'a'}]
+    assert doc['findings'][0]['confidence'] == method.spec['merge']['confidence'][-1]['label']

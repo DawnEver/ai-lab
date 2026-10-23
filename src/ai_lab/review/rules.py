@@ -214,7 +214,8 @@ def merge(
                 group = groups.setdefault(key, {'finding': finding, 'reviewers': [], 'union': {u: [] for u in union}})
                 for name, values in group['union'].items():
                     values.extend(v for v in finding.get(name, ()) if v not in values)
-                if who not in group['reviewers']:
+                # A reviewer is its name: listed once per finding, whatever provider served it.
+                if all(r['name'] != who['name'] for r in group['reviewers']):
                     group['reviewers'].append(who)
         out = {
             'name': reviewer['name'],

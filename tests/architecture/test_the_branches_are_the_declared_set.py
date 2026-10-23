@@ -1,6 +1,6 @@
 """MERGE-OR-DELETE: origin and this box carry only `[tool.lab_commons.branchset]` (`prune_merged = true`).
 
-THE BODY IS THE FAMILY'S (`lab_commons.dev.famtests.branchset`); this file supplies the trunk.
+THE BODY IS THE FAMILY'S (`dev_lab.dev.famtests.branchset`); this file supplies the trunk.
 """
 
 from __future__ import annotations
@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import Final
 
 import pytest
-from lab_commons.dev.branchset import declared_branchset
-from lab_commons.dev.famtests import branchset
-from lab_commons.dev.lanepolicy import load_policy
+from dev_lab.dev.branchset import declared_branchset
+from dev_lab.dev.famtests import branchset
+from dev_lab.dev.lanepolicy import load_policy
 
 _ROOT: Final = Path(__file__).resolve().parents[2]
 TRUNK: Final = 'main'

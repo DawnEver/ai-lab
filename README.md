@@ -124,12 +124,12 @@ Version 2 removed `usage.cost_usd` (2026-10-20): a version-1 reader expects that
 object, so the reply's shape changed and the version moved. A caller prices the tokens itself (see
 "Effort, usage and cost").
 
-## A headless code review: `python -m ai_lab.review run|merge`
+## A headless code review: `python -m ai_lab.review`
 
 ```
-python -m ai_lab.review run --method <sharp-review method dir> --range main...HEAD --model <model id>
-                            [--providers anthropic ...] [--repo <path>]
-python -m ai_lab.review merge --method <sharp-review method dir>   < run-record.json
+python -m ai_lab.review --method <sharp-review method dir> --range main...HEAD --model <model id>
+                        [--providers anthropic ...] [--repo <path>]
+python -m ai_lab.review.merge --method <sharp-review method dir>   < run-record.json
 ```
 
 The review METHOD is data owned by sharp-review (cc-market `sharp-review/method/`): profiles, prompt
@@ -151,9 +151,9 @@ git cannot diff -- exits 2 naming it on stderr with nothing on stdout. The rules
 this test suite reads in place (the host's `[capabilities.sharp_review] path`); the Node executor
 runs the pick and prompt fixtures too.
 
-`merge` is the ONE merge of the method: sharp-review's planned fan-out (Claude/Codex workers) pipes
+`ai_lab.review.merge` is the ONE merge of the method: sharp-review's planned fan-out (Claude/Codex workers) pipes
 its run record -- `{"range", "date", "profiles", "reviewers", "results"}`, `results` absent meaning no
-reviewer returned -- on stdin and prints the same findings JSON `run` does; it keeps no merge of its
+reviewer returned -- on stdin and prints the same findings JSON the review does; it keeps no merge of its
 own. A record that is not JSON, not an object, or lacks one of the first four keys exits 2.
 
 ## Replay

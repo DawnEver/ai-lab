@@ -1,6 +1,6 @@
-"""PUSH ADMISSION has one implementation, `lab_commons.dev.admission`; ai_lab keeps no local copy.
+"""PUSH ADMISSION has one implementation, `dev_lab.dev.admission`; ai_lab keeps no local copy.
 
-THE BODY IS THE FAMILY'S (`lab_commons.dev.famtests.localadmission`). This file holds only the
+THE BODY IS THE FAMILY'S (`dev_lab.dev.famtests.localadmission`). This file holds only the
 repo's answers: the trees walked and the read floor.
 """
 
@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Final
 
-from lab_commons.dev.famtests import localadmission
+from dev_lab.dev.famtests import localadmission
 
 _ROOT: Final = Path(__file__).resolve().parents[2]
 _ROOTS: Final = (('src', '*.py'), ('tests', '*.py'))

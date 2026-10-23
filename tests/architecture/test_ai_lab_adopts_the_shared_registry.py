@@ -1,6 +1,6 @@
 """ai-lab ADOPTS the family rules registry: every rule is enforced here by a named mechanism, or absent.
 
-``lab_commons.dev.rules`` holds the one canonical statement of each development rule; ``assert_adopted``
+``dev_lab.dev.rules`` holds the one canonical statement of each development rule; ``assert_adopted``
 resolves every rule this repo claims against a TRACKED mechanism in this tree and refuses a rule that is
 neither claimed nor declared absent. It proves the accounting, not that the mechanisms pass -- that is
 the suite's business.
@@ -15,8 +15,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Final
 
-from lab_commons.dev.profile import RepoProfile
-from lab_commons.dev.rules import Adoption, LintRule, TestPath, assert_adopted
+from dev_lab.dev.profile import RepoProfile
+from dev_lab.dev.rules import Adoption, LintRule, TestPath, assert_adopted
 
 _ROOT: Final = Path(__file__).resolve().parents[2]
 
@@ -63,12 +63,17 @@ _MECHANISMS: Final = {
         TestPath('pyproject.toml'), TestPath('tests/architecture/test_the_branches_are_the_declared_set.py'),
     ),
     # Adopted 2026-10-19 with the lab-commons ef06ab3 relock: both are the forge's server-side steps
-    # (lab_commons.dev.forgemerge, lab_commons.dev.forgereview) over every repo whose integrator table
+    # (dev_lab.dev.forgemerge, dev_lab.dev.forgereview) over every repo whose integrator table
     # declares an integration branch; ai-lab declares it, so its PRs merge and are reviewed by the kit alone.
     'INTEGRATION-TAKES-ONLY-FORGE-MERGES': (
         TestPath('pyproject.toml'), TestPath('tests/architecture/test_session_branch_pushes_are_guarded.py'),
     ),
     'PR-REVIEW-IS-ADVISORY': (TestPath('pyproject.toml'),),
+    # Adopted 2026-10-23 with the move to dev-lab: the PR-flow rows are the forge's own admission and carry
+    # steps (dev_lab.dev.pradmit, dev_lab.dev.forgecarry) over the same declared integrator table.
+    'ONE-SESSION-ONE-PR': (TestPath('pyproject.toml'),),
+    'NO-STACKED-PRS': (TestPath('pyproject.toml'),),
+    'DOCS-ONLY-CARRIES': (TestPath('pyproject.toml'),),
 }  # fmt: skip
 
 #: Rules with no subject in this library today, BY NAME -- deriving it from ``RULES`` would silently
@@ -91,7 +96,8 @@ _ABSENT: Final = frozenset({
     'DOCS-SPLIT', 'MEMORY-SHAPE', 'INJECTED-DOC-WIDTH-CEILING', 'INJECTED-TEXT-IS-PROGRESSIVE',
     'NO-CJK-IN-TRACKED-SOURCE', 'REPORTS-LIVE-IN-MEMORY',
     # Code placement and scratch: one src/ and one tests/ tree, no scratch.
-    'CODE-IN-CODE-ROOTS', 'SCRATCH-ARCHIVED-OR-PROMOTED',
+    'CODE-IN-CODE-ROOTS', 'SCRATCH-IS-NEVER-COMMITTED', 'STRAY-FILE-REFUSED', 'SPLIT-BY-CONCEPT',
+    'TRACKED-CITES-NO-EPHEMERAL',
     # Meta-rules about guards: the guards above are the family's shared bodies, which carry them.
     'DECLARATION-LIES', 'PLANTED-CONTROL', 'FLOOR-ON-EVERY-SCAN', 'ESCAPE-HATCH-CEILING', 'RATCHET-TWO-SIDES',
     'NAMED-SETS-NOT-COUNTS', 'XFAIL-NOT-SKIP', 'MODULE-SIZE-ALARM',
@@ -105,7 +111,9 @@ _ABSENT: Final = frozenset({
 #: branch-flow rules gained mechanisms once integrate/main was declared. Lowered to 42 on 2026-10-20:
 #: RETIRED-NAMES-REGISTERED gained ai_lab.retired and its scan. Lowered to 41 the same day:
 #: FORMATS-UPGRADE-ON-READ gained the ledger's declared upgrade steps.
-_ABSENT_CEILING: Final = 41
+#: Raised to 44 on 2026-10-23: the dev-lab split brought three rules with no mechanism here yet
+#: (STRAY-FILE-REFUSED, SPLIT-BY-CONCEPT, TRACKED-CITES-NO-EPHEMERAL).
+_ABSENT_CEILING: Final = 44
 
 
 def test_every_rule_is_enforced_or_declared_absent() -> None:

@@ -35,4 +35,8 @@ class ReplayMiss(Exception):
 
 
 class DailyTokenCapReached(Exception):
-    """Today's tokens have reached ``[ai_lab] daily_token_cap``; no call starts. Wait a day or raise the cap."""
+    """A provider's or a key's tokens today reached its ``[ai_lab.daily_token_cap]``; no call starts there."""
+
+    def __init__(self, message: str, *, scope: str) -> None:
+        super().__init__(message)
+        self.scope = scope

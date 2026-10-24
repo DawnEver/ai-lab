@@ -68,7 +68,6 @@ ignore = ["COM812", "D203", "D213", "D400", "D401", "N818", "PLR0913", "Q000", "
 [tool.lab_commons.branchset]
 trunk = 'main'
 sessions = ['integrate/main']
-ephemeral = ['pr/*']  # a short-lived PR head, pushed with no row and deleted by the forge with its merge
 prune_merged = true
 
 [tool.lab_commons.hpc]
@@ -99,5 +98,5 @@ pr_merges_since = "9d016300ccc6b19cad75729b8c4f22ad21817a03"  # INTEGRATION-TAKE
 [tool.lab_commons.doors]
 BARE-TEST-INVOCATION = "<venv python> -m dev_lab.dev.verify [-- <pytest args>]  (the verdict door; a hand-written pytest line has none)"
 PUSH-NO-VERIFY = "<venv python> -m dev_lab.dev.verify, then push without skipping the hook"
-GIT-NETWORK-VERB = "<venv python> -m dev_lab.dev.netverb -- git <push|fetch|pull|clone|ls-remote> ...  (retries 3x, then reports a diagnosis)"
+NETWORK-VERB = "<venv python> -m dev_lab.dev.netverb -- <git push|fetch|pull|clone|ls-remote|submodule update ...  or  uv lock|add|remove ...>  (retries 3x, then reports a diagnosis); an environment change is <venv python> -m dev_lab.dev.dep --sync, which retries inside"
 ENV-MUTATION-THROUGH-THE-DOOR = "<any family venv python> -m dev_lab.dev.dep --bootstrap <this checkout> --extra dev  (run from this checkout)"

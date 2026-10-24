@@ -5,19 +5,23 @@ The caps are the ``[ai_lab.daily_token_cap]`` table of the per-machine file (:mo
     [ai_lab.daily_token_cap]
     default = 2000000                       # every provider the table does not name
     anthropic = 5000000                     # one provider, every key of it
-    "anthropic/api-key-review" = 1000000    # one key: <provider>/<credential username>
+    "anthropic/3f2a9c1b7d4e" = 1000000      # one key: <provider>/<fingerprint>
 
 A call draws on its provider's cap (named, else ``default``, else :data:`DEFAULT_DAILY_TOKEN_CAP`) and, when
-the table names it, on its key's cap. A key is named by its credential USERNAME
-(:func:`lab_commons.credentials.key_username`), never by its secret. The tokens a day has used are a ledger,
+the table names it, on its key's cap. A key is named by its FINGERPRINT (:func:`fingerprint`, a sha256
+prefix; ``python -m ai_lab.auth status`` prints it), never by its secret and never by the credential
+username, so the same key is one key on every host and two usernames holding one key are one key. The tokens a day has used are a ledger,
 one JSON line per call ``{"provider", "key", "tokens"}``, appended to ``tokens-<UTC date>.jsonl`` under
-:func:`state_dir` -- machine-local, never tracked, so every checkout of one box draws on one budget. A call
+:func:`state_dir` -- machine-local, never tracked, so every checkout of one box draws on one budget. The
+ledger is a fast LOCAL stop: a key held on several hosts is metered per host here, and the key's global
+truth is its provider's own usage report (user ruling 2026-10-24, option A). A call
 that would START with a cap reached raises :class:`~ai_lab.errors.DailyTokenCapReached` naming the scope and
 is never sent; a call under way may finish past it, so ``max_tokens`` is clamped to what is left.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from datetime import UTC, datetime
@@ -29,7 +33,7 @@ from platformdirs import user_state_path
 
 from ai_lab.errors import DailyTokenCapReached
 
-__all__ = ['DEFAULT_DAILY_TOKEN_CAP', 'charge', 'key_scope', 'ledger_file', 'remaining', 'state_dir', 'used_today']
+__all__ = ['DEFAULT_DAILY_TOKEN_CAP', 'charge', 'fingerprint', 'key_scope', 'ledger_file', 'remaining', 'state_dir', 'used_today']
 
 APP: Final = 'ai_lab'
 TABLE: Final = 'daily_token_cap'
@@ -38,8 +42,17 @@ TABLE: Final = 'daily_token_cap'
 DEFAULT_DAILY_TOKEN_CAP: Final = 2_000_000
 
 
+#: Hex digits of a key's sha256: enough to tell keys apart, never enough to be one.
+FINGERPRINT_CHARS: Final = 12
+
+
+def fingerprint(secret: str) -> str:
+    """A key's identity everywhere it is named: a sha256 prefix, never the key."""
+    return hashlib.sha256(secret.encode()).hexdigest()[:FINGERPRINT_CHARS]
+
+
 def key_scope(provider: str, key: str) -> str:
-    """The table key of one API key: ``<provider>/<credential username>``."""
+    """The table key of one API key: ``<provider>/<fingerprint>``."""
     return f'{provider}/{key}'
 
 

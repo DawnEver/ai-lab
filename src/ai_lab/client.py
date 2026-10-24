@@ -346,7 +346,7 @@ class Client:
                     raise Unsupported(msg + login_command(self.provider.name, self.task)) from None
                 break
             try:
-                return self._dispatch(build(key), key_username(self.task, slot)), slot
+                return self._dispatch(build(key), budget.fingerprint(key)), slot
             except DailyTokenCapReached as spent:
                 if spent.scope == self.provider.name:
                     raise

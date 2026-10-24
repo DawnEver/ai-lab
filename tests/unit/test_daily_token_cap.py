@@ -6,6 +6,8 @@ import pytest
 
 from ai_lab import DailyTokenCapReached, ResponseRequest, Text, budget, connect
 
+_KEY = budget.fingerprint('ak-test')
+
 _REQUEST = ResponseRequest('i', (Text('t'),), {'type': 'object', 'properties': {}})
 
 
@@ -31,7 +33,7 @@ def caps(tmp_path, monkeypatch):
 
 def test_the_default_cap_holds_for_a_provider_the_machine_file_does_not_name(keys, tmp_path, monkeypatch):
     monkeypatch.setenv('LAB_COMMONS_CONFIG', str(tmp_path / 'absent.toml'))
-    assert budget.remaining('anthropic', 'api-key') == budget.DEFAULT_DAILY_TOKEN_CAP
+    assert budget.remaining('anthropic', _KEY) == budget.DEFAULT_DAILY_TOKEN_CAP
 
 
 def test_a_call_charges_its_provider_and_its_key(keys, caps):
@@ -39,7 +41,7 @@ def test_a_call_charges_its_provider_and_its_key(keys, caps):
     connect('anthropic:claude-x', post=_reply(7, 3)).respond(_REQUEST)
     connect('anthropic:claude-x', post=_reply(5, 5)).respond(_REQUEST)
     assert budget.used_today('anthropic') == 20
-    assert budget.used_today('anthropic', 'api-key') == 20
+    assert budget.used_today('anthropic', _KEY) == 20
     assert budget.used_today('openai') == 0
 
 
@@ -51,7 +53,7 @@ def test_planted_control_under_the_cap_the_call_goes_out_with_the_wire_ceiling(k
 
 
 def test_max_tokens_never_asks_for_more_than_the_tightest_scope_has_left(keys, caps):
-    caps(**{'anthropic': 10_000, 'anthropic/api-key': 1000})
+    caps(**{'anthropic': 10_000, f'anthropic/{_KEY}': 1000})
     connect('anthropic:claude-x', post=_reply(600, 100)).respond(_REQUEST)
     post = _reply(1, 1)
     connect('anthropic:claude-x', post=post).respond(_REQUEST)
@@ -75,18 +77,18 @@ def test_one_providers_spend_never_draws_on_another(keys, caps):
 
 
 def test_a_key_over_its_own_cap_is_refused_while_its_provider_has_room(keys, caps):
-    caps(**{'anthropic': 10_000, 'anthropic/api-key': 10})
+    caps(**{'anthropic': 10_000, f'anthropic/{_KEY}': 10})
     connect('anthropic:claude-x', post=_reply(8, 2)).respond(_REQUEST)
     post = _reply(1, 1)
-    with pytest.raises(DailyTokenCapReached, match=r'anthropic/api-key daily token cap') as spent:
+    with pytest.raises(DailyTokenCapReached, match=rf'anthropic/{_KEY} daily token cap') as spent:
         connect('anthropic:claude-x', post=post).respond(_REQUEST)
-    assert spent.value.scope == 'anthropic/api-key'
+    assert spent.value.scope == f'anthropic/{_KEY}'
     assert post.calls == []
 
 
-def test_the_ledger_names_provider_and_key_username_and_never_a_secret(keys, caps):
+def test_the_ledger_names_provider_and_key_fingerprint_and_never_a_secret(keys, caps):
     caps(anthropic=1000)
     connect('anthropic:claude-x', post=_reply(7, 3)).respond(_REQUEST)
     text = budget.ledger_file().read_text('utf-8')
-    assert [json.loads(line) for line in text.splitlines()] == [{'provider': 'anthropic', 'key': 'api-key', 'tokens': 10}]
+    assert [json.loads(line) for line in text.splitlines()] == [{'provider': 'anthropic', 'key': _KEY, 'tokens': 10}]
     assert 'ak-test' not in text

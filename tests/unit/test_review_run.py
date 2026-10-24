@@ -168,3 +168,31 @@ def test_a_finding_lists_a_reviewer_once_by_name_whatever_its_provider(method):
     doc = merge(method, range_='HEAD', date='2026-10-20', profiles=['diff'], reviewers=reviewers, results=results)
     assert doc['findings'][0]['reviewers'] == [{'name': 'diff', 'provider': 'a'}]
     assert doc['findings'][0]['confidence'] == method.spec['merge']['confidence'][-1]['label']
+
+
+def _eligible(method):
+    contexts = method.spec['run_modes']['headless']['contexts']
+    return [p['key'] for p in method.profiles if p['context'] in contexts and p['weight'] > 0]
+
+
+def test_the_strict_lens_plans_every_eligible_profile(method):
+    eligible = _eligible(method)
+    doc = run(method, range_='a..b', diff='+x = 1\n', model='m', providers=None, available={'anthropic'},
+              call=FakeCall({'anthropic': _ok([])}), rng=Draws(*[0.0] * len(eligible)), date='2026-10-24',
+              lens='strict')  # fmt: skip
+    assert sorted(doc['profiles']) == sorted(eligible)
+
+
+def test_the_light_lens_plans_one_reviewer(method):
+    doc = _run(method, FakeCall({'anthropic': _ok([])}), lens='light')
+    assert len(doc['reviewers']) == 1
+
+
+def test_the_standard_lens_is_the_methods_own_count(method):
+    doc = _run(method, FakeCall({'anthropic': _ok([])}), lens='standard')
+    assert len(doc['reviewers']) == method.spec['pick']['count']
+
+
+def test_an_unknown_lens_is_refused(method):
+    with pytest.raises(ValueError, match='lens'):
+        _run(method, FakeCall({'anthropic': _ok([])}), lens='deep')

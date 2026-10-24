@@ -229,8 +229,8 @@ wheels = [
 
 [[package]]
 name = "dev-lab"
-version = "0.0.1.dev1211+g2235c51c5"
-source = { git = "https://gitea.mingyangbao.site/Tianjie-Zou-Team/dev-lab.git#2235c51c5eeead0b1e8e57413d9b24682bd9d1e4" }
+version = "0.0.1.dev1271+g1d74f38b4"
+source = { git = "https://gitea.mingyangbao.site/Tianjie-Zou-Team/dev-lab.git#1d74f38b4efde3b73f644111a657410fc69e9d8c" }
 dependencies = [
     { name = "commitizen" },
     { name = "lab-commons", extra = ["io", "paths", "structured", "units"] },
@@ -287,8 +287,8 @@ wheels = [
 
 [[package]]
 name = "lab-commons"
-version = "0.3.1.dev1021+g47c30d32c"
-source = { git = "https://gitea.mingyangbao.site/Tianjie-Zou-Team/lab-commons.git?branch=integrate%2Fmain#47c30d32c5649e76077632270019f7b996e20c43" }
+version = "0.3.1.dev1033+g261877995"
+source = { git = "https://gitea.mingyangbao.site/Tianjie-Zou-Team/lab-commons.git#26187799584ed85e556f23714ba815560e1579a1" }
 
 [package.optional-dependencies]
 io = [

@@ -20,7 +20,7 @@ dependencies = [
 [project.optional-dependencies]
 # The family's development kit: rules registry, rendered configs, shared test bodies, verify entry.
 dev = [
-    "lab-commons[dev] @ git+https://gitea.mingyangbao.site/Tianjie-Zou-Team/lab-commons.git",
+    "dev-lab @ git+https://gitea.mingyangbao.site/Tianjie-Zou-Team/dev-lab.git",
     "pytest",
     "ruff",
 ]
@@ -68,7 +68,6 @@ ignore = ["COM812", "D203", "D213", "D400", "D401", "N818", "PLR0913", "Q000", "
 [tool.lab_commons.branchset]
 trunk = 'main'
 sessions = ['integrate/main']
-ephemeral = ['pr/*']  # a short-lived PR head, pushed with no row and deleted by the forge with its merge
 prune_merged = true
 
 [tool.lab_commons.hpc]
@@ -82,7 +81,7 @@ collect = 'tests'
 output = "output/logs"
 
 [tool.lab_commons.tests]
-produce = ["-m", "lab_commons.dev.verify", "--part", "{part}"]
+produce = ["-m", "dev_lab.dev.verify", "--part", "{part}"]
 resources = ["workstation", "sharp_review"]
 
 # The family branch flow: integrate/main coordinates; main moves only by `integrate promote` (fast-forward)
@@ -93,11 +92,11 @@ trunk = "main"
 integration = "integrate/main"
 pr_merges_since = "9d016300ccc6b19cad75729b8c4f22ad21817a03"  # INTEGRATION-TAKES-ONLY-FORGE-MERGES from here
 
-# Git hooks: the family base (lab_commons/dev/githooks/base.toml) as is; ai-lab adds no row.
+# Git hooks: the family base (dev_lab/dev/githooks/base.toml) as is; ai-lab adds no row.
 [tool.lab_commons.hooks]
 
 [tool.lab_commons.doors]
-BARE-TEST-INVOCATION = "<venv python> -m lab_commons.dev.verify [-- <pytest args>]  (the verdict door; a hand-written pytest line has none)"
-PUSH-NO-VERIFY = "<venv python> -m lab_commons.dev.verify, then push without skipping the hook"
-GIT-NETWORK-VERB = "<venv python> -m lab_commons.dev.netverb -- git <push|fetch|pull|clone|ls-remote> ...  (retries 3x, then reports a diagnosis)"
-ENV-MUTATION-THROUGH-THE-DOOR = "<any family venv python> -m lab_commons.dev.dep --bootstrap <this checkout> --extra dev  (run from this checkout)"
+BARE-TEST-INVOCATION = "<venv python> -m dev_lab.dev.verify [-- <pytest args>]  (the verdict door; a hand-written pytest line has none)"
+PUSH-NO-VERIFY = "<venv python> -m dev_lab.dev.verify, then push without skipping the hook"
+NETWORK-VERB = "<venv python> -m dev_lab.dev.netverb -- <git push|fetch|pull|clone|ls-remote|submodule update ...  or  uv lock|add|remove ...>  (retries 3x, then reports a diagnosis); an environment change is <venv python> -m dev_lab.dev.dep --sync, which retries inside"
+ENV-MUTATION-THROUGH-THE-DOOR = "<any family venv python> -m dev_lab.dev.dep --bootstrap <this checkout> --extra dev  (run from this checkout)"

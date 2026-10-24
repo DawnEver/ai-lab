@@ -17,6 +17,7 @@ __all__ = [
     'Choice',
     'Context',
     'DecisionRequest',
+    'EmptyContext',
     'Fields',
     'Image',
     'Level',
@@ -30,6 +31,7 @@ __all__ = [
     'canonical',
     'decision_request_from_json',
     'decision_request_to_json',
+    'has_content',
 ]
 
 Scalar = str | int | float | bool | None
@@ -143,6 +145,23 @@ class Score:
 Question = Predicate | Choice | Score
 
 
+class EmptyContext(ValueError):
+    """A context with nothing for a model to read: no non-blank text, no non-empty fields, no image.
+
+    A wire builds its user turn from the context, so an empty one is an empty user message -- which a
+    vendor refuses (Anthropic answers HTTP 400) or, worse, answers about nothing. Refused here, before
+    any vendor is called.
+    """
+
+
+def has_content(parts: Context) -> bool:
+    """Whether any part gives a model something to read: non-blank text, non-empty fields, an image."""
+    return any(
+        isinstance(p, Image) or (isinstance(p, Text) and p.text.strip()) or (isinstance(p, Fields) and p.values)
+        for p in parts
+    )
+
+
 def _require_context(parts: Context) -> None:
     if not isinstance(parts, tuple):
         msg = f'a context is a tuple of parts, got {type(parts).__name__}'
@@ -187,8 +206,11 @@ class ResponseRequest:
     name: str = 'response'
 
     def __post_init__(self) -> None:
-        """Refuse a malformed context and a schema that is not an object."""
+        """Refuse a malformed or empty context and a schema that is not an object."""
         _require_context(self.context)
+        if not has_content(self.context):
+            msg = 'empty context: a response request needs non-blank text, non-empty fields or an image'
+            raise EmptyContext(msg)
         if self.schema.get('type') != 'object':
             msg = 'a response schema is a JSON-schema object (type: object)'
             raise ValueError(msg)

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Final
 
-from lab_commons.dev.famtests import noreflection
+from dev_lab.dev.famtests import noreflection
 
 _ROOT: Final = Path(__file__).resolve().parents[2]
 

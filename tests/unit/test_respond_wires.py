@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from ai_lab import Image, ProviderError, ResponseRequest, Text
+from ai_lab import Image, ProviderError, ResponseRequest, Text, Unsupported
 from ai_lab.wire import anthropic_messages, gemini, openai_chat, openai_chat_json, openai_responses
 from tests.conftest import PNG
 
@@ -115,3 +115,36 @@ def test_openai_chat_json_effort_off_turns_thinking_off_and_a_level_sets_the_eff
     high = openai_chat_json.WIRE.effort(call, 'high').body
     assert high['thinking'] == {'type': 'enabled'}
     assert high['reasoning_effort'] == 'high'
+
+
+def test_anthropic_messages_closes_every_object_node_and_leaves_the_callers_schema_alone():
+    # Anthropic refuses an object schema whose additionalProperties is not explicitly false (HTTP 400,
+    # "output_config.format.schema: For 'object' type, 'additionalProperties' must be explicitly set to
+    # false", measured 2026-10-21); the wire closes every object node, nested ones included.
+    open_schema = {
+        'type': 'object',
+        'properties': {
+            'findings': {'type': 'array', 'items': {'type': 'object', 'properties': {'p': {'$ref': '#/$defs/P'}}}},
+            'meta': {'type': ['object', 'null'], 'properties': {'n': {'type': 'string'}}},
+        },
+        '$defs': {'P': {'type': 'object', 'properties': {'x': {'anyOf': [{'type': 'object'}, {'type': 'string'}]}}}},
+    }
+    before = json.dumps(open_schema, sort_keys=True)
+    sent = anthropic_messages.WIRE.respond(
+        ResponseRequest('i', (Text('a'),), open_schema), 'claude-x', 'https://api.anthropic.com/v1', 'k'
+    ).body['output_config']['format']['schema']
+    assert json.dumps(open_schema, sort_keys=True) == before
+    props = sent['properties']
+    closed = [
+        sent,
+        props['findings']['items'],
+        props['meta'],
+        sent['$defs']['P'],
+        sent['$defs']['P']['properties']['x']['anyOf'][0],
+    ]
+    assert [n['additionalProperties'] for n in closed] == [False] * 5
+    assert 'additionalProperties' not in props['findings']
+    assert 'additionalProperties' not in sent['$defs']['P']['properties']['x']['anyOf'][1]
+    open_map = {'type': 'object', 'additionalProperties': {'type': 'string'}}
+    with pytest.raises(Unsupported, match='closed objects'):
+        anthropic_messages.WIRE.respond(ResponseRequest('i', (Text('a'),), open_map), 'claude-x', 'https://e', 'k')

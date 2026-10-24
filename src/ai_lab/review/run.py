@@ -3,7 +3,8 @@
 ``method.json``'s ``run_modes.headless`` is the configuration: its providers (overridable), the contexts
 and call modes it can execute, its per-provider models. A reviewer is ``skipped`` when its context has
 nothing to review, ``unavailable`` when its provider is not in the available set (never substituted),
-``unsupported`` when the run mode cannot make its call; a failed call's ``kind`` is its status.
+``unsupported`` when the run mode cannot make its call; a failed call's ``kind`` is its status and its
+``error`` text (which never carries a key) is the reviewer's ``error``.
 """
 
 from __future__ import annotations
@@ -18,6 +19,11 @@ __all__ = ['REVIEW_TASK', 'run']
 
 #: The key task every review call is made under (its own key slots: ``auth login <provider> --task``).
 REVIEW_TASK = 'pr-review'
+
+#: The system turn of every review call. The rendered prompt (the profile's brief plus the diff) is the
+#: CONTEXT -- the user turn -- because a wire builds its user message from the context, and an empty one
+#: is refused (Anthropic: ``user messages must have non-empty content``).
+_INSTRUCTIONS = 'Review the change the user turn describes; respond with the findings object the schema declares.'
 
 
 def _plan(method: Method, mode: Mapping, rng: random.Random) -> list[str]:
@@ -38,7 +44,7 @@ def _result(name: str, reply: Mapping) -> dict:
     if reply['ok']:
         findings = (reply['result'] or {}).get('findings')
         return {'name': name, 'findings': findings}
-    return {'name': name, 'error_kind': reply['kind'], 'text': reply['error']}
+    return {'name': name, 'error_kind': reply['kind'], 'error': reply['error']}
 
 
 def run(
@@ -80,7 +86,8 @@ def run(
             continue
         reply = call({
             'verb': 'respond', 'provider': provider, 'model': mode['models'].get(provider, model),
-            'task': REVIEW_TASK, 'instructions': rendered['prompt'], 'context': [], 'schema': schema,
+            'task': REVIEW_TASK, 'instructions': _INSTRUCTIONS,
+            'context': [{'kind': 'text', 'text': rendered['prompt']}], 'schema': schema,
         })  # fmt: skip
         results.append(_result(key, reply))
     return merge(method, range_=range_, date=date, profiles=keys, reviewers=reviewers, results=results)

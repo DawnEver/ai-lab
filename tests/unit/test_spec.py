@@ -1,7 +1,7 @@
 import pytest
 
 from ai_lab import Choice, DecisionRequest, Fields, Image, Option, Predicate, ResponseRequest, Text
-from ai_lab.spec import canonical
+from ai_lab.spec import EmptyContext, canonical, has_content
 
 
 def test_a_choice_needs_two_distinct_options():
@@ -28,6 +28,17 @@ def test_an_image_needs_an_image_mime():
 def test_a_response_schema_is_an_object():
     with pytest.raises(ValueError, match='type: object'):
         ResponseRequest('i', (Text('t'),), {'type': 'string'})
+
+
+@pytest.mark.parametrize('context', [(), (Text(''),), (Text(' \t'), Fields({}))], ids=['none', 'empty', 'blank'])
+def test_a_response_request_refuses_an_empty_context(context):
+    with pytest.raises(EmptyContext, match='empty context'):
+        ResponseRequest('i', context, {'type': 'object'})
+
+
+@pytest.mark.parametrize('part', [Text('t'), Fields({'n': 1}), Image(b'x')], ids=['text', 'fields', 'image'])
+def test_one_part_with_content_is_a_context(part):
+    assert has_content((Text(''), part))
 
 
 def test_canonical_text_names_an_image_by_digest_not_bytes(image_request):

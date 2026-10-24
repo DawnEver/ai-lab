@@ -76,7 +76,7 @@ def render_prompt(method: Method, profile: Mapping, manifest: Mapping) -> dict:
     entry = _context_entry(method, profile, manifest)
     if 'template' not in entry:
         return {'status': entry['status']}
-    schema = json.dumps(method.finding_schema, separators=(',', ':'), ensure_ascii=False)
+    schema = json.dumps(method.prompt_schema, separators=(',', ':'), ensure_ascii=False)
     variables = {
         'framing': profile.get('framing'),
         'scope': profile.get('scope'),
@@ -86,6 +86,9 @@ def render_prompt(method: Method, profile: Mapping, manifest: Mapping) -> dict:
         'manifest': manifest.get('manifest'),
         'finding_schema': schema,
     }
+    # method.json principles.list_item, once per principles.json entry, one per line.
+    item = method.spec['principles']['list_item']
+    variables['principle_list'] = '\n'.join(render(method, item, p) for p in method.principles)
     for name, path in method.spec['template']['partials'].items():
         variables[name] = render(method, method.text(path), variables)
     return {'call_mode': entry['call_mode'], 'prompt': render(method, method.text(entry['template']), variables)}
@@ -110,6 +113,11 @@ _STEPS: Final = {
 
 def reviewer_status(method: Method, planned: str, result: Mapping | None) -> str:
     """The reviewer's final status by ``reviewer_status.precedence``: the first step that applies decides."""
+    return _decide(method, planned, result)[0]
+
+
+def _decide(method: Method, planned: str, result: Mapping | None) -> tuple[str, str]:
+    """The final status and the precedence step that decided it."""
     spec = method.spec['reviewer_status']
     for step in spec['precedence']:
         name, _, status = step.partition(':')
@@ -119,30 +127,51 @@ def reviewer_status(method: Method, planned: str, result: Mapping | None) -> str
         if not _STEPS[name](spec, planned, result):
             continue
         if name == 'planned_final':
-            return planned
+            return planned, name
         if name == 'error_kind':
             kind = result['error_kind']
-            return kind if kind in spec['failure_kinds'] else 'unavailable'
-        return status
+            return (kind if kind in spec['failure_kinds'] else 'unavailable'), name
+        return status, name
     msg = 'reviewer_status.precedence ends without an otherwise step'
     raise ValueError(msg)
 
 
+def _error(method: Method, status: str, step: str, reviewer: Mapping, result: Mapping | None) -> str | None:
+    """Why a reviewer that is neither ok nor skipped has no findings (``reviewer_status.error``).
+
+    The recorded error text -- the result's, else the planned reviewer's -- copied verbatim, else the
+    deciding step's reason. The text is the call reply's ``error``, which names a failure without a key.
+    """
+    if status in {'ok', 'skipped'}:
+        return None
+    for recorded in ((result or {}).get('error'), reviewer.get('error')):
+        if isinstance(recorded, str) and recorded.strip():
+            return recorded
+    reasons = method.spec['reviewer_status']['reasons']
+    if step == 'planned_final':
+        return reasons[step][status]
+    return reasons[step].replace('{error_kind}', str((result or {}).get('error_kind', '')))
+
+
+def _valid_value(rule: Mapping, value: object) -> bool:
+    if rule.get('type') == 'string' and not isinstance(value, str):
+        return False
+    if rule.get('type') == 'array' and not (
+        isinstance(value, list) and all(_valid_value(rule.get('items', {}), v) for v in value)
+    ):
+        return False
+    return 'enum' not in rule or value in rule['enum']
+
+
 def valid_finding(schema: Mapping, finding: object) -> bool:
-    """*finding* against the finding schema's subset: an object, required non-null, string types, enums."""
+    """*finding* against the finding schema's subset: an object, required non-null, string/array types, enums."""
     if schema.get('type') != 'object' or not isinstance(finding, dict):
         return False
     if any(finding.get(name) is None for name in schema.get('required', ())):
         return False
-    for name, rule in schema.get('properties', {}).items():
-        if name not in finding:
-            continue
-        value = finding[name]
-        if rule.get('type') == 'string' and not isinstance(value, str):
-            return False
-        if 'enum' in rule and value not in rule['enum']:
-            return False
-    return True
+    return all(
+        _valid_value(rule, finding[name]) for name, rule in schema.get('properties', {}).items() if name in finding
+    )
 
 
 def _key(spec: Mapping, finding: Mapping, defaults: Mapping) -> str:
@@ -167,12 +196,13 @@ def merge(
     """The findings JSON of one run: each planned reviewer's final status, and the deduplicated findings."""
     spec = method.spec['merge']
     schema = method.finding_schema
-    fields = list(schema['properties'])
+    union = spec['union']['fields']
+    fields = [name for name in schema['properties'] if name not in union]
     by_name = {r['name']: r for r in results}
     out_reviewers, groups = [], {}
     for reviewer in reviewers:
         result = by_name.get(reviewer['name'])
-        status = reviewer_status(method, reviewer['status'], result)
+        status, step = _decide(method, reviewer['status'], result)
         dropped = 0
         if status == 'ok':
             who = {'name': reviewer['name'], 'provider': reviewer['provider']}
@@ -181,12 +211,21 @@ def merge(
                     dropped += 1
                     continue
                 key = _key(spec['dedup_key'], finding, spec['defaults'])
-                group = groups.setdefault(key, {'finding': finding, 'reviewers': []})
-                if who not in group['reviewers']:
+                group = groups.setdefault(key, {'finding': finding, 'reviewers': [], 'union': {u: [] for u in union}})
+                for name, values in group['union'].items():
+                    values.extend(v for v in finding.get(name, ()) if v not in values)
+                # A reviewer is its name: listed once per finding, whatever provider served it.
+                if all(r['name'] != who['name'] for r in group['reviewers']):
                     group['reviewers'].append(who)
-        out_reviewers.append({
-            'name': reviewer['name'], 'provider': reviewer['provider'], 'status': status, 'dropped_findings': dropped,
-        })  # fmt: skip
+        out = {
+            'name': reviewer['name'],
+            'provider': reviewer['provider'],
+            'status': status,
+            'dropped_findings': dropped,
+        }
+        if (error := _error(method, status, step, reviewer, result)) is not None:
+            out['error'] = error
+        out_reviewers.append(out)
     return {
         'schema_version': method.schema_version,
         'range': range_,
@@ -214,4 +253,6 @@ def _finding(spec: Mapping, fields: Sequence[str], date: str, seq: int, group: M
         'status': spec['defaults']['status'],
         'confidence': label,
         'reviewers': group['reviewers'],
+        # merge.union: every reviewer's values for the group, first-seen; an empty union is omitted.
+        **{name: values for name, values in group['union'].items() if values},
     }

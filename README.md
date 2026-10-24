@@ -113,7 +113,10 @@ stdin and reading ONE JSON reply from stdout. Version 2 of the contract, `ai_lab
 A provider failure is a REPLY, not a crash: `ok` is false, `kind` classifies it (`""` when the failure
 is not one of the named kinds; `unsupported` for a missing key, provider or capability), `error`
 names it without a key, and the exit status is 0. Only a malformed request (not JSON, an unknown or
-missing field, a wrong type, an undeclared task) exits 2, with the reason on stderr. `--ledger PATH`
+missing field, a wrong type, an undeclared task, an empty context) exits 2, with the reason on stderr,
+and no vendor is called. A context is EMPTY when no part has non-blank text, non-empty fields or an
+image (for `decide` the instructions are its first text): a wire builds the user turn from the context,
+and an empty user turn is a vendor 400 or an answer about nothing (`ai_lab.spec.EmptyContext`). `--ledger PATH`
 records every call with its usage and key slot through the ledger (record mode: a request already in
 the file is served from it).
 
@@ -126,6 +129,7 @@ object, so the reply's shape changed and the version moved. A caller prices the 
 ```
 python -m ai_lab.review --method <sharp-review method dir> --range main...HEAD --model <model id>
                         [--providers anthropic ...] [--repo <path>]
+python -m ai_lab.review.merge --method <sharp-review method dir>   < run-record.json
 ```
 
 The review METHOD is data owned by sharp-review (cc-market `sharp-review/method/`): profiles, prompt
@@ -136,22 +140,28 @@ reviewer i the provider `providers[i mod n]` (default `["anthropic"]`), and make
 `respond` under task `pr-review` whose schema is `{"findings": [<finding schema>]}`. `--model` serves
 every provider the run mode's `models` does not name (the method names none headless).
 
-stdout is ONE findings JSON document, the method's `findings-output.schema.json` (version 1), exit 0
+stdout is ONE findings JSON document, the method's `findings-output.schema.json` (version 2), exit 0
 whatever the reviewers did. Each reviewer's `status`: `ok` (a findings array; `[]` is a clean pass);
 the failed call's kind (`exhausted`, `auth`, `rate_limit`, `timeout`, `unsupported`); `unavailable` (the
 provider is not in the catalogue -- never substituted -- or the failure was unclassified); `skipped` (an
-empty diff, no call made). A refused invocation -- no `method.json`, an unknown `schema_version`, a range
+empty diff, no call made). Every reviewer but an `ok` or `skipped` one carries `error`, saying why: the
+failed call's error text verbatim (never a key), else the method's reason for its status. A refused invocation -- no `method.json`, an unknown `schema_version`, a range
 git cannot diff -- exits 2 naming it on stderr with nothing on stdout. The rules the data cannot state
 (pick, templating, status precedence, merge) are pinned by the method's `conformance/` fixtures, which
-this test suite reads in place (the host's `[capabilities.sharp_review] path`) and the Node
-executor runs too; the two share no code.
+this test suite reads in place (the host's `[capabilities.sharp_review] path`); the Node executor
+runs the pick and prompt fixtures too.
+
+`ai_lab.review.merge` is the ONE merge of the method: sharp-review's planned fan-out (Claude/Codex workers) pipes
+its run record -- `{"range", "date", "profiles", "reviewers", "results"}`, `results` absent meaning no
+reviewer returned -- on stdin and prints the same findings JSON the review does; it keeps no merge of its
+own. A record that is not JSON, not an object, or lacks one of the first four keys exits 2.
 
 ## Replay
 
 ```python
 from ai_lab import Ledger
 
-client = Ledger('output/ai/ledger.jsonl', mode='record').wrap(connect('anthropic:claude-sonnet-5-5'))
+client = Ledger('<ledger.jsonl>', mode='record').wrap(connect('anthropic:claude-sonnet-5-5'))
 ```
 
 Every call is keyed by the SHA-256 of verb, client and canonical request (images by digest). `record`
@@ -242,8 +252,8 @@ A user `providers.toml` that still uses a retired field is refused naming its re
 ## Develop
 
 ```
-uv pip install -e ".[dev]"     # the family dev kit (lab-commons[dev]), pytest, ruff
-make verify                    # python -m lab_commons.dev.verify: ruff, the suite, hook wiring
+uv pip install -e ".[dev]"     # the family dev kit (dev-lab), pytest, ruff
+make verify                    # python -m dev_lab.dev.verify: ruff, the suite, hook wiring
 python -m pytest -m live       # real calls: every provider whose key is stored
 ```
 

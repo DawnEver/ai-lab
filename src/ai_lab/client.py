@@ -47,14 +47,14 @@ from __future__ import annotations
 import time
 import tomllib
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from lab_commons.credentials import NoCredential, api_key, key_username
 from lab_commons.paths import config_root
 
-from ai_lab import emulate, retired, transport
+from ai_lab import budget, emulate, retired, transport
 from ai_lab.answers import Basis, Decision, Response
 from ai_lab.errors import ACCOUNT_KINDS, ProviderError, Unsupported
 from ai_lab.spec import DecisionRequest, ResponseRequest
@@ -356,9 +356,16 @@ class Client:
         raise ProviderError(msg, kind=last.kind) from last
 
     def _dispatch(self, call: transport.HttpCall) -> object:
+        """Send *call* within today's token budget, and charge the tokens its reply reports."""
+        left = budget.remaining()
+        if 'max_tokens' in call.body:
+            call = replace(call, body={**call.body, 'max_tokens': min(call.body['max_tokens'], left)})
         if self.effort:
             call = self.wire.effort(call, self.effort)
-        return self._post(call)
+        raw = self._post(call)
+        if (usage := self._usage(raw)) is not None:
+            budget.charge(usage.input_tokens + usage.output_tokens)
+        return raw
 
 
 def connect(spec: str, *, task: str | None = None, protocol: str | None = None, **options: Callable) -> Client:

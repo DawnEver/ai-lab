@@ -1,6 +1,6 @@
-"""The three ways a call cannot produce what was asked, each naming its remedy."""
+"""The four ways a call cannot produce what was asked, each naming its remedy."""
 
-__all__ = ['ACCOUNT_KINDS', 'ERROR_KINDS', 'ProviderError', 'ReplayMiss', 'Unsupported']
+__all__ = ['ACCOUNT_KINDS', 'ERROR_KINDS', 'DailyTokenCapReached', 'ProviderError', 'ReplayMiss', 'Unsupported']
 
 #: The failures another key of the same account may not share: a call moves to the next key slot on one.
 ACCOUNT_KINDS = frozenset({'exhausted', 'auth', 'rate_limit'})
@@ -32,3 +32,7 @@ class ProviderError(Exception):
 
 class ReplayMiss(Exception):
     """A replay ledger holds no entry for this exact request. Re-record it with mode='record'."""
+
+
+class DailyTokenCapReached(Exception):
+    """Today's tokens have reached ``[ai_lab] daily_token_cap``; no call starts. Wait a day or raise the cap."""

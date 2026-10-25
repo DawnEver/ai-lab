@@ -1,4 +1,4 @@
-"""``ai-lab-session <claude|codex> [args]``: mint the session id, then run the agent CLI with ``LAB_SESSION`` set.
+"""``python -m ai_lab.session <claude|codex> [args]``: mint the session id, run the agent CLI with ``LAB_SESSION`` set.
 
 The ONE launcher every launch path calls (PLAN-a-short-robust-toolchain P4). ``LAB_SESSION`` is one id per agent
 session, inherited by every child (a subagent, a takeover, a codex run) and stamped as ``Lab-Session`` at
@@ -84,7 +84,7 @@ def _run(argv: Sequence[str], env: Mapping[str, str]) -> int:
     """Run *argv* with *env*, the console attached; its exit code (a subprocess: ``exec`` is not portable)."""
     found = shutil.which(argv[0])
     if found is None:
-        sys.stderr.write(f'ai-lab-session: {argv[0]!r} is not installed on this host\n')
+        sys.stderr.write(f'ai_lab.session: {argv[0]!r} is not installed on this host\n')
         return 127
     return subprocess.run([found, *argv[1:]], env=dict(env), check=False).returncode
 
@@ -99,7 +99,7 @@ def main(
     args = list(sys.argv[1:] if argv is None else argv)
     if not args or args[0] not in AGENTS:
         got = repr(args[0]) if args else 'no agent'
-        sys.stderr.write(f'ai-lab-session: {got}; the agents are {list(AGENTS)}\n')
+        sys.stderr.write(f'ai_lab.session: {got}; the agents are {list(AGENTS)}\n')
         raise SystemExit(_EXIT_USAGE)
     child_env, child_argv = launch(args[0], args[1:], os.environ if env is None else env)
     return runner(child_argv, child_env)

@@ -1,11 +1,15 @@
-"""``ai-lab-session <claude|codex> [args]``: the ONE place a session id is minted and the agent CLI launched.
+"""``python -m ai_lab.session <claude|codex> [args]``: the ONE place a session id is minted and the agent CLI launched.
 
 The id is inherited when a parent session already has one, else the vendor's own conversation id named in the
 args (so a resume keeps it), else a fresh UUID; a fresh Claude conversation is pinned to it with
 ``--session-id`` so a later ``--resume <id>`` finds the same id again.
 """
 
+import subprocess
+import sys
+import tomllib
 import uuid
+from pathlib import Path
 
 import pytest
 
@@ -76,3 +80,15 @@ def test_an_unknown_agent_exits_2_naming_the_known_ones(capsys) -> None:
     assert refused.value.code == 2
     err = capsys.readouterr().err
     assert all(agent in err for agent in AGENTS)
+
+
+def test_the_launcher_is_a_module_run_and_ships_no_console_script() -> None:
+    """Launchers run ``<python> -m ai_lab.session``; an ``ai-lab-session`` executable is retired baggage."""
+    root = Path(__file__).resolve().parents[2]
+    project = tomllib.loads((root / 'pyproject.toml').read_text(encoding='utf-8'))['project']
+    assert 'ai-lab-session' not in project.get('scripts', {})
+    done = subprocess.run(
+        [sys.executable, '-m', 'ai_lab.session', 'gemini'], capture_output=True, text=True, check=False
+    )
+    assert done.returncode == 2
+    assert 'ai_lab.session' in done.stderr

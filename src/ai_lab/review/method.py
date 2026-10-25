@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-__all__ = ['METHOD_DIR', 'METHOD_SCHEMA_VERSIONS', 'Method', 'UnknownMethodVersion', 'load_method', 'main']
+__all__ = ['METHOD_DIR', 'METHOD_SCHEMA_VERSIONS', 'Method', 'UnknownMethodVersion', 'load_method']
 
 #: The packaged method directory (package data, shipped in the wheel).
 METHOD_DIR: Final = Path(__file__).with_name('method_data')

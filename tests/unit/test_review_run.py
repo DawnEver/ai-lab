@@ -4,6 +4,7 @@ Every document is checked against the method's own ``findings-output.schema.json
 keywords that schema uses; an unknown keyword fails, so a schema change cannot pass unread.
 """
 
+import json
 import re
 
 import pytest
@@ -166,3 +167,31 @@ def test_a_finding_lists_a_reviewer_once_by_name_whatever_its_provider(method):
     doc = merge(method, range_='HEAD', date='2026-10-20', profiles=['diff'], reviewers=reviewers, results=results)
     assert doc['findings'][0]['reviewers'] == [{'name': 'diff', 'provider': 'a'}]
     assert doc['findings'][0]['confidence'] == method.spec['merge']['confidence'][-1]['label']
+
+
+# -- The output schema is the versioned contract a findings-JSON reader relies on (moved from sharp-review's
+# Node suite with the method, PLAN-a-short-robust-toolchain P4).
+
+
+def test_every_merge_fixture_result_satisfies_the_output_schema(method):
+    fixtures = sorted((method.root / method.spec['files']['conformance'] / 'merge').glob('*.json'))
+    assert fixtures, 'a scan of no fixture passes anything'
+    for path in fixtures:
+        expected = json.loads(path.read_text(encoding='utf-8'))['expected']
+        assert _errors(method.output_schema, expected) == [], path.name
+
+
+def test_the_output_schema_enums_are_the_methods_own_not_a_second_copy(method):
+    props = method.output_schema['properties']
+    assert props['schema_version']['const'] == method.schema_version
+    assert props['reviewers']['items']['properties']['status']['enum'] == method.spec['reviewer_status']['vocabulary']
+    finding = props['findings']['items']['properties']
+    assert finding['severity']['enum'] == method.finding_schema['properties']['severity']['enum']
+    assert finding['category']['enum'] == method.finding_schema['properties']['category']['enum']
+    assert finding['status']['const'] == method.spec['merge']['defaults']['status']
+
+
+def test_the_statuses_that_must_carry_an_error_are_the_vocabulary_but_ok_and_skipped(method):
+    _, must_say = method.output_schema['properties']['reviewers']['items']['allOf']
+    vocabulary = method.spec['reviewer_status']['vocabulary']
+    assert must_say['if']['properties']['status']['enum'] == [k for k in vocabulary if k not in {'ok', 'skipped'}]

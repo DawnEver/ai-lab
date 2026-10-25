@@ -1,14 +1,30 @@
-"""``ai_lab.review.method``: the method is read from the directory it is given, and an unknown version is refused."""
+"""``ai_lab.review.method``: the packaged method is the default, a directory given is read in place.
+
+An unknown version is refused.
+"""
 
 import json
 import shutil
+from pathlib import Path
 
 import pytest
 
-from ai_lab.review.method import METHOD_SCHEMA_VERSIONS, Method, UnknownMethodVersion, load_method
+import ai_lab.review
+from ai_lab.review.method import METHOD_DIR, METHOD_SCHEMA_VERSIONS, Method, UnknownMethodVersion, load_method, main
 
 
-@pytest.mark.sharp_review
+def test_the_packaged_method_is_the_default():
+    """The method is ai-lab's own data (PLAN-a-short-robust-toolchain P4): no argument loads the packaged copy."""
+    assert Path(ai_lab.review.__file__).parent / 'method_data' == METHOD_DIR
+    assert load_method().root == METHOD_DIR
+
+
+def test_the_module_prints_the_packaged_method_directory(capsys):
+    """``python -m ai_lab.review.method`` names the directory a host executor (sharp-review's planner) reads."""
+    assert main([]) == 0
+    assert capsys.readouterr().out == f'{METHOD_DIR}\n'
+
+
 def test_the_method_is_read_in_place(method_dir):
     method = load_method(method_dir)
     assert isinstance(method, Method)
@@ -19,7 +35,6 @@ def test_the_method_is_read_in_place(method_dir):
     assert method.text('prompts/diff.md').startswith('{{framing}}')
 
 
-@pytest.mark.sharp_review
 def test_an_unknown_schema_version_is_refused_by_name(method_dir, tmp_path):
     copy = tmp_path / 'method'
     shutil.copytree(method_dir, copy)
@@ -31,7 +46,6 @@ def test_an_unknown_schema_version_is_refused_by_name(method_dir, tmp_path):
     assert 99 not in METHOD_SCHEMA_VERSIONS
 
 
-@pytest.mark.sharp_review
 def test_the_principle_ids_come_from_principles_json_alone(method_dir, tmp_path):
     """The finding schema's ``principles`` enum is filled from ``principles.json`` at load.
 
@@ -55,7 +69,6 @@ def test_a_directory_without_a_method_is_refused_naming_it(tmp_path):
         load_method(tmp_path)
 
 
-@pytest.mark.sharp_review
 @pytest.mark.parametrize('choice', ['filled', 'unfilled', 'neither'])
 def test_the_prompt_schema_is_the_one_method_json_names(method_dir, tmp_path, choice):
     """``principles.prompt_schema`` picks the prompt's schema; validation keeps the filled one. Unknown is refused."""

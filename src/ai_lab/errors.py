@@ -38,5 +38,6 @@ class DailyTokenCapReached(Exception):
     """A provider's or a key's tokens today reached its ``[ai_lab.daily_token_cap]``; no call starts there."""
 
     def __init__(self, message: str, *, scope: str) -> None:
+        """Carry ``scope``, the provider or key whose cap was reached."""
         super().__init__(message)
         self.scope = scope

@@ -127,14 +127,16 @@ object, so the reply's shape changed and the version moved. A caller prices the 
 ## A headless code review: `python -m ai_lab.review`
 
 ```
-python -m ai_lab.review --method <sharp-review method dir> --range main...HEAD --model <model id>
+python -m ai_lab.review [--method <dir>] --range main...HEAD --model <model id>
                         [--providers anthropic ...] [--repo <path>]
-python -m ai_lab.review.merge --method <sharp-review method dir>   < run-record.json
+python -m ai_lab.review.merge [--method <dir>]   < run-record.json
 ```
 
-The review METHOD is data owned by sharp-review (cc-market `sharp-review/method/`): profiles, prompt
-templates, the finding schema and the merge rules under one `schema_version`. `--method` names that
-directory and it is read in place; ai-lab keeps no copy. The run follows `run_modes.headless`: it picks
+The review METHOD is ai-lab's own data, packaged as `ai_lab/review/method_data/` (it moved here from
+cc-market under PLAN-a-short-robust-toolchain P4): profiles, prompt templates, the finding schema and the
+merge rules under one `schema_version`. `--method` defaults to it; a directory named instead is read in
+place. `python -m ai_lab.review.method` prints the packaged directory for a host executor (sharp-review's
+Node planner). The run follows `run_modes.headless`: it picks
 `pick.count` diff-context profiles by weight, renders each prompt over `git diff <range>`, assigns
 reviewer i the provider `providers[i mod n]` (default `["anthropic"]`), and makes each call as a
 `respond` under task `pr-review` whose schema is `{"findings": [<finding schema>]}`. `--model` serves
@@ -148,13 +150,17 @@ empty diff, no call made). Every reviewer but an `ok` or `skipped` one carries `
 failed call's error text verbatim (never a key), else the method's reason for its status. A refused invocation -- no `method.json`, an unknown `schema_version`, a range
 git cannot diff -- exits 2 naming it on stderr with nothing on stdout. The rules the data cannot state
 (pick, templating, status precedence, merge) are pinned by the method's `conformance/` fixtures, which
-this test suite reads in place (the host's `[capabilities.sharp_review] path`); the Node executor
-runs the pick and prompt fixtures too.
+ship with it and which this test suite runs.
 
 `ai_lab.review.merge` is the ONE merge of the method: sharp-review's planned fan-out (Claude/Codex workers) pipes
 its run record -- `{"range", "date", "profiles", "reviewers", "results"}`, `results` absent meaning no
 reviewer returned -- on stdin and prints the same findings JSON the review does; it keeps no merge of its
 own. A record that is not JSON, not an object, or lacks one of the first four keys exits 2.
+
+`ai_lab.review.plan` is the ONE planner that fan-out runs first: a request on stdin
+(`{manifest, run_id, started_at, date, seed}` plus optional `config`, `sources`, `forced`, `run_mode`,
+`requested`, `available`, `rands`), the plan -- its profiles and, per reviewer, a provider, a status and the
+prompt -- on stdout. sharp-review collects the manifest and keeps no planner of its own.
 
 ## Replay
 

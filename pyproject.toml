@@ -39,14 +39,13 @@ where = ["src"]
 include = ["ai_lab*"]
 
 [tool.setuptools.package-data]
-ai_lab = ["providers.toml"]
+ai_lab = ["providers.toml", "review/method_data/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-m 'not live'"
 markers = [
     "live: calls a real model (network or a local CLI); run with -m live",
-    "sharp_review: reads sharp-review's method data in place -- the host's [capabilities.sharp_review] path, a cc-market checkout's sharp-review/method",
 ]
 
 [tool.ruff]
@@ -86,7 +85,6 @@ output = "output/logs"
 
 [tool.lab_commons.tests]
 produce = ["-m", "dev_lab.dev.verify", "--part", "{part}"]
-resources = ["sharp_review"]
 
 # The family branch flow: integrate/main coordinates; main moves only by `integrate promote` (fast-forward)
 # on a full forge PASS. Adopted 2026-10-18 (user ruling: every repo runs the lab-commons principles):

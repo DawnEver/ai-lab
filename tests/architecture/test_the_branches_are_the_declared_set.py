@@ -1,6 +1,6 @@
-"""MERGE-OR-DELETE: origin and this box carry only `[tool.lab_commons.branchset]` (`prune_merged = true`).
+"""MERGE-OR-DELETE: this repo DECLARES its branch set (`[tool.lab_commons.branchset]`, `prune_merged = true`).
 
-THE BODY IS THE FAMILY'S (`dev_lab.dev.famtests.branchset`); this file supplies the trunk.
+The LIVE branch set is the forge's `branchset` status, never a test (ruling 2026-10-24).
 """
 
 from __future__ import annotations
@@ -8,28 +8,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Final
 
-import pytest
 from dev_lab.dev.branchset import declared_branchset
-from dev_lab.dev.famtests import branchset
 from dev_lab.dev.lanepolicy import load_policy
 
 _ROOT: Final = Path(__file__).resolve().parents[2]
-TRUNK: Final = 'main'
-
-
-def test_origin_carries_only_the_declared_branches() -> None:
-    branchset.assert_origin_branches_declared(root=_ROOT, branchset=declared_branchset(_ROOT))
-
-
-@pytest.mark.workstation
-def test_this_box_carries_only_the_declared_branches() -> None:
-    """An undeclared local branch origin already holds reds; one holding unpushed work is reported."""
-    branchset.assert_local_branches_declared(root=_ROOT, branchset=declared_branchset(_ROOT))
-
-
-def test_the_branchset_guard_fires(tmp_path: Path) -> None:
-    """PLANTED CONTROL, the family's: a stray branch on origin and locally, and unpushed work."""
-    branchset.assert_the_planted_branchset_is_policed(tmp_path, trunk=TRUNK)
 
 
 def test_this_repo_declares_the_one_pr_flow() -> None:

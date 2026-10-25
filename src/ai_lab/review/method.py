@@ -1,13 +1,22 @@
-"""One sharp-review method directory, loaded from the path given and refused when its version is unknown."""
+"""The sharp-review method: the packaged copy by default, any directory given in place; unknown versions refused.
+
+The method is ai-lab's data (PLAN-a-short-robust-toolchain P4): every executor -- this package's headless run, the
+ONE merge, sharp-review's Node planner -- reads :data:`METHOD_DIR`. ``python -m ai_lab.review.method`` prints it.
+"""
 
 from __future__ import annotations
 
 import json
+import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-__all__ = ['METHOD_SCHEMA_VERSIONS', 'Method', 'UnknownMethodVersion', 'load_method']
+__all__ = ['METHOD_DIR', 'METHOD_SCHEMA_VERSIONS', 'Method', 'UnknownMethodVersion', 'load_method', 'main']
+
+#: The packaged method directory (package data, shipped in the wheel).
+METHOD_DIR: Final = Path(__file__).with_name('method_data')
 
 #: The ``method.json`` versions this executor reads; any other is refused, never guessed.
 METHOD_SCHEMA_VERSIONS: Final = frozenset({2})
@@ -53,12 +62,14 @@ def _json(path: Path) -> dict:
     return json.loads(path.read_text(encoding='utf-8'))
 
 
-def load_method(root: str | Path) -> Method:
+def load_method(root: str | Path = METHOD_DIR) -> Method:
     """The method at *root*; :class:`UnknownMethodVersion` naming the version, ``FileNotFoundError`` naming the file."""
     root = Path(root)
     spec_file = root / 'method.json'
     if not spec_file.is_file():
-        msg = f'{spec_file} not found: --method must name a sharp-review method directory'
+        msg = (
+            f'{spec_file} not found: --method must name a sharp-review method directory (omit it for the packaged one)'
+        )
         raise FileNotFoundError(msg)
     spec = _json(spec_file)
     version = spec.get('schema_version')
@@ -98,3 +109,18 @@ def _with_principle_ids(schema: dict, spec: dict, principles: tuple[dict, ...]) 
     rule = schema['properties'][field]
     filled = {**rule, 'items': {**rule.get('items', {}), 'enum': ids}}
     return {**schema, 'properties': {**schema['properties'], field: filled}}
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Print :data:`METHOD_DIR`, the directory a host executor reads the method from."""
+    if argv is None:
+        argv = sys.argv[1:]
+    if argv:
+        sys.stderr.write(f'python -m ai_lab.review.method takes no arguments; got {list(argv)}\n')
+        return 2
+    sys.stdout.write(f'{METHOD_DIR}\n')
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

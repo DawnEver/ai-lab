@@ -17,6 +17,10 @@ dependencies = [
     "lab-commons[paths] @ git+https://gitea.mingyangbao.site/Tianjie-Zou-Team/lab-commons.git",
 ]
 
+# The one session-id launcher: every launch path (cc-config ccc/ccds/codc) runs the agent through it.
+[project.scripts]
+ai-lab-session = "ai_lab.session:main"
+
 [project.optional-dependencies]
 # The family's development kit: rules registry, rendered configs, shared test bodies, verify entry.
 dev = [

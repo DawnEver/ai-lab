@@ -4,8 +4,8 @@ The METHOD is pure data owned here (``method_data/``, PLAN-a-short-robust-toolch
 templates, the finding schema and the merge rules, under one ``schema_version``. It runs as a use of
 ``respond`` and knows nothing of forges. The rules the data cannot state are implemented against the
 method's own ``conformance/`` fixtures. Its merge is the only one: sharp-review's Node executor reads the
-method from ``python -m ai_lab.review.method`` and calls ``python -m ai_lab.review.merge`` rather than
-keeping either.
+method from ``python -m ai_lab.review.method``, plans through ``python -m ai_lab.review.plan`` and
+merges through ``python -m ai_lab.review.merge`` rather than keeping any of them.
 """
 
 __all__ = []

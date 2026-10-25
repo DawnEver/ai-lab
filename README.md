@@ -155,10 +155,12 @@ ship with it and which this test suite runs.
 `ai_lab.review.merge` is the ONE merge of the method: sharp-review's planned fan-out (Claude/Codex workers) pipes
 its run record -- `{"range", "date", "profiles", "reviewers", "results"}`, `results` absent meaning no
 reviewer returned -- on stdin and prints the same findings JSON the review does; it keeps no merge of its
-own. `python -m ai_lab.review.plan` is the ONE planner the same fan-out runs first: a request on stdin
+own. A record that is not JSON, not an object, or lacks one of the first four keys exits 2.
+
+`ai_lab.review.plan` is the ONE planner that fan-out runs first: a request on stdin
 (`{manifest, run_id, started_at, date, seed}` plus optional `config`, `sources`, `forced`, `run_mode`,
-`requested`, `available`, `rands`) and the plan -- profiles, per reviewer a provider, status and prompt -- on
-stdout. A record that is not JSON, not an object, or lacks one of the first four keys exits 2.
+`requested`, `available`, `rands`), the plan -- its profiles and, per reviewer, a provider, a status and the
+prompt -- on stdout. sharp-review collects the manifest and keeps no planner of its own.
 
 ## Replay
 

@@ -47,16 +47,16 @@ from __future__ import annotations
 import time
 import tomllib
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from lab_commons.credentials import NoCredential, api_key, key_username
 from lab_commons.paths import config_root
 
-from ai_lab import emulate, retired, transport
+from ai_lab import budget, emulate, retired, transport
 from ai_lab.answers import Basis, Decision, Response
-from ai_lab.errors import ACCOUNT_KINDS, ProviderError, Unsupported
+from ai_lab.errors import ACCOUNT_KINDS, DailyTokenCapReached, ProviderError, Unsupported
 from ai_lab.spec import DecisionRequest, ResponseRequest
 from ai_lab.usage import Usage
 from ai_lab.wire import WIRES
@@ -332,7 +332,7 @@ class Client:
     def _send(self, build: Callable[[str], transport.HttpCall]) -> tuple[object, int]:
         """``build(key)``'s reply and the key slot that served it, moving on a slot at an account failure."""
         if not self.provider.keyed:
-            return self._dispatch(build('')), 0
+            return self._dispatch(build(''), None), 0
         host, failures, last = self.provider.host, [], None
         whose = '' if self.task is None else f'{self.task} task '
         slot = 0
@@ -346,19 +346,34 @@ class Client:
                     raise Unsupported(msg + login_command(self.provider.name, self.task)) from None
                 break
             try:
-                return self._dispatch(build(key)), slot
+                return self._dispatch(build(key), budget.fingerprint(key)), slot
+            except DailyTokenCapReached as spent:
+                if spent.scope == self.provider.name:
+                    raise
+                failures.append(f'slot {slot}: {spent.scope} daily token cap')
+                last = spent
+                continue
             except ProviderError as error:
                 if error.kind not in ACCOUNT_KINDS:
                     raise
                 failures.append(f'slot {slot}: {error.kind}')
                 last = error
         msg = f'{self.provider.name}: every {whose}key slot for {host} failed ({", ".join(failures)}); last: {last}'
+        if isinstance(last, DailyTokenCapReached):
+            raise DailyTokenCapReached(msg, scope=last.scope) from last
         raise ProviderError(msg, kind=last.kind) from last
 
-    def _dispatch(self, call: transport.HttpCall) -> object:
+    def _dispatch(self, call: transport.HttpCall, key: str | None) -> object:
+        """Send *call* within its provider's and *key*'s token budgets, and charge what its reply reports."""
+        left = budget.remaining(self.provider.name, key)
+        if 'max_tokens' in call.body:
+            call = replace(call, body={**call.body, 'max_tokens': min(call.body['max_tokens'], left)})
         if self.effort:
             call = self.wire.effort(call, self.effort)
-        return self._post(call)
+        raw = self._post(call)
+        if (usage := self._usage(raw)) is not None:
+            budget.charge(self.provider.name, key, usage.input_tokens + usage.output_tokens)
+        return raw
 
 
 def connect(spec: str, *, task: str | None = None, protocol: str | None = None, **options: Callable) -> Client:

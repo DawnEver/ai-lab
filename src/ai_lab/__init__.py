@@ -16,7 +16,7 @@ from ai_lab.answers import (
     ScoreAnswer,
 )
 from ai_lab.client import Client, Provider, catalogue, connect
-from ai_lab.errors import ProviderError, ReplayMiss, Unsupported
+from ai_lab.errors import DailyTokenCapReached, ProviderError, ReplayMiss, Unsupported
 from ai_lab.ledger import Ledger, Mode, Recorded
 from ai_lab.protocols import Decider, Responder
 from ai_lab.rules import Rules
@@ -39,6 +39,7 @@ __all__ = [
     'Choice',
     'ChoiceAnswer',
     'Client',
+    'DailyTokenCapReached',
     'Decider',
     'Decision',
     'DecisionRequest',

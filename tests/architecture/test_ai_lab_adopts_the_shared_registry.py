@@ -25,6 +25,8 @@ _PROFILE: Final = RepoProfile(app_name='ai_lab', package='ai_lab', root=_ROOT, l
 _SURFACE: Final = TestPath('tests/architecture/test_the_public_surface_is_declared.py')
 
 _MECHANISMS: Final = {
+    # The base commit-msg `merge-resolution` row refuses a conflicted merge that does not declare each file.
+    'MERGE-RESOLUTION-DECLARED': (TestPath('tests/architecture/test_merges_declare_their_resolutions.py'),),
     # Capability is a declared Wire record; the shared scanner reads every tracked Python file.
     'NO-REFLECTION': (TestPath('tests/architecture/test_no_reflection.py'),),
     # Every family artefact is the live base plus an (empty) delta; nothing project-level is unaccounted.

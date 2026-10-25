@@ -85,6 +85,7 @@ _ABSENT: Final = frozenset({
     # Workflow machinery ai-lab does not run: no push gate, verdict ledger, forge door, lanes, sessions.
     'VERDICT-BAR-IS-THE-INCREMENT', 'NETWORK-RETRY-THEN-REPORT', 'SHARED-CHECKOUT', 'FORGE-THROUGH-THE-DOOR',
     'VERDICT-AS-STATUS', 'ISSUE-IS-INTENT', 'ONE-BRANCH-PER-SESSION', 'MERGE-DEVIATIONS-NAMED',
+    'MERGE-RESOLUTION-DECLARED',
     'AUTO-MODE-RUNS-THE-DOORS', 'VERDICTS-FROM-THE-FORGE', 'MAIN-SESSION-PUBLISHES',
     'SUBAGENT-NO-PUSH', 'WORKTREES-STAY-INSIDE', 'ONE-BOX-ONE-LOCK',
     # The environment: no own venv yet (the agent guard refuses creating one until a door is declared),

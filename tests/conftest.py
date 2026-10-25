@@ -29,6 +29,12 @@ def image_request(questions):
     return DecisionRequest((Text('flux plot'), Image(PNG)), questions)
 
 
+@pytest.fixture(autouse=True)
+def _private_home(tmp_path, monkeypatch):
+    """Every test's ``AI_LAB_HOME`` (and so its token ledger) is its own; the box's real state is never touched."""
+    monkeypatch.setenv('AI_LAB_HOME', str(tmp_path / 'home'))
+
+
 @pytest.fixture
 def credential_store(tmp_path, monkeypatch):
     """A throwaway git ``store`` helper and an empty user config root; the box's real store is never touched.

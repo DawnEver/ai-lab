@@ -1,6 +1,6 @@
 """Every fixture under the method's ``conformance/`` holds for this executor; the Node one runs the same files.
 
-The fixtures are the single source of the rules the data cannot state. They are read IN PLACE and every
+The fixtures are the single source of the rules the data cannot state. They ship with the method and every
 file is a case: a new fixture is exercised without a line changing here, and an empty kind directory fails.
 """
 
@@ -9,13 +9,10 @@ from pathlib import Path
 
 import pytest
 
-from ai_lab.review.method import load_method
+from ai_lab.review.method import METHOD_DIR, load_method
 from ai_lab.review.rules import merge, pick, render, render_prompt
-from tests.conftest import method_path
 
-pytestmark = pytest.mark.sharp_review
-
-_ROOT = (method_path() or Path('<no sharp_review capability>')) / 'conformance'
+_ROOT = METHOD_DIR / 'conformance'
 _KINDS = ('merge', 'pick', 'prompt')
 
 
@@ -26,7 +23,7 @@ def _cases(kind: str) -> list:
 
 
 def _fixture(path: Path) -> dict:
-    assert path.is_file(), f'no conformance fixtures at {path}: no method under [capabilities.sharp_review] path'
+    assert path.is_file(), f'no conformance fixtures at {path}: the packaged method lost its fixtures'
     data = json.loads(path.read_text(encoding='utf-8'))
     assert set(data) == {'description', 'input', 'expected'}, path
     return data

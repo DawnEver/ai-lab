@@ -1,4 +1,4 @@
-"""``python -m ai_lab.review.merge --method <dir>``: the merge of one recorded run, read on stdin.
+"""``python -m ai_lab.review.merge [--method <dir>]``: the merge of one recorded run, read on stdin.
 
 The run record is ``{range, date, profiles, reviewers, results}``, the shape sharp-review's planned
 fan-out records (``results`` absent means no reviewer returned). It is merged by the method's rules --
@@ -16,7 +16,7 @@ import sys
 from collections.abc import Sequence
 from typing import Final
 
-from ai_lab.review.method import UnknownMethodVersion, load_method
+from ai_lab.review.method import METHOD_DIR, UnknownMethodVersion, load_method
 from ai_lab.review.rules import merge
 
 __all__ = []
@@ -47,7 +47,9 @@ def _run_record(text: str) -> dict:
 def main(argv: Sequence[str] | None = None) -> int:
     """Merge the run record on stdin and print its findings JSON; exit 2 when refused."""
     parser = argparse.ArgumentParser(prog='python -m ai_lab.review.merge', description=__doc__.split('\n', 1)[0])
-    parser.add_argument('--method', required=True, help="sharp-review's method directory (read in place)")
+    parser.add_argument(
+        '--method', default=METHOD_DIR, help='a method directory read in place (default: the packaged one)'
+    )
     args = parser.parse_args(argv)
     try:
         doc = merge(load_method(args.method), **_run_record(sys.stdin.read()))

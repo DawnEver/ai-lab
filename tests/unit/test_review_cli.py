@@ -9,8 +9,6 @@ import pytest
 from ai_lab.review import merge as merge_cli
 from ai_lab.review.__main__ import main
 
-pytestmark = pytest.mark.sharp_review  # reads the method data in place
-
 OK = {'schema_version': 1, 'ok': True, 'kind': '', 'result': {'findings': []}, 'usage': None, 'key_slot': 1,
       'error': ''}  # fmt: skip
 
@@ -64,6 +62,11 @@ def test_the_run_takes_the_verb_less_argv_the_forge_declares(method_dir, capsys)
     assert json.loads(capsys.readouterr().out)['schema_version'] == 2
 
 
+def test_the_method_defaults_to_the_packaged_one(capsys):
+    assert main(['--range', 'main...HEAD', '--model', 'm'], call=lambda r: OK, diff=_diff) == 0
+    assert json.loads(capsys.readouterr().out)['schema_version'] == 2
+
+
 RUN = {'range': 'HEAD', 'date': '2026-10-20', 'profiles': ['diff'],
        'reviewers': [{'name': 'diff', 'provider': 'claude', 'status': 'pending'}],
        'results': [{'name': 'diff', 'findings': [{'severity': 'HIGH', 'summary': 'S', 'category': 'Bug'}]}],
@@ -89,6 +92,12 @@ def test_merge_reads_a_record_without_results_as_every_result_missing(method_dir
     doc = json.loads(capsys.readouterr().out)
     assert doc['findings'] == []
     assert doc['reviewers'][0]['status'] != 'ok'
+
+
+def test_merge_defaults_to_the_packaged_method(monkeypatch, capsys):
+    monkeypatch.setattr('sys.stdin', io.StringIO(json.dumps(RUN)))
+    assert merge_cli.main([]) == 0
+    assert json.loads(capsys.readouterr().out)['findings'][0]['id'] == 'SR-20261020-001'
 
 
 @pytest.mark.parametrize('record', ['not json', {'range': 'HEAD'}, '[]'])

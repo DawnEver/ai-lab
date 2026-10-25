@@ -1,11 +1,11 @@
-"""``ai_lab.review``: the headless executor of sharp-review's method.
+"""``ai_lab.review``: the sharp-review method and its headless executor.
 
-The METHOD is pure data owned by sharp-review (cc-market ``sharp-review/method/``): profiles, prompt
-templates, the finding schema and the merge rules, under one ``schema_version``. This package reads that
-directory from the path it is given -- never a vendored copy -- and runs it as a use of ``respond``; it
-knows nothing of forges. The rules the data cannot state are implemented against the method's own
-``conformance/`` fixtures. Its merge is the only one: sharp-review's Node executor calls
-``python -m ai_lab.review.merge`` rather than keeping its own.
+The METHOD is pure data owned here (``method_data/``, PLAN-a-short-robust-toolchain P4): profiles, prompt
+templates, the finding schema and the merge rules, under one ``schema_version``. It runs as a use of
+``respond`` and knows nothing of forges. The rules the data cannot state are implemented against the
+method's own ``conformance/`` fixtures. Its merge is the only one: sharp-review's Node executor reads the
+method from ``python -m ai_lab.review.method``, plans through ``python -m ai_lab.review.plan`` and
+merges through ``python -m ai_lab.review.merge`` rather than keeping any of them.
 """
 
 __all__ = []

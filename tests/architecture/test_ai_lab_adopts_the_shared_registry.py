@@ -25,6 +25,8 @@ _PROFILE: Final = RepoProfile(app_name='ai_lab', package='ai_lab', root=_ROOT, l
 _SURFACE: Final = TestPath('tests/architecture/test_the_public_surface_is_declared.py')
 
 _MECHANISMS: Final = {
+    # The base commit-msg `merge-resolution` row refuses a conflicted merge that does not declare each file.
+    'MERGE-RESOLUTION-DECLARED': (TestPath('tests/architecture/test_merges_declare_their_resolutions.py'),),
     # Capability is a declared Wire record; the shared scanner reads every tracked Python file.
     'NO-REFLECTION': (TestPath('tests/architecture/test_no_reflection.py'),),
     # Every family artefact is the live base plus an (empty) delta; nothing project-level is unaccounted.
@@ -85,7 +87,6 @@ _ABSENT: Final = frozenset({
     # Workflow machinery ai-lab does not run: no push gate, verdict ledger, forge door, lanes, sessions.
     'VERDICT-BAR-IS-THE-INCREMENT', 'NETWORK-RETRY-THEN-REPORT', 'SHARED-CHECKOUT', 'FORGE-THROUGH-THE-DOOR',
     'VERDICT-AS-STATUS', 'ISSUE-IS-INTENT', 'ONE-BRANCH-PER-SESSION', 'MERGE-DEVIATIONS-NAMED',
-    'MERGE-RESOLUTION-DECLARED',
     'AUTO-MODE-RUNS-THE-DOORS', 'VERDICTS-FROM-THE-FORGE', 'MAIN-SESSION-PUBLISHES',
     'SUBAGENT-NO-PUSH', 'WORKTREES-STAY-INSIDE', 'ONE-BOX-ONE-LOCK',
     # The environment: no own venv yet (the agent guard refuses creating one until a door is declared),

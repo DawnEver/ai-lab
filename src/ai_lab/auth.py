@@ -36,7 +36,6 @@ from __future__ import annotations
 
 import argparse
 import getpass
-import hashlib
 import re
 import sys
 from collections.abc import Iterable, Sequence
@@ -44,6 +43,7 @@ from pathlib import Path
 
 from lab_commons.credentials import API_KEY_TASKS, NoCredential, api_keys, key_username, store_credential
 
+from ai_lab.budget import fingerprint
 from ai_lab.client import Provider, catalogue, stored_slots
 
 __all__ = ['main', 'parse_key_file']
@@ -80,14 +80,6 @@ def _keyed() -> dict[str, Provider]:
     return {name: row for name, row in catalogue().items() if row.keyed}
 
 
-#: Hex digits of a key's sha256 shown to a person: enough to tell keys apart, never enough to be one.
-_FINGERPRINT_CHARS = 12
-
-
-def _fingerprint(secret: str) -> str:
-    return hashlib.sha256(secret.encode()).hexdigest()[:_FINGERPRINT_CHARS]
-
-
 def _held(host: str) -> dict[str, str]:
     """``{username: key}`` for every key *host* holds: the default's slots, then each task's."""
     held = {}
@@ -107,7 +99,7 @@ def _store(host: str, secret: str, username: str) -> bool | None:
         return None
     if clash := sorted(other for other, key in held.items() if key == secret):
         sys.stderr.write(
-            f'refused: {host} already holds this key (sha256 {_fingerprint(secret)}...) as '
+            f'refused: {host} already holds this key (sha256 {fingerprint(secret)}...) as '
             f'{", ".join(map(repr, clash))}; every task and slot gets its own key\n'
         )
         return False
@@ -210,7 +202,7 @@ def _shared_lines(rows: Iterable[Provider]) -> list[str]:
         for username, key in _held(host).items():
             groups.setdefault(key, []).append(username)
         lines += [
-            f'shared key sha256 {_fingerprint(key)}... on {host}: {", ".join(map(repr, names))}'
+            f'shared key sha256 {fingerprint(key)}... on {host}: {", ".join(map(repr, names))}'
             for key, names in groups.items()
             if len(names) > 1
         ]

@@ -10,7 +10,7 @@ import json
 import pytest
 
 from ai_lab.review.method import load_method
-from ai_lab.review.plan import build_plan, effective_profiles, eligible_weights, main
+from ai_lab.review.plan import build_plan, effective_profiles, eligible_weights, main, report_path
 from ai_lab.review.rules import render_prompt
 
 MANIFEST = {'mode': 'review', 'range': 'HEAD', 'stats': {}, 'excludedSummary': '', 'diff': '+x'}
@@ -168,3 +168,12 @@ def test_every_reviewer_prompt_without_its_diff_fits_the_budget_and_the_budget_i
 def test_planted_a_profile_whose_framing_overflows_the_budget_is_convicted(method):
     planted = {**method.profiles[0], 'key': 'planted', 'framing': 'x' * PROMPT_BUDGET_CHARS}
     assert any(v > PROMPT_BUDGET_CHARS for v in _fixed_prompts(method, [planted]).values())
+
+
+def test_report_path_is_regenerable_output_under_the_dated_logs_tree():
+    assert report_path('2026-10-20') == 'output/logs/26/10/20/sharp-review/sharp-review.md'
+
+
+def test_interactive_plan_sinks_a_report_at_the_report_path_never_memory(method):
+    p = _plan(method, available=['claude'])
+    assert (p['sink'], p['report']) == ('report', report_path('2026-10-20'))

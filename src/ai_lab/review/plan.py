@@ -88,6 +88,16 @@ def _providers(mode: Mapping, name: str, *, requested: Sequence[str], config: Ma
     return (roster[start:] + roster[:start])[: spec['count']]
 
 
+def report_path(date: str) -> str:
+    """Where the ``report`` sink writes run *date*'s (``YYYY-MM-DD``) review, relative to the reviewed checkout.
+
+    Regenerable program output, so it lives under ``output/logs/<yy>/<mm>/<dd>/sharp-review/`` and never in a
+    tracked memory path; a finding a person keeps is moved into memory by that person.
+    """
+    yyyy, mm, dd = date.split('-')
+    return f'output/logs/{yyyy[2:]}/{mm}/{dd}/sharp-review/sharp-review.md'
+
+
 def build_plan(
     method: Method,
     *,
@@ -151,6 +161,7 @@ def build_plan(
         'excludedSummary': manifest.get('excludedSummary'),
         'synthesis': mode['synthesis'],
         'sink': mode['sink'],
+        'report': report_path(date),
         'high_confidence': method.spec['merge']['confidence'][0]['label'],
         'profiles': [{'key': k, 'label': profiles[k].get('label')} for k in keys],
         'reviewers': reviewers,

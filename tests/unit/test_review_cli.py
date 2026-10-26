@@ -3,18 +3,19 @@
 import io
 import json
 import shutil
+import subprocess
 
 import pytest
 
 from ai_lab.review import merge as merge_cli
-from ai_lab.review.__main__ import main
+from ai_lab.review.__main__ import _git_diff, main
 
 OK = {'schema_version': 1, 'ok': True, 'kind': '', 'result': {'findings': []}, 'usage': None, 'key_slot': 1,
       'error': ''}  # fmt: skip
 
 
-def _diff(range_, repo):
-    assert (range_, repo) == ('main...HEAD', '.')
+def _diff(range_, repo, paths=()):
+    assert (range_, repo, tuple(paths)) == ('main...HEAD', '.', ())
     return '+y = 2\n'
 
 
@@ -106,3 +107,74 @@ def test_merge_refuses_a_malformed_record_with_exit_2(method_dir, monkeypatch, c
     out = capsys.readouterr()
     assert out.out == ''
     assert out.err.startswith('refused: ')
+
+
+def test_paths_restrict_the_diff_to_the_slice(method_dir, capsys):
+    seen = []
+
+    def diff(range_, repo, paths=()):
+        seen.append(tuple(paths))
+        return '+y = 2\n'
+
+    argv = [
+        '--method',
+        str(method_dir),
+        '--range',
+        'a..b',
+        '--model',
+        'm',
+        '--lens',
+        'light',
+        '--paths',
+        'src/x',
+        'docs',
+    ]
+    assert main(argv, call=lambda r: OK, diff=diff) == 0
+    assert seen == [('src/x', 'docs')]
+    assert len(json.loads(capsys.readouterr().out)['reviewers']) == 1
+
+
+def test_the_real_diff_reads_only_the_named_paths(tmp_path):
+
+    git = shutil.which('git')
+
+    def g(*a):
+        subprocess.run([git, '-C', str(tmp_path), *a], check=True, capture_output=True)
+
+    g('init', '-q')
+    g('config', 'user.email', 't@t')
+    g('config', 'user.name', 't')
+    (tmp_path / 'a.txt').write_text('a\n', encoding='utf-8')
+    (tmp_path / 'b.txt').write_text('b\n', encoding='utf-8')
+    g('add', '.')
+    g('commit', '-qm', 'one')
+    (tmp_path / 'a.txt').write_text('a2\n', encoding='utf-8')
+    (tmp_path / 'b.txt').write_text('b2\n', encoding='utf-8')
+    g('commit', '-qam', 'two')
+    text = _git_diff('HEAD~1..HEAD', str(tmp_path), ('a.txt',))
+    assert 'a2' in text
+    assert 'b2' not in text
+
+
+def test_synthesis_reads_the_merged_findings_and_the_range_shape(method_dir, tmp_path, capsys):
+    merged = tmp_path / 'merged.json'
+    merged.write_text(json.dumps({'findings': [{'summary': 'SLICE-FINDING'}]}), encoding='utf-8')
+    seen = []
+
+    def diff(range_, repo, paths=()):
+        return 'FULL-DIFF-NEVER-READ'
+
+    argv = ['--method', str(method_dir), '--range', 'a..b', '--model', 'm', '--findings', str(merged)]
+    code = main(argv, call=lambda r: seen.append(r) or OK, diff=diff, stat=lambda range_, repo: ' x.py | 2 +-\n')
+    assert code == 0
+    text = seen[0]['context'][0]['text']
+    assert 'SLICE-FINDING' in text
+    assert 'x.py | 2 +-' in text
+    assert 'FULL-DIFF-NEVER-READ' not in text
+    assert json.loads(capsys.readouterr().out)['schema_version'] == 2
+
+
+def test_an_unreadable_findings_file_exits_2(method_dir, tmp_path, capsys):
+    argv = ['--method', str(method_dir), '--range', 'a..b', '--model', 'm', '--findings', str(tmp_path / 'no.json')]
+    assert main(argv, call=None, diff=_diff) == 2
+    assert capsys.readouterr().out == ''

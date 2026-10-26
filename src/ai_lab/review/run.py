@@ -11,11 +11,12 @@ from __future__ import annotations
 
 import random
 from collections.abc import Callable, Collection, Mapping, Sequence
+from typing import Final
 
 from ai_lab.review.method import Method
 from ai_lab.review.rules import merge, pick, render_prompt
 
-__all__ = ['REVIEW_TASK', 'run']
+__all__ = ['LENSES', 'REVIEW_TASK', 'run']
 
 #: The key task every review call is made under (its own key slots: ``auth login <provider> --task``).
 REVIEW_TASK = 'pr-review'
@@ -26,10 +27,23 @@ REVIEW_TASK = 'pr-review'
 _INSTRUCTIONS = 'Review the change the user turn describes; respond with the findings object the schema declares.'
 
 
-def _plan(method: Method, mode: Mapping, rng: random.Random) -> list[str]:
+#: How many reviewers each lens plans, from the method's own count and the eligible profiles: ``strict``
+#: every eligible profile, ``standard`` the method's count, ``light`` one.
+LENSES: Final[Mapping[str, Callable[[int, int], int]]] = {
+    'strict': lambda _count, eligible: eligible,
+    'standard': lambda count, _eligible: count,
+    'light': lambda _count, _eligible: 1,
+}
+
+
+def _plan(method: Method, mode: Mapping, rng: random.Random, lens: str) -> list[str]:
+    if lens not in LENSES:
+        msg = f'unknown lens {lens!r}: one of {sorted(LENSES)}'
+        raise ValueError(msg)
     spec = method.spec['pick']
     weights = [(p['key'], p['weight']) for p in method.profiles if p['context'] in mode['contexts']]
-    chosen = pick(method, weights, spec['count'], [rng.random() for _ in range(spec['count'])])
+    count = LENSES[lens](spec['count'], sum(1 for _, weight in weights if weight > 0))
+    chosen = pick(method, weights, count, [rng.random() for _ in range(count)])
     if spec['assignment'] == 'shuffled':
         rng.shuffle(chosen)
     return chosen
@@ -58,17 +72,19 @@ def run(
     call: Callable[[Mapping], Mapping],
     rng: random.Random,
     date: str,
+    lens: str = 'standard',
 ) -> dict:
     """The findings JSON of one headless review of *diff* (the change *range_* names).
 
     *call* is ``ai_lab.call.answer`` (or a stand-in): one request dict in, one classified reply out.
-    *model* serves every provider the run mode's ``models`` does not name.
+    *model* serves every provider the run mode's ``models`` does not name. *lens* sets how many reviewers
+    are planned (:data:`LENSES`); an unknown one is refused.
     """
     mode = method.spec['run_modes']['headless']
     providers = list(providers or mode['providers'])
     manifest = {'mode': 'review' if diff.strip() else 'empty', 'range': range_, 'excludedSummary': '', 'diff': diff}
     schema = _schema(method)
-    keys = _plan(method, mode, rng)
+    keys = _plan(method, mode, rng, lens)
     reviewers, results = [], []
     for i, key in enumerate(keys):
         provider = providers[i % len(providers)]

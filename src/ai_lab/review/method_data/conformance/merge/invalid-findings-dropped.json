@@ -1,27 +1,108 @@
 {
-  "description": "A finding failing the finding schema (missing a required field, a value outside an enum, a non-string field) is dropped and counted on its reviewer; unknown fields are not carried.",
+  "description": "A finding failing the finding schema (missing a required field, a value outside an enum such as the retired INFO severity, a non-string field) is dropped and counted on its reviewer; unknown fields are not carried.",
   "input": {
     "range": "HEAD",
-    "date": "2026-10-20",
-    "profiles": ["security"],
-    "reviewers": [ { "name": "security", "provider": "kimi", "status": "pending" } ],
+    "profiles": [
+      "security"
+    ],
+    "reviewers": [
+      {
+        "name": "security",
+        "provider": "kimi",
+        "status": "pending"
+      }
+    ],
     "results": [
-      { "name": "security", "findings": [
-        { "severity": "HIGH", "file": "api.ts", "summary": "Token logged in clear", "category": "Bug", "rating": 9 },
-        { "severity": "CRITICAL", "file": "api.ts", "summary": "Bad enum", "category": "Bug" },
-        { "severity": "LOW", "file": "api.ts", "summary": "No category" },
-        { "severity": "LOW", "file": 7, "summary": "File not a string", "category": "Bug" }
-      ] }
+      {
+        "name": "security",
+        "findings": [
+          {
+            "severity": "HIGH",
+            "file": "api.ts",
+            "summary": "Token logged in clear",
+            "category": "Bug",
+            "rating": 9,
+            "rule": "occams-razor",
+            "security": false,
+            "anchor": "x = token logged in clear"
+          },
+          {
+            "severity": "CRITICAL",
+            "file": "api.ts",
+            "summary": "Bad enum",
+            "category": "Bug",
+            "rule": "occams-razor",
+            "security": false,
+            "anchor": "x = bad enum"
+          },
+          {
+            "severity": "LOW",
+            "file": "api.ts",
+            "summary": "No category",
+            "rule": "occams-razor",
+            "security": false,
+            "anchor": "x = no category"
+          },
+          {
+            "severity": "LOW",
+            "file": 7,
+            "summary": "File not a string",
+            "category": "Bug",
+            "rule": "occams-razor",
+            "security": false,
+            "anchor": "x = file not a string"
+          },
+          {
+            "severity": "INFO",
+            "security": false,
+            "rule": "occams-razor",
+            "file": "api.ts",
+            "anchor": "log(x)",
+            "summary": "Retired severity",
+            "category": "Bug"
+          }
+        ]
+      }
+    ],
+    "registry": [
+      "NAMED-SETS-NOT-COUNTS"
     ]
   },
   "expected": {
-    "schema_version": 2,
+    "schema_version": 3,
     "range": "HEAD",
-    "profiles": ["security"],
-    "reviewers": [ { "name": "security", "provider": "kimi", "status": "ok", "dropped_findings": 3 } ],
+    "profiles": [
+      "security"
+    ],
+    "reviewers": [
+      {
+        "name": "security",
+        "provider": "kimi",
+        "status": "ok",
+        "dropped_findings": 4
+      }
+    ],
     "findings": [
-      { "id": "SR-20261020-001", "severity": "HIGH", "file": "api.ts", "summary": "Token logged in clear", "category": "Bug", "status": "OPEN", "suggestion": "", "detail": "", "confidence": "single-reviewer",
-        "reviewers": [ { "name": "security", "provider": "kimi" } ] }
+      {
+        "id": "F-550933c39073",
+        "severity": "HIGH",
+        "security": false,
+        "rule": "occams-razor",
+        "file": "api.ts",
+        "anchor": "x = token logged in clear",
+        "summary": "Token logged in clear",
+        "category": "Bug",
+        "suggestion": "",
+        "detail": "",
+        "status": "OPEN",
+        "confidence": "single-reviewer",
+        "reviewers": [
+          {
+            "name": "security",
+            "provider": "kimi"
+          }
+        ]
+      }
     ]
   }
 }

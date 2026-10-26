@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "files": {
     "profiles": "profiles.json",
     "principles": "principles.json",
@@ -42,7 +42,7 @@
     "collapse_blank_lines": true,
     "trim": true,
     "partials": {
-      "principles": "prompts/principles.md",
+      "rules": "prompts/rules.md",
       "output_contract": "prompts/output-contract.md"
     }
   },
@@ -128,19 +128,8 @@
   },
   "merge": {
     "validate": "finding_schema",
-    "dedup_key": {
-      "fields": [
-        "file",
-        "summary"
-      ],
-      "lowercase": true,
-      "truncate": 60,
-      "join": "|"
-    },
     "group_order": "first_seen",
-    "primary": "first_seen",
     "defaults": {
-      "file": "",
       "status": "OPEN",
       "suggestion": "",
       "detail": ""
@@ -156,25 +145,40 @@
       }
     ],
     "id": {
-      "prefix": "SR",
-      "date_format": "YYYYMMDD",
-      "seq_width": 3,
-      "seq_start": 1,
-      "separator": "-"
-    },
-    "union": {
+      "prefix": "F",
+      "separator": "-",
+      "hash": "sha256",
+      "length": 12,
       "fields": [
-        "principles"
+        "rule",
+        "file",
+        "anchor"
       ],
-      "order": "first_seen",
-      "empty": "omitted"
+      "normalize": "each field stripped and its whitespace runs collapsed to one space; joined by a newline",
+      "means": "a finding is the same finding in every round and every reviewer while its rule, file and anchor line are: ids never carry a line number or a date"
+    },
+    "group_by": "id",
+    "escalate": {
+      "severity": "the most severe any reviewer of the group gave, by severity_order",
+      "security": "true when any reviewer of the group said true",
+      "severity_order": [
+        "HIGH",
+        "MEDIUM",
+        "LOW"
+      ]
     }
   },
-  "principles": {
-    "finding_field": "principles",
-    "fills": "the finding schema property finding_field gets items.enum = every principles.json id, at load; the file never lists them",
+  "rules": {
+    "finding_field": "rule",
+    "sources": [
+      "principles.json",
+      "registry"
+    ],
+    "registry": "dev_lab.dev.rules.RULES: the family rule registry, read at load (never copied here); a caller may inject the id set",
+    "fills": "the finding schema property finding_field gets enum = every principles.json id then every registry id, at load; no file lists them",
     "list_item": "- {{id}}: {{statement}}",
+    "registry_item": "{{id}}",
     "prompt_schema": "unfilled",
-    "prompt_schema_means": "filled: the prompt's finding schema carries the ids enum; unfilled: it does not, since the principles partial already lists every id. Validation always uses the filled schema"
+    "prompt_schema_means": "filled: the prompt finding schema carries the ids enum; unfilled: it does not, since the rules partial already lists every id. Validation always uses the filled schema"
   }
 }

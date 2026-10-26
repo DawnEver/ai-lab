@@ -2,7 +2,6 @@
   "description": "A failed reviewer says why: the failed call's recorded error text is copied verbatim and wins over the rule's reason, even when its kind is unknown (unavailable); a planned reviewer's recorded error explains its planned status; a blank recorded error falls back to the reason; an ok reviewer's stray error is dropped and a skipped reviewer gets none.",
   "input": {
     "range": "HEAD",
-    "date": "2026-10-21",
     "profiles": [
       "diff"
     ],
@@ -60,10 +59,13 @@
         "findings": [],
         "error": "ignored"
       }
+    ],
+    "registry": [
+      "NAMED-SETS-NOT-COUNTS"
     ]
   },
   "expected": {
-    "schema_version": 2,
+    "schema_version": 3,
     "range": "HEAD",
     "profiles": [
       "diff"

@@ -15,8 +15,9 @@ from ai_lab.review.run import run
 
 _KEYWORDS = {'$schema', 'title', 'description', 'type', 'const', 'enum', 'required', 'properties',
              'additionalProperties', 'items', 'pattern', 'minLength', 'allOf', 'if', 'then', 'not'}  # fmt: skip
-_TYPES = {'object': dict, 'array': list, 'string': str, 'integer': int, 'null': type(None)}
-FINDING = {'severity': 'HIGH', 'file': 'a.py', 'summary': 'Null crashes parse', 'category': 'Bug'}
+_TYPES = {'object': dict, 'array': list, 'string': str, 'integer': int, 'boolean': bool, 'null': type(None)}
+FINDING = {'severity': 'HIGH', 'security': False, 'rule': 'occams-razor', 'file': 'a.py', 'anchor': 'return parse(x)',
+           'summary': 'Null crashes parse', 'category': 'Bug'}  # fmt: skip
 
 
 def _scalar_error(schema, value, at):
@@ -99,7 +100,7 @@ def _run(method, call, **kw):
     kw.setdefault('providers', None)
     kw.setdefault('available', {'anthropic', 'openai'})
     return run(method, range_='main...HEAD', diff='+x = 1\n', model='claude-test', call=call,
-               rng=Draws(0.7, 0.1), date='2026-10-20', **kw)  # fmt: skip
+               rng=Draws(0.7, 0.1), **kw)  # fmt: skip
 
 
 def test_the_headless_default_reviews_the_diff_through_anthropic_and_validates(method):
@@ -117,7 +118,15 @@ def test_the_headless_default_reviews_the_diff_through_anthropic_and_validates(m
         assert request['verb'] == 'respond'
         assert request['task'] == 'pr-review'
         assert request['model'] == 'claude-test'
-        assert request['schema']['properties']['findings']['items']['required'] == ['severity', 'summary', 'category']
+        assert request['schema']['properties']['findings']['items']['required'] == [
+            'severity',
+            'security',
+            'rule',
+            'file',
+            'anchor',
+            'summary',
+            'category',
+        ]
         # The rendered prompt is the user turn: an empty context is an empty user message, which the
         # Messages API refuses with a 400 (`user messages must have non-empty content`).
         assert [part['kind'] for part in request['context']] == ['text']
@@ -152,7 +161,7 @@ def test_an_unavailable_provider_is_never_substituted(method):
 
 def test_an_empty_diff_is_skipped_without_a_call(method):
     call = FakeCall({})
-    doc = run(method, range_='HEAD', diff='  \n', model='m', call=call, rng=Draws(0.5, 0.5), date='2026-10-20',
+    doc = run(method, range_='HEAD', diff='  \n', model='m', call=call, rng=Draws(0.5, 0.5),
               providers=None, available={'anthropic'})  # fmt: skip
     assert _errors(method.output_schema, doc) == []
     assert {r['status'] for r in doc['reviewers']} == {'skipped'}
@@ -164,7 +173,7 @@ def test_a_finding_lists_a_reviewer_once_by_name_whatever_its_provider(method):
     reviewers = [{'name': 'diff', 'provider': 'a', 'status': 'pending'},
                  {'name': 'diff', 'provider': 'b', 'status': 'pending'}]  # fmt: skip
     results = [{'name': 'diff', 'findings': [FINDING]}]
-    doc = merge(method, range_='HEAD', date='2026-10-20', profiles=['diff'], reviewers=reviewers, results=results)
+    doc = merge(method, range_='HEAD', profiles=['diff'], reviewers=reviewers, results=results)
     assert doc['findings'][0]['reviewers'] == [{'name': 'diff', 'provider': 'a'}]
     assert doc['findings'][0]['confidence'] == method.spec['merge']['confidence'][-1]['label']
 
@@ -205,7 +214,7 @@ def _eligible(method):
 def test_the_strict_lens_plans_every_eligible_profile(method):
     eligible = _eligible(method)
     doc = run(method, range_='a..b', diff='+x = 1\n', model='m', providers=None, available={'anthropic'},
-              call=FakeCall({'anthropic': _ok([])}), rng=Draws(*[0.0] * len(eligible)), date='2026-10-24',
+              call=FakeCall({'anthropic': _ok([])}), rng=Draws(*[0.0] * len(eligible)),
               lens='strict')  # fmt: skip
     assert sorted(doc['profiles']) == sorted(eligible)
 

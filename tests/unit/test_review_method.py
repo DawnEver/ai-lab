@@ -5,9 +5,11 @@ An unknown version is refused.
 
 import json
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
+from dev_lab.dev.rules import RULES
 
 import ai_lab.review
 from ai_lab.review.method import METHOD_DIR, METHOD_SCHEMA_VERSIONS, Method, UnknownMethodVersion, load_method, main
@@ -30,7 +32,15 @@ def test_the_method_is_read_in_place(method_dir):
     assert isinstance(method, Method)
     assert method.root == method_dir
     assert {p['key'] for p in method.profiles} >= {'diff', 'security', 'adversarial'}
-    assert method.finding_schema['required'] == ['severity', 'summary', 'category']
+    assert method.finding_schema['required'] == [
+        'severity',
+        'security',
+        'rule',
+        'file',
+        'anchor',
+        'summary',
+        'category',
+    ]
     assert method.output_schema['properties']['schema_version'] == {'const': method.schema_version}
     assert method.text('prompts/diff.md').startswith('{{framing}}')
 
@@ -41,27 +51,42 @@ def test_an_unknown_schema_version_is_refused_by_name(method_dir, tmp_path):
     data = json.loads((copy / 'method.json').read_text(encoding='utf-8'))
     data['schema_version'] = 99
     (copy / 'method.json').write_text(json.dumps(data), encoding='utf-8')
-    with pytest.raises(UnknownMethodVersion, match=r'schema_version 99.*\[2\]'):
+    with pytest.raises(UnknownMethodVersion, match=r'schema_version 99.*\[3\]'):
         load_method(copy)
     assert 99 not in METHOD_SCHEMA_VERSIONS
 
 
-def test_the_principle_ids_come_from_principles_json_alone(method_dir, tmp_path):
-    """The finding schema's ``principles`` enum is filled from ``principles.json`` at load.
+def test_the_rule_ids_are_the_principles_then_the_registry(method_dir, tmp_path):
+    """The finding schema's ``rule`` enum is filled at load: ``principles.json`` ids, then the registry's.
 
-    PLANTED CONTROL: a principle added to the data reaches the schema with no other edit.
+    No file of the method lists them. PLANTED CONTROLS: a principle added to the data, and a rule injected as the
+    registry, each reach the schema with no other edit; the default registry is the family's own.
     """
-    method = load_method(method_dir)
-    field = method.spec['principles']['finding_field']
+    method = load_method(method_dir, registry=('SOME-RULE',))
+    field = method.spec['rules']['finding_field']
     raw = json.loads((method_dir / method.spec['files']['finding_schema']).read_text(encoding='utf-8'))
-    assert 'enum' not in raw['properties'][field].get('items', {}), 'a second copy of the ids'
-    assert method.finding_schema['properties'][field]['items']['enum'] == [p['id'] for p in method.principles]
+    assert 'enum' not in raw['properties'][field], 'a second copy of the ids'
+    assert method.finding_schema['properties'][field]['enum'] == [*(p['id'] for p in method.principles), 'SOME-RULE']
+    assert method.registry == ('SOME-RULE',)
     copy = tmp_path / 'method'
     shutil.copytree(method_dir, copy)
     data = json.loads((copy / 'principles.json').read_text(encoding='utf-8'))
     data['principles'].append({'id': 'fail-loud', 'name': 'Fail loud', 'statement': 'An unsupported case raises.'})
     (copy / 'principles.json').write_text(json.dumps(data), encoding='utf-8')
-    assert 'fail-loud' in load_method(copy).finding_schema['properties'][field]['items']['enum']
+    assert 'fail-loud' in load_method(copy, registry=()).finding_schema['properties'][field]['enum']
+    assert load_method(method_dir).registry == tuple(rule.id for rule in RULES)
+
+
+def test_a_missing_registry_is_refused_by_name(method_dir, monkeypatch):
+    """No registry, no method: a finding could not be validated, so the load refuses rather than guessing."""
+    monkeypatch.setitem(sys.modules, 'dev_lab.dev.rules', None)
+    with pytest.raises(ValueError, match=r'dev_lab\.dev\.rules'):
+        load_method(method_dir)
+
+
+def test_a_principle_id_that_is_also_a_registry_id_is_refused(method_dir):
+    with pytest.raises(ValueError, match='occams-razor'):
+        load_method(method_dir, registry=('occams-razor',))
 
 
 def test_a_directory_without_a_method_is_refused_naming_it(tmp_path):
@@ -71,18 +96,18 @@ def test_a_directory_without_a_method_is_refused_naming_it(tmp_path):
 
 @pytest.mark.parametrize('choice', ['filled', 'unfilled', 'neither'])
 def test_the_prompt_schema_is_the_one_method_json_names(method_dir, tmp_path, choice):
-    """``principles.prompt_schema`` picks the prompt's schema; validation keeps the filled one. Unknown is refused."""
+    """``rules.prompt_schema`` picks the prompt's schema; validation keeps the filled one. Unknown is refused."""
     copy = tmp_path / 'method'
     shutil.copytree(method_dir, copy)
     data = json.loads((copy / 'method.json').read_text(encoding='utf-8'))
-    data['principles']['prompt_schema'] = choice
+    data['rules']['prompt_schema'] = choice
     (copy / 'method.json').write_text(json.dumps(data), encoding='utf-8')
     if choice == 'neither':
         with pytest.raises(ValueError, match=r"prompt_schema is 'neither'"):
             load_method(copy)
         return
     method = load_method(copy)
-    field = data['principles']['finding_field']
+    field = data['rules']['finding_field']
     raw = json.loads((copy / data['files']['finding_schema']).read_text(encoding='utf-8'))
-    assert 'enum' in method.finding_schema['properties'][field]['items']
+    assert 'enum' in method.finding_schema['properties'][field]
     assert method.prompt_schema == (method.finding_schema if choice == 'filled' else raw)

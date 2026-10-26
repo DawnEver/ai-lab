@@ -1,0 +1,103 @@
+{
+  "description": "One finding from two reviewers: the group takes the MOST severe severity any reviewer gave and is a security finding when ANY reviewer said so -- the blocking reading never depends on which reviewer answered first.",
+  "input": {
+    "range": "main...HEAD",
+    "profiles": [
+      "diff",
+      "security"
+    ],
+    "reviewers": [
+      {
+        "name": "diff",
+        "provider": "claude",
+        "status": "pending"
+      },
+      {
+        "name": "security",
+        "provider": "deepseek",
+        "status": "pending"
+      }
+    ],
+    "results": [
+      {
+        "name": "diff",
+        "findings": [
+          {
+            "severity": "LOW",
+            "security": false,
+            "rule": "single-source-of-truth",
+            "file": "src/k.py",
+            "anchor": "TOKEN = 'abc'",
+            "summary": "Token hard-coded",
+            "category": "Bug"
+          }
+        ]
+      },
+      {
+        "name": "security",
+        "findings": [
+          {
+            "severity": "MEDIUM",
+            "security": true,
+            "rule": "single-source-of-truth",
+            "file": "src/k.py",
+            "anchor": "TOKEN = 'abc'",
+            "summary": "Secret in source",
+            "category": "Bug"
+          }
+        ]
+      }
+    ],
+    "registry": [
+      "NAMED-SETS-NOT-COUNTS"
+    ]
+  },
+  "expected": {
+    "schema_version": 3,
+    "range": "main...HEAD",
+    "profiles": [
+      "diff",
+      "security"
+    ],
+    "reviewers": [
+      {
+        "name": "diff",
+        "provider": "claude",
+        "status": "ok",
+        "dropped_findings": 0
+      },
+      {
+        "name": "security",
+        "provider": "deepseek",
+        "status": "ok",
+        "dropped_findings": 0
+      }
+    ],
+    "findings": [
+      {
+        "id": "F-b9511a86e320",
+        "severity": "MEDIUM",
+        "security": true,
+        "rule": "single-source-of-truth",
+        "file": "src/k.py",
+        "anchor": "TOKEN = 'abc'",
+        "summary": "Token hard-coded",
+        "category": "Bug",
+        "suggestion": "",
+        "detail": "",
+        "status": "OPEN",
+        "confidence": "high-confidence (≥2 reviewers)",
+        "reviewers": [
+          {
+            "name": "diff",
+            "provider": "claude"
+          },
+          {
+            "name": "security",
+            "provider": "deepseek"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -50,7 +50,7 @@ _MECHANISMS: Final = {
     # row refuses the three push-side violations, and the one writer is git's own (guarded from force by it).
     **dict.fromkeys(
         ('ONE-WRITER-PER-SESSION-BRANCH', 'PUBLISH-IS-THE-LOCAL-REF', 'SESSION-HISTORY-ONLY-GROWS',
-         'INTEGRATION-IS-MERGES-ONLY'),
+         'INTEGRATION-IS-MERGES-ONLY', 'ORIGIN-HOLDS-ONLY-DECLARED-BRANCHES'),
         (TestPath('pyproject.toml'), TestPath('tests/architecture/test_session_branch_pushes_are_guarded.py')),
     ),
     # Adopted 2026-10-19, as optimi-lab: `[tool.lab_commons.integrator]` declares integrate/main and main.

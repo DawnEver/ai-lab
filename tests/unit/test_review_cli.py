@@ -9,6 +9,8 @@ import pytest
 
 from ai_lab.review import merge as merge_cli
 from ai_lab.review.__main__ import _git_diff, main
+from ai_lab.review.method import load_method
+from ai_lab.review.rules import finding_id
 
 OK = {'schema_version': 1, 'ok': True, 'kind': '', 'result': {'findings': []}, 'usage': None, 'key_slot': 1,
       'error': ''}  # fmt: skip
@@ -25,7 +27,7 @@ def test_the_cli_prints_the_findings_json(method_dir, capsys):
                 call=lambda r: seen.append(r) or OK, diff=_diff)  # fmt: skip
     assert code == 0
     doc = json.loads(capsys.readouterr().out)
-    assert doc['schema_version'] == 2
+    assert doc['schema_version'] == 3
     assert doc['range'] == 'main...HEAD'
     assert {r['status'] for r in doc['reviewers']} == {'ok'}
     assert {r['provider'] for r in seen} == {'anthropic'}
@@ -60,17 +62,19 @@ def test_the_run_takes_the_verb_less_argv_the_forge_declares(method_dir, capsys)
     # The argv shape `[tool.lab_commons.review] command` declares in every consumer pyproject: no verb.
     argv = ['--method', str(method_dir), '--range', 'main...HEAD', '--model', 'claude-test']
     assert main(argv, call=lambda r: OK, diff=_diff) == 0
-    assert json.loads(capsys.readouterr().out)['schema_version'] == 2
+    assert json.loads(capsys.readouterr().out)['schema_version'] == 3
 
 
 def test_the_method_defaults_to_the_packaged_one(capsys):
     assert main(['--range', 'main...HEAD', '--model', 'm'], call=lambda r: OK, diff=_diff) == 0
-    assert json.loads(capsys.readouterr().out)['schema_version'] == 2
+    assert json.loads(capsys.readouterr().out)['schema_version'] == 3
 
 
-RUN = {'range': 'HEAD', 'date': '2026-10-20', 'profiles': ['diff'],
+FINDING = {'severity': 'HIGH', 'security': True, 'rule': 'occams-razor', 'file': 'a.py', 'anchor': 'k = 1',
+           'summary': 'S', 'category': 'Bug'}  # fmt: skip
+RUN = {'range': 'HEAD', 'profiles': ['diff'],
        'reviewers': [{'name': 'diff', 'provider': 'claude', 'status': 'pending'}],
-       'results': [{'name': 'diff', 'findings': [{'severity': 'HIGH', 'summary': 'S', 'category': 'Bug'}]}],
+       'results': [{'name': 'diff', 'findings': [FINDING]}],
 }  # fmt: skip
 
 
@@ -82,8 +86,11 @@ def _merge(method_dir, record, monkeypatch):
 def test_merge_prints_the_findings_json_of_a_run_record_on_stdin(method_dir, monkeypatch, capsys):
     assert _merge(method_dir, RUN, monkeypatch) == 0
     doc = json.loads(capsys.readouterr().out)
-    assert doc['schema_version'] == 2
-    assert [f['id'] for f in doc['findings']] == ['SR-20261020-001']
+    assert doc['schema_version'] == 3
+    assert [f['id'] for f in doc['findings']] == [
+        finding_id(load_method().spec['merge']['id'], RUN['results'][0]['findings'][0])
+    ]
+    assert doc['findings'][0]['security'] is True
     assert doc['reviewers'][0]['status'] == 'ok'
 
 
@@ -98,7 +105,7 @@ def test_merge_reads_a_record_without_results_as_every_result_missing(method_dir
 def test_merge_defaults_to_the_packaged_method(monkeypatch, capsys):
     monkeypatch.setattr('sys.stdin', io.StringIO(json.dumps(RUN)))
     assert merge_cli.main([]) == 0
-    assert json.loads(capsys.readouterr().out)['findings'][0]['id'] == 'SR-20261020-001'
+    assert json.loads(capsys.readouterr().out)['findings'][0]['id'].startswith('F-')
 
 
 @pytest.mark.parametrize('record', ['not json', {'range': 'HEAD'}, '[]'])
@@ -171,7 +178,7 @@ def test_synthesis_reads_the_merged_findings_and_the_range_shape(method_dir, tmp
     assert 'SLICE-FINDING' in text
     assert 'x.py | 2 +-' in text
     assert 'FULL-DIFF-NEVER-READ' not in text
-    assert json.loads(capsys.readouterr().out)['schema_version'] == 2
+    assert json.loads(capsys.readouterr().out)['schema_version'] == 3
 
 
 def test_an_unreadable_findings_file_exits_2(method_dir, tmp_path, capsys):

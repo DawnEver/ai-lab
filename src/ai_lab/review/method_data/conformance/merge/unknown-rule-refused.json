@@ -1,0 +1,147 @@
+{
+  "description": "A finding whose rule is neither a principles.json id nor a registry id, or is not a string, or that omits security, or whose anchor is empty, or whose security is not a boolean, fails the finding schema and is dropped and counted; a principle id and a registry id are both kept.",
+  "input": {
+    "range": "HEAD",
+    "profiles": [
+      "diff"
+    ],
+    "reviewers": [
+      {
+        "name": "diff",
+        "provider": "claude",
+        "status": "pending"
+      }
+    ],
+    "results": [
+      {
+        "name": "diff",
+        "findings": [
+          {
+            "severity": "LOW",
+            "security": false,
+            "file": "a.js",
+            "anchor": "let a = 1;",
+            "summary": "Made-up rule",
+            "category": "Bug",
+            "rule": "be-nice"
+          },
+          {
+            "severity": "LOW",
+            "security": false,
+            "file": "a.js",
+            "anchor": "let b = 2;",
+            "summary": "Rule as a list",
+            "category": "Bug",
+            "rule": [
+              "occams-razor"
+            ]
+          },
+          {
+            "severity": "LOW",
+            "file": "a.js",
+            "anchor": "let c = 3;",
+            "summary": "No security flag",
+            "category": "Bug",
+            "rule": "occams-razor"
+          },
+          {
+            "severity": "LOW",
+            "security": false,
+            "file": "a.js",
+            "anchor": "",
+            "summary": "Empty anchor",
+            "category": "Bug",
+            "rule": "occams-razor"
+          },
+          {
+            "severity": "LOW",
+            "security": "no",
+            "file": "a.js",
+            "anchor": "let d = 4;",
+            "summary": "Security as a string",
+            "category": "Bug",
+            "rule": "occams-razor"
+          },
+          {
+            "severity": "LOW",
+            "security": false,
+            "file": "a.js",
+            "anchor": "let e = 5;",
+            "summary": "Known principle",
+            "category": "Bug",
+            "rule": "names-match-behaviour"
+          },
+          {
+            "severity": "MEDIUM",
+            "security": false,
+            "file": "a.js",
+            "anchor": "let f = 6;",
+            "summary": "Known registry rule",
+            "category": "Bug",
+            "rule": "NAMED-SETS-NOT-COUNTS"
+          }
+        ]
+      }
+    ],
+    "registry": [
+      "NAMED-SETS-NOT-COUNTS"
+    ]
+  },
+  "expected": {
+    "schema_version": 3,
+    "range": "HEAD",
+    "profiles": [
+      "diff"
+    ],
+    "reviewers": [
+      {
+        "name": "diff",
+        "provider": "claude",
+        "status": "ok",
+        "dropped_findings": 5
+      }
+    ],
+    "findings": [
+      {
+        "id": "F-72f8ec3f2de1",
+        "severity": "LOW",
+        "security": false,
+        "rule": "names-match-behaviour",
+        "file": "a.js",
+        "anchor": "let e = 5;",
+        "summary": "Known principle",
+        "category": "Bug",
+        "suggestion": "",
+        "detail": "",
+        "status": "OPEN",
+        "confidence": "single-reviewer",
+        "reviewers": [
+          {
+            "name": "diff",
+            "provider": "claude"
+          }
+        ]
+      },
+      {
+        "id": "F-16e696098400",
+        "severity": "MEDIUM",
+        "security": false,
+        "rule": "NAMED-SETS-NOT-COUNTS",
+        "file": "a.js",
+        "anchor": "let f = 6;",
+        "summary": "Known registry rule",
+        "category": "Bug",
+        "suggestion": "",
+        "detail": "",
+        "status": "OPEN",
+        "confidence": "single-reviewer",
+        "reviewers": [
+          {
+            "name": "diff",
+            "provider": "claude"
+          }
+        ]
+      }
+    ]
+  }
+}

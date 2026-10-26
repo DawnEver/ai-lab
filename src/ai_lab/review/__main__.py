@@ -21,7 +21,6 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
 
@@ -104,8 +103,7 @@ def main(
         return _EXIT_REFUSED
     doc = run(
         method, range_=args.range_, diff=text, model=args.model, providers=args.providers,
-        available=set(catalogue()), call=call, rng=random.SystemRandom(), date=datetime.now(UTC).date().isoformat(),
-        lens=args.lens,
+        available=set(catalogue()), call=call, rng=random.SystemRandom(), lens=args.lens,
     )  # fmt: skip
     sys.stdout.write(json.dumps(doc, ensure_ascii=False) + '\n')
     return 0

@@ -1,39 +1,164 @@
 {
-  "description": "Two ok reviewers; one finding reported by both (file and summary differ only in case) is high-confidence and lists both reviewers; ids run in first-seen order; optional fields take their defaults.",
+  "description": "Two ok reviewers; one finding reported by both (same rule and file, the anchor line differing only in whitespace, the summary worded differently) is ONE finding: high-confidence, both reviewers listed, the first-seen summary carried, the most severe severity kept; ids are stable hashes of rule, file and anchor; optional fields take their defaults.",
   "input": {
     "range": "main...HEAD",
-    "date": "2026-10-20",
-    "profiles": ["diff", "adversarial"],
+    "profiles": [
+      "diff",
+      "adversarial"
+    ],
     "reviewers": [
-      { "name": "diff", "provider": "claude", "status": "pending" },
-      { "name": "adversarial", "provider": "deepseek", "status": "pending" }
+      {
+        "name": "diff",
+        "provider": "claude",
+        "status": "pending"
+      },
+      {
+        "name": "adversarial",
+        "provider": "deepseek",
+        "status": "pending"
+      }
     ],
     "results": [
-      { "name": "diff", "findings": [
-        { "severity": "HIGH", "file": "src/a.js", "summary": "Null input crashes parse", "category": "Bug", "suggestion": "Guard null", "detail": "parse(null) throws" },
-        { "severity": "LOW", "file": "src/b.js", "summary": "Dead helper", "category": "Bug" }
-      ] },
-      { "name": "adversarial", "findings": [
-        { "severity": "MEDIUM", "file": "SRC/A.JS", "summary": "null input crashes PARSE", "category": "Bug" },
-        { "severity": "MEDIUM", "summary": "Quadratic loop over rows", "category": "Performance", "suggestion": "Index by id" }
-      ] }
+      {
+        "name": "diff",
+        "findings": [
+          {
+            "severity": "MEDIUM",
+            "security": false,
+            "rule": "occams-razor",
+            "file": "src/a.js",
+            "anchor": "return parse(input);",
+            "summary": "Null input crashes parse",
+            "category": "Bug",
+            "suggestion": "Guard null",
+            "detail": "parse(null) throws"
+          },
+          {
+            "severity": "LOW",
+            "security": false,
+            "rule": "no-historical-baggage",
+            "file": "src/b.js",
+            "anchor": "function helper() {",
+            "summary": "Dead helper",
+            "category": "Bug"
+          }
+        ]
+      },
+      {
+        "name": "adversarial",
+        "findings": [
+          {
+            "severity": "HIGH",
+            "security": false,
+            "rule": "occams-razor",
+            "file": "src/a.js",
+            "anchor": "  return   parse(input);",
+            "summary": "parse() has no null guard",
+            "category": "Bug"
+          },
+          {
+            "severity": "MEDIUM",
+            "security": false,
+            "rule": "first-principles",
+            "file": "src/c.js",
+            "anchor": "for (const r of rows) rows.find(x => x.id === r.id);",
+            "summary": "Quadratic loop over rows",
+            "category": "Performance",
+            "suggestion": "Index by id"
+          }
+        ]
+      }
+    ],
+    "registry": [
+      "NAMED-SETS-NOT-COUNTS"
     ]
   },
   "expected": {
-    "schema_version": 2,
+    "schema_version": 3,
     "range": "main...HEAD",
-    "profiles": ["diff", "adversarial"],
+    "profiles": [
+      "diff",
+      "adversarial"
+    ],
     "reviewers": [
-      { "name": "diff", "provider": "claude", "status": "ok", "dropped_findings": 0 },
-      { "name": "adversarial", "provider": "deepseek", "status": "ok", "dropped_findings": 0 }
+      {
+        "name": "diff",
+        "provider": "claude",
+        "status": "ok",
+        "dropped_findings": 0
+      },
+      {
+        "name": "adversarial",
+        "provider": "deepseek",
+        "status": "ok",
+        "dropped_findings": 0
+      }
     ],
     "findings": [
-      { "id": "SR-20261020-001", "severity": "HIGH", "file": "src/a.js", "summary": "Null input crashes parse", "category": "Bug", "status": "OPEN", "suggestion": "Guard null", "detail": "parse(null) throws", "confidence": "high-confidence (≥2 reviewers)",
-        "reviewers": [ { "name": "diff", "provider": "claude" }, { "name": "adversarial", "provider": "deepseek" } ] },
-      { "id": "SR-20261020-002", "severity": "LOW", "file": "src/b.js", "summary": "Dead helper", "category": "Bug", "status": "OPEN", "suggestion": "", "detail": "", "confidence": "single-reviewer",
-        "reviewers": [ { "name": "diff", "provider": "claude" } ] },
-      { "id": "SR-20261020-003", "severity": "MEDIUM", "file": "", "summary": "Quadratic loop over rows", "category": "Performance", "status": "OPEN", "suggestion": "Index by id", "detail": "", "confidence": "single-reviewer",
-        "reviewers": [ { "name": "adversarial", "provider": "deepseek" } ] }
+      {
+        "id": "F-a40bfdcc8aa4",
+        "severity": "HIGH",
+        "security": false,
+        "rule": "occams-razor",
+        "file": "src/a.js",
+        "anchor": "return parse(input);",
+        "summary": "Null input crashes parse",
+        "category": "Bug",
+        "suggestion": "Guard null",
+        "detail": "parse(null) throws",
+        "status": "OPEN",
+        "confidence": "high-confidence (≥2 reviewers)",
+        "reviewers": [
+          {
+            "name": "diff",
+            "provider": "claude"
+          },
+          {
+            "name": "adversarial",
+            "provider": "deepseek"
+          }
+        ]
+      },
+      {
+        "id": "F-e3a8bf2553fb",
+        "severity": "LOW",
+        "security": false,
+        "rule": "no-historical-baggage",
+        "file": "src/b.js",
+        "anchor": "function helper() {",
+        "summary": "Dead helper",
+        "category": "Bug",
+        "suggestion": "",
+        "detail": "",
+        "status": "OPEN",
+        "confidence": "single-reviewer",
+        "reviewers": [
+          {
+            "name": "diff",
+            "provider": "claude"
+          }
+        ]
+      },
+      {
+        "id": "F-6876e7315579",
+        "severity": "MEDIUM",
+        "security": false,
+        "rule": "first-principles",
+        "file": "src/c.js",
+        "anchor": "for (const r of rows) rows.find(x => x.id === r.id);",
+        "summary": "Quadratic loop over rows",
+        "category": "Performance",
+        "suggestion": "Index by id",
+        "detail": "",
+        "status": "OPEN",
+        "confidence": "single-reviewer",
+        "reviewers": [
+          {
+            "name": "adversarial",
+            "provider": "deepseek"
+          }
+        ]
+      }
     ]
   }
 }

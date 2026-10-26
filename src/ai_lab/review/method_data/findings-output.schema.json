@@ -13,7 +13,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": 2
+      "const": 3
     },
     "range": {
       "type": "string",
@@ -122,7 +122,10 @@
         "required": [
           "id",
           "severity",
+          "security",
+          "rule",
           "file",
+          "anchor",
           "summary",
           "category",
           "status",
@@ -134,19 +137,31 @@
         "properties": {
           "id": {
             "type": "string",
-            "pattern": "^SR-\\d{8}-\\d{3,}$",
-            "description": "SR-<YYYYMMDD>-<NNN>, numbered within the run."
+            "pattern": "^F-[0-9a-f]{12}$",
+            "description": "F-<first 12 hex of sha256(rule, file, anchor)> (method.json merge.id): the SAME id in every round and from every reviewer while rule, file and anchor are unchanged; never a line number or a date."
           },
           "severity": {
             "enum": [
               "HIGH",
               "MEDIUM",
-              "LOW",
-              "INFO"
-            ]
+              "LOW"
+            ],
+            "description": "The most severe any reviewer of this finding gave."
+          },
+          "security": {
+            "type": "boolean",
+            "description": "true when any reviewer of this finding called it a security defect. A HIGH or security finding blocks the merge until a later round confirms it fixed or the integrator disposes of it."
+          },
+          "rule": {
+            "type": "string",
+            "description": "The principle id (principles.json) or registry rule id (dev_lab.dev.rules) it violates."
           },
           "file": {
             "type": "string"
+          },
+          "anchor": {
+            "type": "string",
+            "description": "The verbatim line of file the finding is about: its identity across rounds."
           },
           "summary": {
             "type": "string"
@@ -190,17 +205,10 @@
               }
             },
             "description": "Every reviewer that reported this finding, with its provider, in first-seen order."
-          },
-          "principles": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Never empty: the union of the principle ids (method principles.json) every reviewer of this finding tagged, in first-seen order; absent when none did (method.json merge.union)."
           }
         }
       },
-      "description": "Deduplicated across reviewers by method.json merge.dedup_key, in first-seen order."
+      "description": "Deduplicated across reviewers by id (method.json merge.id), in first-seen order."
     }
   }
 }

@@ -71,7 +71,6 @@ def run(
     available: Collection[str],
     call: Callable[[Mapping], Mapping],
     rng: random.Random,
-    date: str,
     lens: str = 'standard',
 ) -> dict:
     """The findings JSON of one headless review of *diff* (the change *range_* names).
@@ -106,4 +105,4 @@ def run(
             'context': [{'kind': 'text', 'text': rendered['prompt']}], 'schema': schema,
         })  # fmt: skip
         results.append(_result(key, reply))
-    return merge(method, range_=range_, date=date, profiles=keys, reviewers=reviewers, results=results)
+    return merge(method, range_=range_, profiles=keys, reviewers=reviewers, results=results)

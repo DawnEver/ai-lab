@@ -7,6 +7,7 @@ the method's ``conformance/`` fixtures, shared with the Node executor.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Mapping, Sequence
@@ -14,7 +15,7 @@ from typing import Final
 
 from ai_lab.review.method import Method
 
-__all__ = ['merge', 'pick', 'render', 'render_prompt', 'reviewer_status', 'valid_finding']
+__all__ = ['finding_id', 'merge', 'pick', 'render', 'render_prompt', 'reviewer_status', 'valid_finding']
 
 _PLACEHOLDER = re.compile(r'\{\{(\w+)\}\}')
 _BLANK_RUN = re.compile(r'\n{3,}')
@@ -86,9 +87,10 @@ def render_prompt(method: Method, profile: Mapping, manifest: Mapping) -> dict:
         'manifest': manifest.get('manifest'),
         'finding_schema': schema,
     }
-    # method.json principles.list_item, once per principles.json entry, one per line.
-    item = method.spec['principles']['list_item']
+    # method.json rules.list_item once per principles.json entry, one per line; then the registry ids on one line.
+    item = method.spec['rules']['list_item']
     variables['principle_list'] = '\n'.join(render(method, item, p) for p in method.principles)
+    variables['registry_list'] = ', '.join(method.registry)
     for name, path in method.spec['template']['partials'].items():
         variables[name] = render(method, method.text(path), variables)
     return {'call_mode': entry['call_mode'], 'prompt': render(method, method.text(entry['template']), variables)}
@@ -154,7 +156,9 @@ def _error(method: Method, status: str, step: str, reviewer: Mapping, result: Ma
 
 
 def _valid_value(rule: Mapping, value: object) -> bool:
-    if rule.get('type') == 'string' and not isinstance(value, str):
+    if rule.get('type') == 'string' and not (isinstance(value, str) and len(value) >= rule.get('minLength', 0)):
+        return False
+    if rule.get('type') == 'boolean' and not isinstance(value, bool):
         return False
     if rule.get('type') == 'array' and not (
         isinstance(value, list) and all(_valid_value(rule.get('items', {}), v) for v in value)
@@ -164,7 +168,7 @@ def _valid_value(rule: Mapping, value: object) -> bool:
 
 
 def valid_finding(schema: Mapping, finding: object) -> bool:
-    """*finding* against the finding schema's subset: an object, required non-null, string/array types, enums."""
+    """*finding* against the finding schema's subset: an object, required non-null, types, ``minLength``, enums."""
     if schema.get('type') != 'object' or not isinstance(finding, dict):
         return False
     if any(finding.get(name) is None for name in schema.get('required', ())):
@@ -174,30 +178,31 @@ def valid_finding(schema: Mapping, finding: object) -> bool:
     )
 
 
-def _key(spec: Mapping, finding: Mapping, defaults: Mapping) -> str:
-    parts = []
-    for field in spec['fields']:
-        part = str(finding.get(field, defaults.get(field, '')))
-        if spec['lowercase']:
-            part = part.lower()
-        parts.append(part[: spec['truncate']])
-    return spec['join'].join(parts)
+def finding_id(spec: Mapping, finding: Mapping) -> str:
+    """The finding's stable id (``merge.id``): a hash of its rule, file and anchor line, never a line number or date."""
+    if spec['hash'] != 'sha256':
+        msg = f'id hash {spec["hash"]!r} is not one this executor implements'
+        raise ValueError(msg)
+    text = '\n'.join(' '.join(str(finding.get(field, '')).split()) for field in spec['fields'])
+    return f'{spec["prefix"]}{spec["separator"]}{hashlib.sha256(text.encode()).hexdigest()[: spec["length"]]}'
 
 
 def merge(
     method: Method,
     *,
     range_: str,
-    date: str,
     profiles: Sequence[str],
     reviewers: Sequence[Mapping],
     results: Sequence[Mapping],
 ) -> dict:
-    """The findings JSON of one run: each planned reviewer's final status, and the deduplicated findings."""
+    """The findings JSON of one run: each planned reviewer's final status, and the findings grouped by stable id.
+
+    A group carries its first-seen fields, the most severe severity any reviewer gave and ``security`` when any
+    said so (``merge.escalate``).
+    """
     spec = method.spec['merge']
+    order = spec['escalate']['severity_order']
     schema = method.finding_schema
-    union = spec['union']['fields']
-    fields = [name for name in schema['properties'] if name not in union]
     by_name = {r['name']: r for r in results}
     out_reviewers, groups = [], {}
     for reviewer in reviewers:
@@ -210,10 +215,11 @@ def merge(
                 if not valid_finding(schema, finding):
                     dropped += 1
                     continue
-                key = _key(spec['dedup_key'], finding, spec['defaults'])
-                group = groups.setdefault(key, {'finding': finding, 'reviewers': [], 'union': {u: [] for u in union}})
-                for name, values in group['union'].items():
-                    values.extend(v for v in finding.get(name, ()) if v not in values)
+                key = finding_id(spec['id'], finding)
+                group = groups.setdefault(key, {'finding': finding, 'severity': finding['severity'],
+                                                'security': False, 'reviewers': []})  # fmt: skip
+                group['severity'] = min(group['severity'], finding['severity'], key=order.index)
+                group['security'] = group['security'] or finding['security']
                 # A reviewer is its name: listed once per finding, whatever provider served it.
                 if all(r['name'] != who['name'] for r in group['reviewers']):
                     group['reviewers'].append(who)
@@ -231,28 +237,21 @@ def merge(
         'range': range_,
         'profiles': list(profiles),
         'reviewers': out_reviewers,
-        'findings': [
-            _finding(spec, fields, date, n, g) for n, g in enumerate(groups.values(), spec['id']['seq_start'])
-        ],
+        'findings': [_finding(spec, schema, key, group) for key, group in groups.items()],
     }
 
 
-def _finding(spec: Mapping, fields: Sequence[str], date: str, seq: int, group: Mapping) -> dict:
-    ident = spec['id']
-    if ident['date_format'] != 'YYYYMMDD':
-        msg = f'id date_format {ident["date_format"]!r} is not one this executor implements'
-        raise ValueError(msg)
-    stamp = date.replace('-', '')
+def _finding(spec: Mapping, schema: Mapping, key: str, group: Mapping) -> dict:
     count = len(group['reviewers'])
     label = next(c['label'] for c in spec['confidence'] if count >= c['min_reviewers'])
     first = group['finding']
-    carried = {name: first.get(name, spec['defaults'].get(name, '')) for name in fields}
+    carried = {name: first.get(name, spec['defaults'].get(name, '')) for name in schema['properties']}
     return {
-        'id': ident['separator'].join([ident['prefix'], stamp, f'{seq:0{ident["seq_width"]}d}']),
+        'id': key,
         **carried,
+        'severity': group['severity'],
+        'security': group['security'],
         'status': spec['defaults']['status'],
         'confidence': label,
         'reviewers': group['reviewers'],
-        # merge.union: every reviewer's values for the group, first-seen; an empty union is omitted.
-        **{name: values for name, values in group['union'].items() if values},
     }

@@ -142,8 +142,13 @@ reviewer i the provider `providers[i mod n]` (default `["anthropic"]`), and make
 `respond` under task `pr-review` whose schema is `{"findings": [<finding schema>]}`. `--model` serves
 every provider the run mode's `models` does not name (the method names none headless).
 
-stdout is ONE findings JSON document, the method's `findings-output.schema.json` (version 2), exit 0
-whatever the reviewers did. Each reviewer's `status`: `ok` (a findings array; `[]` is a clean pass);
+stdout is ONE findings JSON document, the method's `findings-output.schema.json` (version 3; any other
+version is refused), exit 0 whatever the reviewers did. Every finding is TAGGED: `severity`
+(`HIGH`/`MEDIUM`/`LOW`), `security` (boolean), and `rule` -- the one principle id (`principles.json`) or
+family registry rule id (`dev_lab.dev.rules`, read at load: the method keeps no copy) it violates -- plus
+`anchor`, the verbatim line it is about. Its `id` is `F-<12 hex>` of sha256(rule, file, anchor): the same in
+every round and from every reviewer, never a line number or a date. A HIGH or `security` finding is what the
+forge's review blocks a merge on (dev-lab `forgereview`). Each reviewer's `status`: `ok` (a findings array; `[]` is a clean pass);
 the failed call's kind (`exhausted`, `auth`, `rate_limit`, `timeout`, `unsupported`); `unavailable` (the
 provider is not in the catalogue -- never substituted -- or the failure was unclassified); `skipped` (an
 empty diff, no call made). Every reviewer but an `ok` or `skipped` one carries `error`, saying why: the
@@ -153,9 +158,9 @@ git cannot diff -- exits 2 naming it on stderr with nothing on stdout. The rules
 ship with it and which this test suite runs.
 
 `ai_lab.review.merge` is the ONE merge of the method: sharp-review's planned fan-out (Claude/Codex workers) pipes
-its run record -- `{"range", "date", "profiles", "reviewers", "results"}`, `results` absent meaning no
-reviewer returned -- on stdin and prints the same findings JSON the review does; it keeps no merge of its
-own. A record that is not JSON, not an object, or lacks one of the first four keys exits 2.
+its run record -- `{"range", "profiles", "reviewers", "results"}`, `results` absent meaning no reviewer
+returned -- on stdin and prints the same findings JSON the review does; it keeps no merge of its own. A
+record that is not JSON, not an object, or lacks one of the first three keys exits 2.
 
 `ai_lab.review.plan` is the ONE planner that fan-out runs first: a request on stdin
 (`{manifest, run_id, started_at, date, seed}` plus optional `config`, `sources`, `forced`, `run_mode`,

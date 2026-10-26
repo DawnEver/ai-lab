@@ -6,20 +6,21 @@ ONE merge, sharp-review's Node planner -- reads :data:`METHOD_DIR`. ``python -m 
 
 from __future__ import annotations
 
+import importlib
 import json
 import sys
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-__all__ = ['METHOD_DIR', 'METHOD_SCHEMA_VERSIONS', 'Method', 'UnknownMethodVersion', 'load_method']
+__all__ = ['METHOD_DIR', 'METHOD_SCHEMA_VERSIONS', 'Method', 'UnknownMethodVersion', 'load_method', 'registry_ids']
 
 #: The packaged method directory (package data, shipped in the wheel).
 METHOD_DIR: Final = Path(__file__).with_name('method_data')
 
 #: The ``method.json`` versions this executor reads; any other is refused, never guessed.
-METHOD_SCHEMA_VERSIONS: Final = frozenset({2})
+METHOD_SCHEMA_VERSIONS: Final = frozenset({3})
 
 
 class UnknownMethodVersion(ValueError):
@@ -34,11 +35,13 @@ class Method:
     spec: dict
     profiles: tuple[dict, ...]
     finding_schema: dict
-    #: The finding schema a reviewer prompt shows: ``method.json principles.prompt_schema`` picks filled or unfilled.
+    #: The finding schema a reviewer prompt shows: ``method.json rules.prompt_schema`` picks filled or unfilled.
     prompt_schema: dict
     output_schema: dict
-    #: ``principles.json``'s entries: the principle set every reviewer judges against.
+    #: ``principles.json``'s entries: the principles every reviewer judges against.
     principles: tuple[dict, ...]
+    #: The family rule registry's ids (``dev_lab.dev.rules``), read at load: the rest of the valid ``rule`` set.
+    registry: tuple[str, ...]
 
     @property
     def schema_version(self) -> int:
@@ -62,8 +65,21 @@ def _json(path: Path) -> dict:
     return json.loads(path.read_text(encoding='utf-8'))
 
 
-def load_method(root: str | Path = METHOD_DIR) -> Method:
-    """The method at *root*; :class:`UnknownMethodVersion` naming the version, ``FileNotFoundError`` naming the file."""
+def registry_ids() -> tuple[str, ...]:
+    """The family rule registry's ids, read from ``dev_lab.dev.rules`` -- the one list; ``ValueError`` when absent."""
+    try:
+        rules = importlib.import_module('dev_lab.dev.rules')
+    except ImportError:
+        msg = 'the rule registry dev_lab.dev.rules is not importable: install ai-lab with its dev extra (dev-lab)'
+        raise ValueError(msg) from None
+    return tuple(rule.id for rule in rules.RULES)
+
+
+def load_method(root: str | Path = METHOD_DIR, *, registry: Iterable[str] | None = None) -> Method:
+    """The method at *root*; :class:`UnknownMethodVersion` naming the version, ``FileNotFoundError`` naming the file.
+
+    *registry* is the rule-id set beside the principles; ``None`` reads the family's (:func:`registry_ids`).
+    """
     root = Path(root)
     spec_file = root / 'method.json'
     if not spec_file.is_file():
@@ -78,12 +94,13 @@ def load_method(root: str | Path = METHOD_DIR) -> Method:
         raise UnknownMethodVersion(msg)
     files = spec['files']
     principles = tuple(_json(root / files['principles'])['principles'])
+    ids = tuple(registry_ids() if registry is None else registry)
     raw_schema = _json(root / files['finding_schema'])
-    finding_schema = _with_principle_ids(raw_schema, spec['principles'], principles)
+    finding_schema = _with_rule_ids(raw_schema, spec['rules'], [p['id'] for p in principles] + list(ids))
     prompt_schemas = {'filled': finding_schema, 'unfilled': raw_schema}
-    choice = spec['principles'].get('prompt_schema')
+    choice = spec['rules'].get('prompt_schema')
     if choice not in prompt_schemas:
-        msg = f'{spec_file} principles.prompt_schema is {choice!r}; it must be one of {sorted(prompt_schemas)}'
+        msg = f'{spec_file} rules.prompt_schema is {choice!r}; it must be one of {sorted(prompt_schemas)}'
         raise ValueError(msg)
     return Method(
         root=root,
@@ -93,22 +110,20 @@ def load_method(root: str | Path = METHOD_DIR) -> Method:
         prompt_schema=prompt_schemas[choice],
         output_schema=_json(root / files['output_schema']),
         principles=principles,
+        registry=ids,
     )
 
 
-def _with_principle_ids(schema: dict, spec: dict, principles: tuple[dict, ...]) -> dict:
-    """``method.json principles.fills``: the schema names the field, ``principles.json`` alone lists its ids."""
+def _with_rule_ids(schema: dict, spec: dict, ids: Sequence[str]) -> dict:
+    """``method.json rules.fills``: the schema names the field; the principles and the registry alone list its ids."""
     field = spec['finding_field']
     if field not in schema['properties']:
-        msg = f'the finding schema has no {field!r} property for principles.json to fill'
+        msg = f'the finding schema has no {field!r} property for the rule ids to fill'
         raise ValueError(msg)
-    ids = [p['id'] for p in principles]
-    if len(set(ids)) != len(ids):
-        msg = f'principles.json repeats an id: {ids}'
+    if repeated := sorted({one for one in ids if ids.count(one) > 1}):
+        msg = f'a rule id is declared twice (principles.json and the registry together): {repeated}'
         raise ValueError(msg)
-    rule = schema['properties'][field]
-    filled = {**rule, 'items': {**rule.get('items', {}), 'enum': ids}}
-    return {**schema, 'properties': {**schema['properties'], field: filled}}
+    return {**schema, 'properties': {**schema['properties'], field: {**schema['properties'][field], 'enum': list(ids)}}}
 
 
 def main(argv: Sequence[str] | None = None) -> int:

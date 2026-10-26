@@ -29,9 +29,18 @@ def _fixture(path: Path) -> dict:
     return data
 
 
+#: The registry every fixture is judged with unless it names its own (``input.registry``): the family's grows, and a
+#: fixture pinned to it would red on every new rule.
+_REGISTRY = ('NAMED-SETS-NOT-COUNTS',)
+
+
+def _method(given: dict):
+    return load_method(METHOD_DIR, registry=given.get('registry', _REGISTRY))
+
+
 @pytest.fixture(scope='module')
 def method(method_dir):
-    return load_method(method_dir)
+    return load_method(method_dir, registry=_REGISTRY)
 
 
 def test_every_kind_has_fixtures():
@@ -46,9 +55,10 @@ def test_pick(path, method):
 
 
 @pytest.mark.parametrize('path', _cases('prompt'))
-def test_prompt(path, method):
+def test_prompt(path):
     case = _fixture(path)
     given = case['input']
+    method = _method(given)
     if 'template' in given:
         got = render(method, given['template'], given['vars'])
     else:
@@ -57,11 +67,11 @@ def test_prompt(path, method):
 
 
 @pytest.mark.parametrize('path', _cases('merge'))
-def test_merge(path, method):
+def test_merge(path):
     case = _fixture(path)
     given = case['input']
     got = merge(
-        method, range_=given['range'], date=given['date'], profiles=given['profiles'],
+        _method(given), range_=given['range'], profiles=given['profiles'],
         reviewers=given['reviewers'], results=given['results'],
     )  # fmt: skip
     assert got == case['expected'], case['description']

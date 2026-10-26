@@ -2,7 +2,6 @@
   "description": "A codex reply whose text IS the (no findings ...) placeholder is not a clean pass, even with an empty findings array recorded beside it (placeholder_reply precedes findings_array); prose that merely mentions findings, normalized into a findings array, is ok.",
   "input": {
     "range": "HEAD",
-    "date": "2026-10-20",
     "profiles": [
       "diff"
     ],
@@ -27,7 +26,10 @@
             "severity": "MEDIUM",
             "file": "r.js",
             "summary": "Retry never backs off",
-            "category": "Bug"
+            "category": "Bug",
+            "rule": "occams-razor",
+            "security": false,
+            "anchor": "x = retry never backs off"
           }
         ]
       },
@@ -36,10 +38,13 @@
         "text": "(no findings — review produced no output)",
         "findings": []
       }
+    ],
+    "registry": [
+      "NAMED-SETS-NOT-COUNTS"
     ]
   },
   "expected": {
-    "schema_version": 2,
+    "schema_version": 3,
     "range": "HEAD",
     "profiles": [
       "diff"
@@ -61,14 +66,17 @@
     ],
     "findings": [
       {
-        "id": "SR-20261020-001",
+        "id": "F-12faa038f580",
         "severity": "MEDIUM",
+        "security": false,
+        "rule": "occams-razor",
         "file": "r.js",
+        "anchor": "x = retry never backs off",
         "summary": "Retry never backs off",
         "category": "Bug",
-        "status": "OPEN",
         "suggestion": "",
         "detail": "",
+        "status": "OPEN",
         "confidence": "single-reviewer",
         "reviewers": [
           {

@@ -41,6 +41,7 @@ testpaths = ["tests"]
 addopts = "-m 'not live'"
 markers = [
     "live: calls a real model (network or a local CLI); run with -m live",
+    "workstation: needs a live checkout or agent tooling (hooks, origin refs, worktrees, node)",
 ]
 
 [tool.ruff]
@@ -80,6 +81,7 @@ output = "output/logs"
 
 [tool.lab_commons.tests]
 produce = ["-m", "dev_lab.dev.verify", "--part", "{part}"]
+resources = ["workstation"]
 
 # The family branch flow: integrate/main coordinates; main moves only by `integrate promote` (fast-forward)
 # on a full forge PASS. Adopted 2026-10-18 (user ruling: every repo runs the lab-commons principles):

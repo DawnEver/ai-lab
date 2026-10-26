@@ -195,3 +195,31 @@ def test_the_statuses_that_must_carry_an_error_are_the_vocabulary_but_ok_and_ski
     _, must_say = method.output_schema['properties']['reviewers']['items']['allOf']
     vocabulary = method.spec['reviewer_status']['vocabulary']
     assert must_say['if']['properties']['status']['enum'] == [k for k in vocabulary if k not in {'ok', 'skipped'}]
+
+
+def _eligible(method):
+    contexts = method.spec['run_modes']['headless']['contexts']
+    return [p['key'] for p in method.profiles if p['context'] in contexts and p['weight'] > 0]
+
+
+def test_the_strict_lens_plans_every_eligible_profile(method):
+    eligible = _eligible(method)
+    doc = run(method, range_='a..b', diff='+x = 1\n', model='m', providers=None, available={'anthropic'},
+              call=FakeCall({'anthropic': _ok([])}), rng=Draws(*[0.0] * len(eligible)), date='2026-10-24',
+              lens='strict')  # fmt: skip
+    assert sorted(doc['profiles']) == sorted(eligible)
+
+
+def test_the_light_lens_plans_one_reviewer(method):
+    doc = _run(method, FakeCall({'anthropic': _ok([])}), lens='light')
+    assert len(doc['reviewers']) == 1
+
+
+def test_the_standard_lens_is_the_methods_own_count(method):
+    doc = _run(method, FakeCall({'anthropic': _ok([])}), lens='standard')
+    assert len(doc['reviewers']) == method.spec['pick']['count']
+
+
+def test_an_unknown_lens_is_refused(method):
+    with pytest.raises(ValueError, match='lens'):
+        _run(method, FakeCall({'anthropic': _ok([])}), lens='deep')

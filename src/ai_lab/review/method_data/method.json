@@ -62,7 +62,7 @@
         "claude": "opus"
       },
       "synthesis": false,
-      "sink": "memory"
+      "sink": "report"
     },
     "headless": {
       "providers": [

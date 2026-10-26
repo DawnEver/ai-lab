@@ -70,7 +70,7 @@ _MECHANISMS: Final = {
     'INTEGRATION-TAKES-ONLY-FORGE-MERGES': (
         TestPath('pyproject.toml'), TestPath('tests/architecture/test_session_branch_pushes_are_guarded.py'),
     ),
-    'PR-REVIEW-IS-ADVISORY': (TestPath('pyproject.toml'),),
+    'PR-REVIEW-BLOCKS-ON-HIGH-OR-SECURITY': (TestPath('pyproject.toml'),),
     # Adopted 2026-10-23 with the move to dev-lab: the PR-flow rows are the forge's own admission and carry
     # steps (dev_lab.dev.pradmit, dev_lab.dev.forgecarry) over the same declared integrator table.
     'ONE-SESSION-ONE-PR': (TestPath('pyproject.toml'),),

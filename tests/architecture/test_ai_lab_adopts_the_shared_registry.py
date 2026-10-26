@@ -50,7 +50,7 @@ _MECHANISMS: Final = {
     # row refuses the three push-side violations, and the one writer is git's own (guarded from force by it).
     **dict.fromkeys(
         ('ONE-WRITER-PER-SESSION-BRANCH', 'PUBLISH-IS-THE-LOCAL-REF', 'SESSION-HISTORY-ONLY-GROWS',
-         'INTEGRATION-IS-MERGES-ONLY'),
+         'INTEGRATION-IS-MERGES-ONLY', 'ORIGIN-HOLDS-ONLY-DECLARED-BRANCHES'),
         (TestPath('pyproject.toml'), TestPath('tests/architecture/test_session_branch_pushes_are_guarded.py')),
     ),
     # Adopted 2026-10-19, as optimi-lab: `[tool.lab_commons.integrator]` declares integrate/main and main.
@@ -78,6 +78,13 @@ _MECHANISMS: Final = {
     'DOCS-ONLY-CARRIES': (TestPath('pyproject.toml'),),
     # Adopted 2026-10-24 with dev-lab 1d74f38: the October summary is the first month this tree holds.
     'MONTHLY-PLANS-CARRIED': (TestPath('tests/architecture/test_every_month_carries_its_plans.py'),),
+    # Adopted 2026-10-26 with dev-lab c9eaa7f: the agent guard ships in every family repo; the rendered
+    # `.claude/hooks/deny-rules.json` refuses these, each by its own rule, and the test pins it live.
+    **dict.fromkeys(
+        ('AGENT-GUARD', 'SUBAGENT-NO-PUSH', 'WORKTREES-STAY-INSIDE', 'REPORTS-LIVE-IN-MEMORY',
+         'INJECTED-TEXT-IS-PROGRESSIVE'),
+        (TestPath('tests/architecture/test_the_agent_guard_is_live.py'),),
+    ),
 }  # fmt: skip
 
 #: Rules with no subject in this library today, BY NAME -- deriving it from ``RULES`` would silently
@@ -87,18 +94,17 @@ _ABSENT: Final = frozenset({
     # Workflow machinery ai-lab does not run: no push gate, verdict ledger, forge door, lanes, sessions.
     'VERDICT-BAR-IS-THE-INCREMENT', 'NETWORK-RETRY-THEN-REPORT', 'SHARED-CHECKOUT', 'FORGE-THROUGH-THE-DOOR',
     'VERDICT-AS-STATUS', 'ISSUE-IS-INTENT', 'ONE-BRANCH-PER-SESSION', 'MERGE-DEVIATIONS-NAMED',
-    'AUTO-MODE-RUNS-THE-DOORS', 'VERDICTS-FROM-THE-FORGE', 'MAIN-SESSION-PUBLISHES',
-    'SUBAGENT-NO-PUSH', 'WORKTREES-STAY-INSIDE', 'ONE-BOX-ONE-LOCK',
-    # The environment: no own venv yet (the agent guard refuses creating one until a door is declared),
+    'AUTO-MODE-RUNS-THE-DOORS', 'VERDICTS-FROM-THE-FORGE', 'MAIN-SESSION-PUBLISHES', 'ONE-BOX-ONE-LOCK',
+    # The environment: no own venv door yet,
     # so nothing installs hooks or dependencies through a checked door here.
     'HOOKS-ARE-WIRED', 'INSTALL-DOOR-DELIVERS-THE-DECLARATION', 'ENV-MUTATION-THROUGH-THE-DOOR',
-    'AGENT-GUARD', 'LATEST-DEPENDENCIES',
+    'LATEST-DEPENDENCIES',
     # Domain and measurement rules: no physics, units, tolerances, bars, capability matrix or cases.
     'IMPLEMENT-EVERYTHING', 'BAR-IS-A-CONSTANT', 'UNITS-GO-THROUGH-PINT', 'TOLERANCE-CARRIES-A-UNIT',
     'REGISTRY-OWNS-THE-DECISION', 'PRODUCTION-ENTRY-POINT',
     # Docs and memory: no rules pages, injected docs or memory tree in this repo.
-    'DOCS-SPLIT', 'MEMORY-SHAPE', 'INJECTED-DOC-WIDTH-CEILING', 'INJECTED-TEXT-IS-PROGRESSIVE',
-    'NO-CJK-IN-TRACKED-SOURCE', 'REPORTS-LIVE-IN-MEMORY',
+    'DOCS-SPLIT', 'MEMORY-SHAPE', 'INJECTED-DOC-WIDTH-CEILING',
+    'NO-CJK-IN-TRACKED-SOURCE',
     # Code placement and scratch: one src/ and one tests/ tree, no scratch.
     'CODE-IN-CODE-ROOTS', 'SCRATCH-IS-NEVER-COMMITTED', 'STRAY-FILE-REFUSED', 'SPLIT-BY-CONCEPT',
     'TRACKED-CITES-NO-EPHEMERAL',
@@ -117,7 +123,8 @@ _ABSENT: Final = frozenset({
 #: FORMATS-UPGRADE-ON-READ gained the ledger's declared upgrade steps.
 #: Raised to 44 on 2026-10-23: the dev-lab split brought three rules with no mechanism here yet
 #: (STRAY-FILE-REFUSED, SPLIT-BY-CONCEPT, TRACKED-CITES-NO-EPHEMERAL).
-_ABSENT_CEILING: Final = 44
+#: Lowered to 39 on 2026-10-26: the agent guard took AGENT-GUARD and the four rules it refuses.
+_ABSENT_CEILING: Final = 39
 
 
 def test_every_rule_is_enforced_or_declared_absent() -> None:

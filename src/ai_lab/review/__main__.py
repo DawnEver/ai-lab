@@ -26,7 +26,7 @@ from typing import Final
 
 from ai_lab.call import answer
 from ai_lab.client import catalogue
-from ai_lab.review.method import METHOD_DIR, UnknownMethodVersion, load_method
+from ai_lab.review.method import METHOD_DIR, UnknownMethodVersion, load_method, rule_ids
 from ai_lab.review.run import LENSES, run
 
 __all__ = []
@@ -94,9 +94,12 @@ def main(
     parser.add_argument('--lens', choices=sorted(LENSES), default='standard', help='how many reviewers to plan')
     parser.add_argument('--paths', nargs='+', default=[], help="the slice: read only these paths' diff")
     parser.add_argument('--findings', help="synthesis: the slices' merged findings JSON (the whole diff is not read)")
+    parser.add_argument(
+        '--rules', help='the registry rule ids, comma-separated (required: the caller owns the registry)'
+    )
     args = parser.parse_args(argv)
     try:
-        method = load_method(args.method)
+        method = load_method(args.method, registry=rule_ids(args.rules))
         text = _change(args, diff, stat)
     except (FileNotFoundError, UnknownMethodVersion, ValueError) as refused:
         sys.stderr.write(f'refused: {refused}\n')

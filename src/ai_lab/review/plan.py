@@ -18,7 +18,7 @@ import sys
 from collections.abc import Collection, Mapping, Sequence
 from typing import Final
 
-from ai_lab.review.method import METHOD_DIR, Method, UnknownMethodVersion, load_method
+from ai_lab.review.method import METHOD_DIR, Method, UnknownMethodVersion, load_method, rule_ids
 from ai_lab.review.rules import pick, render_prompt
 
 __all__ = ['build_plan', 'effective_profiles', 'eligible_weights']
@@ -193,9 +193,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         '--method', default=METHOD_DIR, help='a method directory read in place (default: the packaged one)'
     )
+    parser.add_argument(
+        '--rules', help='the registry rule ids, comma-separated (required: the caller owns the registry)'
+    )
     args = parser.parse_args(argv)
     try:
-        method = load_method(args.method)
+        method = load_method(args.method, registry=rule_ids(args.rules))
         plan = build_plan(method, **_request(sys.stdin.read(), method.spec['pick']['count']))
     except (FileNotFoundError, UnknownMethodVersion, ValueError, TypeError) as refused:
         sys.stderr.write(f'refused: {refused}\n')

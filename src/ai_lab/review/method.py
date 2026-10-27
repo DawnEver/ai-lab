@@ -6,7 +6,6 @@ ONE merge, sharp-review's Node planner -- reads :data:`METHOD_DIR`. ``python -m 
 
 from __future__ import annotations
 
-import importlib
 import json
 import sys
 from collections.abc import Iterable, Sequence
@@ -14,7 +13,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-__all__ = ['METHOD_DIR', 'METHOD_SCHEMA_VERSIONS', 'Method', 'UnknownMethodVersion', 'load_method', 'registry_ids']
+__all__ = [
+    'METHOD_DIR',
+    'METHOD_SCHEMA_VERSIONS',
+    'NO_RULES',
+    'Method',
+    'UnknownMethodVersion',
+    'load_method',
+    'rule_ids',
+]
 
 #: The packaged method directory (package data, shipped in the wheel).
 METHOD_DIR: Final = Path(__file__).with_name('method_data')
@@ -40,7 +47,7 @@ class Method:
     output_schema: dict
     #: ``principles.json``'s entries: the principles every reviewer judges against.
     principles: tuple[dict, ...]
-    #: The family rule registry's ids (``dev_lab.dev.rules``), read at load: the rest of the valid ``rule`` set.
+    #: The rule-id set the CALLER gave (the family registry's, passed in): the rest of the valid ``rule`` set.
     registry: tuple[str, ...]
 
     @property
@@ -65,20 +72,24 @@ def _json(path: Path) -> dict:
     return json.loads(path.read_text(encoding='utf-8'))
 
 
-def registry_ids() -> tuple[str, ...]:
-    """The family rule registry's ids, read from ``dev_lab.dev.rules`` -- the one list; ``ValueError`` when absent."""
-    try:
-        rules = importlib.import_module('dev_lab.dev.rules')
-    except ImportError:
-        msg = 'the rule registry dev_lab.dev.rules is not importable: install ai-lab with its dev extra (dev-lab)'
-        raise ValueError(msg) from None
-    return tuple(rule.id for rule in rules.RULES)
+#: What an invocation without ``--rules`` is refused with: the ids come from the caller, never from an import.
+NO_RULES: Final = (
+    'no rule ids given: the caller passes the registry ids as --rules ID,ID,... '
+    "(dev-lab's review command fills {rules}); ai-lab never imports the registry"
+)
 
 
-def load_method(root: str | Path = METHOD_DIR, *, registry: Iterable[str] | None = None) -> Method:
+def rule_ids(given: str | None) -> tuple[str, ...]:
+    """``--rules`` as ids (comma-separated; ``''`` is none); ``ValueError`` (:data:`NO_RULES`) when not given."""
+    if given is None:
+        raise ValueError(NO_RULES)
+    return tuple(one.strip() for one in given.split(',') if one.strip())
+
+
+def load_method(root: str | Path = METHOD_DIR, *, registry: Iterable[str]) -> Method:
     """The method at *root*; :class:`UnknownMethodVersion` naming the version, ``FileNotFoundError`` naming the file.
 
-    *registry* is the rule-id set beside the principles; ``None`` reads the family's (:func:`registry_ids`).
+    *registry* is the rule-id set beside the principles, given by the caller: ai-lab imports no registry.
     """
     root = Path(root)
     spec_file = root / 'method.json'
@@ -94,7 +105,7 @@ def load_method(root: str | Path = METHOD_DIR, *, registry: Iterable[str] | None
         raise UnknownMethodVersion(msg)
     files = spec['files']
     principles = tuple(_json(root / files['principles'])['principles'])
-    ids = tuple(registry_ids() if registry is None else registry)
+    ids = tuple(registry)
     raw_schema = _json(root / files['finding_schema'])
     finding_schema = _with_rule_ids(raw_schema, spec['rules'], [p['id'] for p in principles] + list(ids))
     prompt_schemas = {'filled': finding_schema, 'unfilled': raw_schema}

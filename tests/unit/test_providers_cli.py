@@ -5,9 +5,9 @@ import json
 import subprocess
 import sys
 from datetime import UTC, datetime
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 
-from ai_lab import catalogue
+from ai_lab import catalogue, providers
 from ai_lab.client import packaged_providers_file, user_providers_file
 from ai_lab.providers import CATALOGUE_SCHEMA_VERSION, document, main
 
@@ -16,7 +16,11 @@ def test_the_document_is_versioned_and_names_its_inputs_and_producer(credential_
     doc = document(now=datetime(2026, 10, 20, tzinfo=UTC))
     assert doc['schema_version'] == CATALOGUE_SCHEMA_VERSION == 1
     assert doc['generated_at'] == '2026-10-20T00:00:00+00:00'
-    assert doc['ai_lab_version'] == version('ai_lab')
+    try:
+        installed = version('ai_lab')
+    except PackageNotFoundError:
+        installed = None
+    assert doc['ai_lab_version'] == installed
     assert doc['python'] == sys.executable
     packaged, user = doc['inputs']
     assert packaged['path'] == str(packaged_providers_file()) and packaged['exists']
@@ -24,6 +28,15 @@ def test_the_document_is_versioned_and_names_its_inputs_and_producer(credential_
     assert user == {'path': str(user_providers_file()), 'exists': False, 'sha256': None}
     assert doc['source_sha256'] == packaged['sha256']  # the user file is absent: it adds no bytes
     assert set(doc['providers']) == set(catalogue())
+
+
+def test_a_source_tree_run_names_no_installed_version(credential_store, monkeypatch):
+    # A host that ships `src` on the path (tool.lab_commons.hpc.source_roots) installs no ai_lab dist.
+    def absent(name):
+        raise PackageNotFoundError(name)
+
+    monkeypatch.setattr(providers, 'version', absent)
+    assert document()['ai_lab_version'] is None
 
 
 def test_a_user_row_is_resolved_into_the_document_and_moves_the_source_hash(credential_store):

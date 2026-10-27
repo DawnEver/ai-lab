@@ -64,7 +64,7 @@ ignore = ["COM812", "D203", "D213", "D400", "D401", "N818", "PLR0913", "Q000", "
 # A test asserts, reads private seams of what it tests, and names fixtures rather than documenting them.
 "tests/**" = ["S101", "SLF001", "D", "ANN", "ARG", "FBT003", "PLR2004", "PT018", "INP001"]
 
-[tool.lab_commons.branchset]
+[tool.dev_lab.branchset]
 trunk = 'main'
 sessions = ['integrate/main']
 prune_merged = true
@@ -76,7 +76,7 @@ dependency_inputs = ['pyproject.toml', 'uv.lock']
 source_roots = ['src']
 collect = 'tests'
 
-[tool.lab_commons.parts]
+[tool.dev_lab.parts]
 output = "output/logs"
 
 [tool.lab_commons.tests]
@@ -86,15 +86,15 @@ resources = ["workstation"]
 # The family branch flow: integrate/main coordinates; main moves only by `integrate promote` (fast-forward)
 # on a full forge PASS. Adopted 2026-10-18 (user ruling: every repo runs the lab-commons principles):
 # integrate/main is cut at the adoption commit (the first with a committed lock), every later commit a merge.
-[tool.lab_commons.integrator]
+[tool.dev_lab.integrator]
 trunk = "main"
 integration = "integrate/main"
 pr_merges_since = "9d016300ccc6b19cad75729b8c4f22ad21817a03"  # INTEGRATION-TAKES-ONLY-FORGE-MERGES from here
 
 # Git hooks: the family base (dev_lab/dev/githooks/base.toml) as is; ai-lab adds no row.
-[tool.lab_commons.hooks]
+[tool.dev_lab.hooks]
 
-[tool.lab_commons.doors]
+[tool.dev_lab.doors]
 BARE-TEST-INVOCATION = "<venv python> -m dev_lab.dev.verify [-- <pytest args>]  (the verdict door; a hand-written pytest line has none)"
 PUSH-NO-VERIFY = "<venv python> -m dev_lab.dev.verify, then push without skipping the hook"
 NETWORK-VERB = "<venv python> -m dev_lab.dev.netverb -- <git push|fetch|pull|clone|ls-remote|submodule update ...  or  uv lock|add|remove ...>  (retries 3x, then reports a diagnosis); an environment change is <venv python> -m dev_lab.dev.dep --sync, which retries inside"

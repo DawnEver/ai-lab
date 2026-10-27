@@ -53,7 +53,7 @@ _MECHANISMS: Final = {
          'INTEGRATION-IS-MERGES-ONLY', 'ORIGIN-HOLDS-ONLY-DECLARED-BRANCHES'),
         (TestPath('pyproject.toml'), TestPath('tests/architecture/test_session_branch_pushes_are_guarded.py')),
     ),
-    # Adopted 2026-10-19, as optimi-lab: `[tool.lab_commons.integrator]` declares integrate/main and main.
+    # Adopted 2026-10-19, as optimi-lab: `[tool.dev_lab.integrator]` declares integrate/main and main.
     # `forge sync` merges integrate/main only and `forge integration` retargets a PR opened against main
     # (both read that table); main moves only by `integrate promote`, whose admission is the kit's with no
     # local copy; MERGE-OR-DELETE is the branch-set apply over `prune_merged = true`, policed on origin.

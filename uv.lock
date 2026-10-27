@@ -18,7 +18,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "dev-lab", marker = "extra == 'dev'", git = "https://gitea.mingyangbao.site/Tianjie-Zou-Team/dev-lab.git" },
+    { name = "dev-lab", marker = "extra == 'dev'", git = "https://gitea.mingyangbao.site/Tianjie-Zou-Team/dev-lab.git?rev=0dd9d8f5e2fb8d566c8e9be62a50b36f6342b80a" },
     { name = "lab-commons", extras = ["paths"], git = "https://gitea.mingyangbao.site/Tianjie-Zou-Team/lab-commons.git" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "ruff", marker = "extra == 'dev'" },
@@ -229,8 +229,8 @@ wheels = [
 
 [[package]]
 name = "dev-lab"
-version = "0.0.1.dev1630+gcd6e748b4"
-source = { git = "https://gitea.mingyangbao.site/Tianjie-Zou-Team/dev-lab.git#cd6e748b403ce08d3f102de87ffc1f5a3170c7cf" }
+version = "0.0.1.dev1635+g0dd9d8f5e"
+source = { git = "https://gitea.mingyangbao.site/Tianjie-Zou-Team/dev-lab.git?rev=0dd9d8f5e2fb8d566c8e9be62a50b36f6342b80a#0dd9d8f5e2fb8d566c8e9be62a50b36f6342b80a" }
 dependencies = [
     { name = "commitizen" },
     { name = "lab-commons", extra = ["io", "paths", "structured", "units"] },
@@ -287,8 +287,8 @@ wheels = [
 
 [[package]]
 name = "lab-commons"
-version = "0.3.1.dev1170+gda3474881"
-source = { git = "https://gitea.mingyangbao.site/Tianjie-Zou-Team/lab-commons.git#da3474881fcbe498ecbaee8110fb96dd7b76e609" }
+version = "0.3.1.dev1175+gfa1491e13"
+source = { git = "https://gitea.mingyangbao.site/Tianjie-Zou-Team/lab-commons.git#fa1491e13560aacbf81d5ac4c6995be5b17e7e90" }
 
 [package.optional-dependencies]
 io = [

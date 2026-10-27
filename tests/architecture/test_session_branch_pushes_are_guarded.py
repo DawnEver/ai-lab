@@ -2,7 +2,7 @@
 
 PUBLISH-IS-THE-LOCAL-REF, SESSION-HISTORY-ONLY-GROWS and INTEGRATION-IS-MERGES-ONLY are refused by the
 base table's ``session-branch`` row (``dev_lab/dev/githooks/base.toml``) over the branches
-``[tool.lab_commons.branchset]`` and ``[tool.lab_commons.integrator]`` declare; ONE-WRITER-PER-SESSION-BRANCH
+``[tool.dev_lab.branchset]`` and ``[tool.dev_lab.integrator]`` declare; ONE-WRITER-PER-SESSION-BRANCH
 is git's own worktree exclusivity plus push compare-and-swap, guarded from force by the same row. This pins
 that ai-lab's merged hook table keeps the row and runs it on every ref.
 """

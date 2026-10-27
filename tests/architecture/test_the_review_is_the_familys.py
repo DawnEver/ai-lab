@@ -1,4 +1,4 @@
-"""REVIEW-COMMAND-IS-THE-FAMILY'S: `[tool.lab_commons.review]` declares only where it differs, else is absent."""
+"""REVIEW-COMMAND-IS-THE-FAMILY'S: `[tool.dev_lab.review]` declares only where it differs, else is absent."""
 
 from __future__ import annotations
 

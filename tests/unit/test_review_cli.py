@@ -62,7 +62,7 @@ def test_a_range_git_cannot_diff_exits_2(method_dir, tmp_path, capsys):
 
 
 def test_the_run_takes_the_verb_less_argv_the_forge_declares(method_dir, capsys):
-    # The argv shape `[tool.lab_commons.review] command` declares in every consumer pyproject: no verb.
+    # The argv shape `[tool.dev_lab.review] command` declares in every consumer pyproject: no verb.
     argv = ['--rules', '', '--method', str(method_dir), '--range', 'main...HEAD', '--model', 'claude-test']
     assert main(argv, call=lambda r: OK, diff=_diff) == 0
     assert json.loads(capsys.readouterr().out)['schema_version'] == 3

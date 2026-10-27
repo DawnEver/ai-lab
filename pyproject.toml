@@ -20,8 +20,7 @@ dependencies = [
 [project.optional-dependencies]
 # The family's development kit: rules registry, rendered configs, shared test bodies, verify entry.
 dev = [
-    # Plan A3 switchover: the dev-lab commit that reads [tool.dev_lab]; unpin once it merges.
-    "dev-lab @ git+https://gitea.mingyangbao.site/Tianjie-Zou-Team/dev-lab.git@0dd9d8f5e2fb8d566c8e9be62a50b36f6342b80a",
+    "dev-lab @ git+https://gitea.mingyangbao.site/Tianjie-Zou-Team/dev-lab.git",
     "pytest",
     "ruff",
 ]

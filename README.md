@@ -144,8 +144,8 @@ every provider the run mode's `models` does not name (the method names none head
 
 stdout is ONE findings JSON document, the method's `findings-output.schema.json` (version 3; any other
 version is refused), exit 0 whatever the reviewers did. Every finding is TAGGED: `severity`
-(`HIGH`/`MEDIUM`/`LOW`), `security` (boolean), and `rule` -- the one principle id (`principles.json`) or
-family registry rule id (the ids its caller gives with `--rules`: the method keeps no copy and imports no registry) it violates -- plus
+(`HIGH`/`MEDIUM`/`LOW`), `security` (boolean), and `rule` -- the one principle id (the principles its caller gives with `--principles FILE`) or
+family registry rule id (the ids its caller gives with `--rules`: the method keeps no copy of either and imports no registry) it violates -- plus
 `anchor`, the verbatim line it is about. Its `id` is `F-<12 hex>` of sha256(rule, file, anchor): the same in
 every round and from every reviewer, never a line number or a date. A HIGH or `security` finding is what the
 forge's review blocks a merge on (dev-lab `forgereview`). Each reviewer's `status`: `ok` (a findings array; `[]` is a clean pass);

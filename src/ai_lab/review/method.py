@@ -16,10 +16,12 @@ from typing import Final
 __all__ = [
     'METHOD_DIR',
     'METHOD_SCHEMA_VERSIONS',
+    'NO_PRINCIPLES',
     'NO_RULES',
     'Method',
     'UnknownMethodVersion',
     'load_method',
+    'principle_list',
     'rule_ids',
 ]
 
@@ -45,7 +47,7 @@ class Method:
     #: The finding schema a reviewer prompt shows: ``method.json rules.prompt_schema`` picks filled or unfilled.
     prompt_schema: dict
     output_schema: dict
-    #: ``principles.json``'s entries: the principles every reviewer judges against.
+    #: The principles the CALLER gave (dev-lab owns the family's): every reviewer judges against them.
     principles: tuple[dict, ...]
     #: The rule-id set the CALLER gave (the family registry's, passed in): the rest of the valid ``rule`` set.
     registry: tuple[str, ...]
@@ -86,10 +88,56 @@ def rule_ids(given: str | None) -> tuple[str, ...]:
     return tuple(one.strip() for one in given.split(',') if one.strip())
 
 
-def load_method(root: str | Path = METHOD_DIR, *, registry: Iterable[str]) -> Method:
+#: What an invocation without ``--principles`` is refused with: like the registry, the principles are the caller's.
+NO_PRINCIPLES: Final = (
+    'no principles given: the caller passes them as --principles FILE, a JSON {"principles": [{id, name, statement}]} '
+    "(dev-lab owns the family's; an empty list reviews against none); ai-lab keeps no list of its own"
+)
+
+_PRINCIPLE_KEYS: Final = frozenset({'id', 'name', 'statement'})
+
+
+def principle_list(given: str | Path | None) -> tuple[dict, ...]:
+    """``--principles FILE`` as entries; ``ValueError`` (:data:`NO_PRINCIPLES`) when not given."""
+    if given is None:
+        raise ValueError(NO_PRINCIPLES)
+    path = Path(given)
+    if not path.is_file():
+        msg = f'{path} not found: --principles must name a JSON file {{"principles": [...]}}'
+        raise FileNotFoundError(msg)
+    try:
+        data = _json(path)
+    except json.JSONDecodeError as bad:
+        msg = f'{path} is not JSON: {bad}'
+        raise ValueError(msg) from None
+    if not isinstance(data, dict) or not isinstance(data.get('principles'), list):
+        msg = f'{path} must be a JSON object with a "principles" list'
+        raise TypeError(msg)
+    return tuple(data['principles'])
+
+
+def _checked(principles: Iterable[dict]) -> tuple[dict, ...]:
+    """Every entry is exactly ``{id, name, statement}``, all non-empty strings; ids unique."""
+    entries = tuple(principles)
+    for entry in entries:
+        if (
+            not isinstance(entry, dict)
+            or set(entry) != _PRINCIPLE_KEYS
+            or not all(isinstance(v, str) and v.strip() for v in entry.values())
+        ):
+            msg = f'a principle must be exactly {sorted(_PRINCIPLE_KEYS)}, each a non-empty string: {entry!r}'
+            raise ValueError(msg)
+    ids = [entry['id'] for entry in entries]
+    if repeated := sorted({one for one in ids if ids.count(one) > 1}):
+        msg = f'a principle id is given twice: {repeated}'
+        raise ValueError(msg)
+    return entries
+
+
+def load_method(root: str | Path = METHOD_DIR, *, principles: Iterable[dict], registry: Iterable[str]) -> Method:
     """The method at *root*; :class:`UnknownMethodVersion` naming the version, ``FileNotFoundError`` naming the file.
 
-    *registry* is the rule-id set beside the principles, given by the caller: ai-lab imports no registry.
+    *principles* and *registry* are both the caller's (dev-lab owns them): ai-lab keeps no list and imports no registry.
     """
     root = Path(root)
     spec_file = root / 'method.json'
@@ -104,7 +152,7 @@ def load_method(root: str | Path = METHOD_DIR, *, registry: Iterable[str]) -> Me
         msg = f'{spec_file} declares schema_version {version!r}; this executor reads {sorted(METHOD_SCHEMA_VERSIONS)}'
         raise UnknownMethodVersion(msg)
     files = spec['files']
-    principles = tuple(_json(root / files['principles'])['principles'])
+    principles = _checked(principles)
     ids = tuple(registry)
     raw_schema = _json(root / files['finding_schema'])
     finding_schema = _with_rule_ids(raw_schema, spec['rules'], [p['id'] for p in principles] + list(ids))
@@ -132,7 +180,7 @@ def _with_rule_ids(schema: dict, spec: dict, ids: Sequence[str]) -> dict:
         msg = f'the finding schema has no {field!r} property for the rule ids to fill'
         raise ValueError(msg)
     if repeated := sorted({one for one in ids if ids.count(one) > 1}):
-        msg = f'a rule id is declared twice (principles.json and the registry together): {repeated}'
+        msg = f'a rule id is declared twice (the principles and the registry together): {repeated}'
         raise ValueError(msg)
     return {**schema, 'properties': {**schema['properties'], field: {**schema['properties'][field], 'enum': list(ids)}}}
 

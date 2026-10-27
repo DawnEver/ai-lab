@@ -12,6 +12,7 @@ import pytest
 from ai_lab.review.method import load_method
 from ai_lab.review.rules import merge
 from ai_lab.review.run import run
+from tests.review_principles import PRINCIPLES
 
 _KEYWORDS = {'$schema', 'title', 'description', 'type', 'const', 'enum', 'required', 'properties',
              'additionalProperties', 'items', 'pattern', 'minLength', 'allOf', 'if', 'then', 'not'}  # fmt: skip
@@ -93,7 +94,7 @@ def _failed(kind):
 
 @pytest.fixture(scope='module')
 def method(method_dir):
-    return load_method(method_dir, registry=())
+    return load_method(method_dir, principles=PRINCIPLES, registry=())
 
 
 def _run(method, call, **kw):

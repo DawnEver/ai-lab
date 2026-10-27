@@ -2,7 +2,6 @@
   "schema_version": 3,
   "files": {
     "profiles": "profiles.json",
-    "principles": "principles.json",
     "finding_schema": "finding.schema.json",
     "output_schema": "findings-output.schema.json",
     "conformance": "conformance"
@@ -171,11 +170,12 @@
   "rules": {
     "finding_field": "rule",
     "sources": [
-      "principles.json",
+      "principles",
       "registry"
     ],
+    "principles": "the family principles {id, name, statement}, given by the caller at load (--principles FILE; never imported, never copied here)",
     "registry": "the family rule registry's ids, given by the caller at load (--rules; never imported, never copied here)",
-    "fills": "the finding schema property finding_field gets enum = every principles.json id then every registry id, at load; no file lists them",
+    "fills": "the finding schema property finding_field gets enum = every given principle id then every registry id, at load; no file lists them",
     "list_item": "- {{id}}: {{statement}}",
     "registry_item": "{{id}}",
     "prompt_schema": "unfilled",

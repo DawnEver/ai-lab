@@ -1,5 +1,5 @@
 {
-  "description": "A finding whose rule is neither a principles.json id nor a registry id, or is not a string, or that omits security, or whose anchor is empty, or whose security is not a boolean, fails the finding schema and is dropped and counted; a principle id and a registry id are both kept.",
+  "description": "A finding whose rule is neither a given principle id nor a registry id, or is not a string, or that omits security, or whose anchor is empty, or whose security is not a boolean, fails the finding schema and is dropped and counted; a principle id and a registry id are both kept.",
   "input": {
     "range": "HEAD",
     "profiles": [

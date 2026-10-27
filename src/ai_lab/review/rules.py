@@ -87,7 +87,7 @@ def render_prompt(method: Method, profile: Mapping, manifest: Mapping) -> dict:
         'manifest': manifest.get('manifest'),
         'finding_schema': schema,
     }
-    # method.json rules.list_item once per principles.json entry, one per line; then the registry ids on one line.
+    # method.json rules.list_item once per given principle, one per line; then the registry ids on one line.
     item = method.spec['rules']['list_item']
     variables['principle_list'] = '\n'.join(render(method, item, p) for p in method.principles)
     variables['registry_list'] = ', '.join(method.registry)

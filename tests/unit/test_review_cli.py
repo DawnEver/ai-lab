@@ -12,6 +12,7 @@ from ai_lab.review import plan as plan_cli
 from ai_lab.review.__main__ import _git_diff, main
 from ai_lab.review.method import load_method
 from ai_lab.review.rules import finding_id
+from tests.review_principles import PRINCIPLES, PRINCIPLES_FILE
 
 OK = {'schema_version': 1, 'ok': True, 'kind': '', 'result': {'findings': []}, 'usage': None, 'key_slot': 1,
       'error': ''}  # fmt: skip
@@ -24,7 +25,8 @@ def _diff(range_, repo, paths=()):
 
 def test_the_cli_prints_the_findings_json(method_dir, capsys):
     seen = []
-    code = main(['--rules', '', '--method', str(method_dir), '--range', 'main...HEAD', '--model', 'claude-test'],
+    code = main(['--principles', str(PRINCIPLES_FILE), '--rules', '',
+                 '--method', str(method_dir), '--range', 'main...HEAD', '--model', 'claude-test'],
                 call=lambda r: seen.append(r) or OK, diff=_diff)  # fmt: skip
     assert code == 0
     doc = json.loads(capsys.readouterr().out)
@@ -35,7 +37,8 @@ def test_the_cli_prints_the_findings_json(method_dir, capsys):
 
 
 def test_providers_override_the_default(method_dir, capsys):
-    main(['--rules', '', '--method', str(method_dir), '--range', 'main...HEAD', '--model', 'm', '--providers', 'ghost'],
+    main(['--principles', str(PRINCIPLES_FILE), '--rules', '',
+          '--method', str(method_dir), '--range', 'main...HEAD', '--model', 'm', '--providers', 'ghost'],
          call=lambda r: OK, diff=_diff)  # fmt: skip
     doc = json.loads(capsys.readouterr().out)
     assert {(r['provider'], r['status']) for r in doc['reviewers']} == {('ghost', 'unavailable')}
@@ -45,7 +48,25 @@ def test_an_unknown_method_version_exits_2_naming_it(method_dir, tmp_path, capsy
     copy = tmp_path / 'method'
     shutil.copytree(method_dir, copy)
     (copy / 'method.json').write_text('{"schema_version": 99}', encoding='utf-8')
-    assert main(['--rules', '', '--method', str(copy), '--range', 'a..b', '--model', 'm'], call=None, diff=_diff) == 2
+    assert (
+        main(
+            [
+                '--principles',
+                str(PRINCIPLES_FILE),
+                '--rules',
+                '',
+                '--method',
+                str(copy),
+                '--range',
+                'a..b',
+                '--model',
+                'm',
+            ],
+            call=None,
+            diff=_diff,
+        )
+        == 2
+    )
     out = capsys.readouterr()
     assert out.out == ''
     assert 'schema_version 99' in out.err
@@ -53,7 +74,20 @@ def test_an_unknown_method_version_exits_2_naming_it(method_dir, tmp_path, capsy
 
 def test_a_range_git_cannot_diff_exits_2(method_dir, tmp_path, capsys):
     code = main(
-        ['--rules', '', '--method', str(method_dir), '--range', 'nope..nada', '--model', 'm', '--repo', str(tmp_path)]
+        [
+            '--principles',
+            str(PRINCIPLES_FILE),
+            '--rules',
+            '',
+            '--method',
+            str(method_dir),
+            '--range',
+            'nope..nada',
+            '--model',
+            'm',
+            '--repo',
+            str(tmp_path),
+        ]
     )
     assert code == 2
     out = capsys.readouterr()
@@ -63,13 +97,31 @@ def test_a_range_git_cannot_diff_exits_2(method_dir, tmp_path, capsys):
 
 def test_the_run_takes_the_verb_less_argv_the_forge_declares(method_dir, capsys):
     # The argv shape `[tool.dev_lab.review] command` declares in every consumer pyproject: no verb.
-    argv = ['--rules', '', '--method', str(method_dir), '--range', 'main...HEAD', '--model', 'claude-test']
+    argv = [
+        '--principles',
+        str(PRINCIPLES_FILE),
+        '--rules',
+        '',
+        '--method',
+        str(method_dir),
+        '--range',
+        'main...HEAD',
+        '--model',
+        'claude-test',
+    ]
     assert main(argv, call=lambda r: OK, diff=_diff) == 0
     assert json.loads(capsys.readouterr().out)['schema_version'] == 3
 
 
 def test_the_method_defaults_to_the_packaged_one(capsys):
-    assert main(['--rules', '', '--range', 'main...HEAD', '--model', 'm'], call=lambda r: OK, diff=_diff) == 0
+    assert (
+        main(
+            ['--principles', str(PRINCIPLES_FILE), '--rules', '', '--range', 'main...HEAD', '--model', 'm'],
+            call=lambda r: OK,
+            diff=_diff,
+        )
+        == 0
+    )
     assert json.loads(capsys.readouterr().out)['schema_version'] == 3
 
 
@@ -83,7 +135,7 @@ RUN = {'range': 'HEAD', 'profiles': ['diff'],
 
 def _merge(method_dir, record, monkeypatch):
     monkeypatch.setattr('sys.stdin', io.StringIO(record if isinstance(record, str) else json.dumps(record)))
-    return merge_cli.main(['--rules', '', '--method', str(method_dir)])
+    return merge_cli.main(['--principles', str(PRINCIPLES_FILE), '--rules', '', '--method', str(method_dir)])
 
 
 def test_merge_prints_the_findings_json_of_a_run_record_on_stdin(method_dir, monkeypatch, capsys):
@@ -91,7 +143,9 @@ def test_merge_prints_the_findings_json_of_a_run_record_on_stdin(method_dir, mon
     doc = json.loads(capsys.readouterr().out)
     assert doc['schema_version'] == 3
     assert [f['id'] for f in doc['findings']] == [
-        finding_id(load_method(registry=()).spec['merge']['id'], RUN['results'][0]['findings'][0])
+        finding_id(
+            load_method(principles=PRINCIPLES, registry=()).spec['merge']['id'], RUN['results'][0]['findings'][0]
+        )
     ]
     assert doc['findings'][0]['security'] is True
     assert doc['reviewers'][0]['status'] == 'ok'
@@ -107,7 +161,7 @@ def test_merge_reads_a_record_without_results_as_every_result_missing(method_dir
 
 def test_merge_defaults_to_the_packaged_method(monkeypatch, capsys):
     monkeypatch.setattr('sys.stdin', io.StringIO(json.dumps(RUN)))
-    assert merge_cli.main(['--rules', '']) == 0
+    assert merge_cli.main(['--principles', str(PRINCIPLES_FILE), '--rules', '']) == 0
     assert json.loads(capsys.readouterr().out)['findings'][0]['id'].startswith('F-')
 
 
@@ -127,6 +181,8 @@ def test_paths_restrict_the_diff_to_the_slice(method_dir, capsys):
         return '+y = 2\n'
 
     argv = [
+        '--principles',
+        str(PRINCIPLES_FILE),
         '--rules',
         '',
         '--method',
@@ -176,7 +232,20 @@ def test_synthesis_reads_the_merged_findings_and_the_range_shape(method_dir, tmp
     def diff(range_, repo, paths=()):
         return 'FULL-DIFF-NEVER-READ'
 
-    argv = ['--rules', '', '--method', str(method_dir), '--range', 'a..b', '--model', 'm', '--findings', str(merged)]
+    argv = [
+        '--principles',
+        str(PRINCIPLES_FILE),
+        '--rules',
+        '',
+        '--method',
+        str(method_dir),
+        '--range',
+        'a..b',
+        '--model',
+        'm',
+        '--findings',
+        str(merged),
+    ]
     code = main(argv, call=lambda r: seen.append(r) or OK, diff=diff, stat=lambda range_, repo: ' x.py | 2 +-\n')
     assert code == 0
     text = seen[0]['context'][0]['text']
@@ -188,6 +257,8 @@ def test_synthesis_reads_the_merged_findings_and_the_range_shape(method_dir, tmp
 
 def test_an_unreadable_findings_file_exits_2(method_dir, tmp_path, capsys):
     argv = [
+        '--principles',
+        str(PRINCIPLES_FILE),
         '--rules',
         '',
         '--method',
@@ -203,19 +274,22 @@ def test_an_unreadable_findings_file_exits_2(method_dir, tmp_path, capsys):
     assert capsys.readouterr().out == ''
 
 
+@pytest.mark.parametrize('missing', ['--rules', '--principles'])
 @pytest.mark.parametrize('cli', ['review', 'merge', 'plan'])
-def test_every_review_entry_point_refuses_without_the_callers_rule_ids(cli, monkeypatch, capsys):
-    """The registry is the caller's (dev-lab fills ``{rules}``): no ``--rules``, exit 2 naming it -- never an import."""
+def test_every_review_entry_point_refuses_without_the_callers_rules_or_principles(cli, missing, monkeypatch, capsys):
+    """Registry and principles are the caller's (dev-lab owns both): either absent, exit 2 naming it -- never a copy."""
     monkeypatch.setattr('sys.stdin', io.StringIO(json.dumps(RUN)))
+    given = {'--rules': '', '--principles': str(PRINCIPLES_FILE)}
+    owned = [part for flag, value in given.items() if flag != missing for part in (flag, value)]
     run = {
-        'review': lambda: main(['--range', 'main...HEAD', '--model', 'm'], call=lambda r: OK, diff=_diff),
-        'merge': lambda: merge_cli.main([]),
-        'plan': lambda: plan_cli.main([]),
+        'review': lambda: main([*owned, '--range', 'main...HEAD', '--model', 'm'], call=lambda r: OK, diff=_diff),
+        'merge': lambda: merge_cli.main(owned),
+        'plan': lambda: plan_cli.main(owned),
     }[cli]
     assert run() == 2
     out = capsys.readouterr()
     assert out.out == ''
-    assert '--rules' in out.err
+    assert missing in out.err
 
 
 def test_the_given_rule_ids_are_the_registry_a_finding_is_judged_by(method_dir, monkeypatch, capsys):
@@ -223,5 +297,7 @@ def test_the_given_rule_ids_are_the_registry_a_finding_is_judged_by(method_dir, 
     record = {**RUN, 'results': [{'name': 'diff', 'findings': [{**FINDING, 'rule': 'GIVEN-RULE'}]}]}
     for given, kept in (('GIVEN-RULE,OTHER', 1), ('OTHER', 0)):
         monkeypatch.setattr('sys.stdin', io.StringIO(json.dumps(record)))
-        assert merge_cli.main(['--rules', given, '--method', str(method_dir)]) == 0
+        assert (
+            merge_cli.main(['--principles', str(PRINCIPLES_FILE), '--rules', given, '--method', str(method_dir)]) == 0
+        )
         assert len(json.loads(capsys.readouterr().out)['findings']) == kept

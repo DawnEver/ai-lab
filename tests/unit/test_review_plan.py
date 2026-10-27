@@ -13,6 +13,7 @@ from dev_lab.dev.rules import RULES
 from ai_lab.review.method import load_method
 from ai_lab.review.plan import build_plan, effective_profiles, eligible_weights, main, report_path
 from ai_lab.review.rules import render_prompt
+from tests.review_principles import PRINCIPLES, PRINCIPLES_FILE
 
 MANIFEST = {'mode': 'review', 'range': 'HEAD', 'stats': {}, 'excludedSummary': '', 'diff': '+x'}
 BASE = {'manifest': MANIFEST, 'rands': {'pick': [0, 0], 'shuffle': [0, 0]}, 'run_id': 'r', 'started_at': 't',
@@ -22,7 +23,7 @@ BASE = {'manifest': MANIFEST, 'rands': {'pick': [0, 0], 'shuffle': [0, 0]}, 'run
 @pytest.fixture(scope='module')
 def method(method_dir):
     # The family's registry, given as dev-lab's review command gives it: the prompt budget is paid with its ids.
-    return load_method(method_dir, registry=tuple(rule.id for rule in RULES))
+    return load_method(method_dir, principles=PRINCIPLES, registry=tuple(rule.id for rule in RULES))
 
 
 def _plan(method, **kw):
@@ -118,7 +119,7 @@ def test_the_plan_names_the_top_confidence_label_a_host_counts_by(method):
 def test_the_module_reads_a_request_on_stdin_and_prints_the_plan(monkeypatch, capsys):
     request = {**BASE, 'forced': 'diff', 'available': ['claude']}
     monkeypatch.setattr('sys.stdin', io.StringIO(json.dumps(request)))
-    assert main(['--rules', '']) == 0
+    assert main(['--principles', str(PRINCIPLES_FILE), '--rules', '']) == 0
     plan = json.loads(capsys.readouterr().out)
     assert (plan['run_id'], plan['reviewers'][0]['status']) == ('r', 'pending')
 
@@ -126,14 +127,14 @@ def test_the_module_reads_a_request_on_stdin_and_prints_the_plan(monkeypatch, ca
 def test_the_module_draws_its_own_randomness_when_the_request_carries_none(monkeypatch, capsys):
     request = {k: v for k, v in BASE.items() if k != 'rands'} | {'sources': ['diff'], 'available': ['claude']}
     monkeypatch.setattr('sys.stdin', io.StringIO(json.dumps(request)))
-    assert main(['--rules', '']) == 0
+    assert main(['--principles', str(PRINCIPLES_FILE), '--rules', '']) == 0
     assert len(json.loads(capsys.readouterr().out)['reviewers']) == 2
 
 
 @pytest.mark.parametrize('text', ['not json', '[]', '{"date": "d"}'])
 def test_the_module_refuses_a_malformed_request_with_exit_2(monkeypatch, capsys, text):
     monkeypatch.setattr('sys.stdin', io.StringIO(text))
-    assert main(['--rules', '']) == 2
+    assert main(['--principles', str(PRINCIPLES_FILE), '--rules', '']) == 2
     out = capsys.readouterr()
     assert out.out == ''
     assert out.err.startswith('refused: ')
@@ -143,7 +144,7 @@ def test_the_module_refuses_a_malformed_request_with_exit_2(monkeypatch, capsys,
 # has a declared ceiling, the current size plus a small margin, that may only go down.
 
 #: Characters of the largest rendered prompt with an empty diff and manifest.
-PROMPT_BUDGET_CHARS = 5700  # raised 2026-10-26 with the registry rule ids a finding names in `rule`
+PROMPT_BUDGET_CHARS = 5900  # raised 2026-10-27 with the keep-valuable-options principle (largest 5863)
 #: How far the ceiling may sit above the largest prompt before it must be lowered.
 MARGIN_CHARS = 100
 EMPTY = {'range': '', 'excludedSummary': '', 'diff': '', 'manifest': ''}

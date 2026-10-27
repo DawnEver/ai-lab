@@ -19,7 +19,7 @@ import json
 import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 
 from lab_commons.credentials import API_KEY_TASKS, key_username
 
@@ -53,6 +53,18 @@ def _row(row: Provider) -> dict:
     }
 
 
+def _installed_version() -> str | None:
+    """The installed ``ai_lab`` dist's version, or ``None`` when ``src`` runs uninstalled on a path.
+
+    A source-shipping host (``tool.lab_commons.hpc.source_roots``) installs the lock's dependencies but
+    not the project, so no metadata exists; ``__version__.py`` is a build artefact and is absent too.
+    """
+    try:
+        return version('ai_lab')
+    except PackageNotFoundError:
+        return None
+
+
 def document(*, now: datetime | None = None) -> dict:
     """The resolved catalogue with its inputs, their hashes, the ai-lab version and the generation time."""
     inputs, digest = [], hashlib.sha256()
@@ -67,7 +79,7 @@ def document(*, now: datetime | None = None) -> dict:
     return {
         'schema_version': CATALOGUE_SCHEMA_VERSION,
         'generated_at': (now or datetime.now(UTC)).isoformat(),
-        'ai_lab_version': version('ai_lab'),  # the installed metadata; __version__.py is a build artefact
+        'ai_lab_version': _installed_version(),
         'python': sys.executable,
         'inputs': inputs,
         'source_sha256': digest.hexdigest(),

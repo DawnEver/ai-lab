@@ -8,6 +8,7 @@
     { "id": "layered-decoupling", "name": "Layered decoupling", "statement": "Depend one way through narrow interfaces; never into internals or upward." },
     { "id": "names-match-behaviour", "name": "Names match what they do", "statement": "A name says what the thing does now." },
     { "id": "no-backward-compatibility", "name": "No backward compatibility", "statement": "No shims, aliases or dual paths for old callers; callers move with the change." },
-    { "id": "progressive-disclosure", "name": "Progressive disclosure", "statement": "An entry point states what is needed first and points to detail; no duplication across levels." }
+    { "id": "progressive-disclosure", "name": "Progressive disclosure", "statement": "An entry point states what is needed first and points to detail; no duplication across levels." },
+    { "id": "keep-valuable-options", "name": "Keep every valuable parameter and option", "statement": "Generality is a requirement: keep every parameter and option a real case uses or plausibly needs; Occam and no-baggage remove dead paths, never capability." }
   ]
 }

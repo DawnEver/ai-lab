@@ -143,7 +143,7 @@ def test_the_module_refuses_a_malformed_request_with_exit_2(monkeypatch, capsys,
 # has a declared ceiling, the current size plus a small margin, that may only go down.
 
 #: Characters of the largest rendered prompt with an empty diff and manifest.
-PROMPT_BUDGET_CHARS = 5700  # raised 2026-10-26 with the registry rule ids a finding names in `rule`
+PROMPT_BUDGET_CHARS = 5900  # raised 2026-10-27 with the keep-valuable-options principle (largest 5863)
 #: How far the ceiling may sit above the largest prompt before it must be lowered.
 MARGIN_CHARS = 100
 EMPTY = {'range': '', 'excludedSummary': '', 'diff': '', 'manifest': ''}

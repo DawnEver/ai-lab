@@ -11,6 +11,7 @@ import pytest
 
 from ai_lab.review.method import METHOD_DIR, load_method
 from ai_lab.review.rules import merge, pick, render, render_prompt
+from tests.review_principles import PRINCIPLES
 
 _ROOT = METHOD_DIR / 'conformance'
 _KINDS = ('merge', 'pick', 'prompt')
@@ -35,12 +36,12 @@ _REGISTRY = ('NAMED-SETS-NOT-COUNTS',)
 
 
 def _method(given: dict):
-    return load_method(METHOD_DIR, registry=given.get('registry', _REGISTRY))
+    return load_method(METHOD_DIR, principles=PRINCIPLES, registry=given.get('registry', _REGISTRY))
 
 
 @pytest.fixture(scope='module')
 def method(method_dir):
-    return load_method(method_dir, registry=_REGISTRY)
+    return load_method(method_dir, principles=PRINCIPLES, registry=_REGISTRY)
 
 
 def test_every_kind_has_fixtures():

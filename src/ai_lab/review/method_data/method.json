@@ -174,7 +174,7 @@
       "principles.json",
       "registry"
     ],
-    "registry": "dev_lab.dev.rules.RULES: the family rule registry, read at load (never copied here); a caller may inject the id set",
+    "registry": "the family rule registry's ids, given by the caller at load (--rules; never imported, never copied here)",
     "fills": "the finding schema property finding_field gets enum = every principles.json id then every registry id, at load; no file lists them",
     "list_item": "- {{id}}: {{statement}}",
     "registry_item": "{{id}}",

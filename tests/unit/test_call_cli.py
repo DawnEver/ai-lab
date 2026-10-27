@@ -8,7 +8,7 @@ import sys
 
 import pytest
 
-from ai_lab import Ledger, ProviderError
+from ai_lab import DailyTokenCapReached, Ledger, ProviderError, budget
 from ai_lab.call import CALL_SCHEMA_VERSION, REPLY_KINDS, Malformed, answer, main
 from tests.conftest import PNG
 
@@ -73,6 +73,27 @@ def test_a_classified_provider_failure_is_a_reply_not_a_crash(keys, kind):
     reply = answer(RESPOND, post=_post(raises=ProviderError(f'boom {kind}', kind=kind)))
     assert reply['ok'] is False and reply['kind'] == kind and reply['result'] is None
     assert 'boom' in reply['error'] and 'ak-test' not in reply['error']
+
+
+@pytest.mark.parametrize('scope', ['anthropic', 'key:abc123'])
+def test_a_reached_daily_cap_is_an_exhausted_reply_naming_its_scope(keys, monkeypatch, scope):
+    # A cap is TEMPORARY: the reviewer is exhausted for today, not crashed (a crash reads as permanent).
+    def spent(provider, key):
+        msg = f'{scope} reached its daily token cap'
+        raise DailyTokenCapReached(msg, scope=scope)
+
+    monkeypatch.setattr(budget, 'remaining', spent)
+    post = _post(_ANTHROPIC_OK)
+    reply = answer(RESPOND, post=post)
+    assert (reply['ok'], reply['kind'], reply['result']) == (False, 'exhausted', None)
+    assert scope in reply['error'] and 'ak-test' not in reply['error']
+    assert post.calls == []  # no call starts past a cap
+
+
+def test_the_planted_control_budget_left_still_calls(keys, monkeypatch):
+    monkeypatch.setattr(budget, 'remaining', lambda provider, key: 10**6)
+    reply = answer(RESPOND, post=_post(_ANTHROPIC_OK))
+    assert (reply['ok'], reply['kind']) == (True, '')
 
 
 def test_a_missing_key_or_capability_is_unsupported(credential_store):

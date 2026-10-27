@@ -16,7 +16,7 @@ import sys
 from collections.abc import Sequence
 from typing import Final
 
-from ai_lab.review.method import METHOD_DIR, UnknownMethodVersion, load_method
+from ai_lab.review.method import METHOD_DIR, UnknownMethodVersion, load_method, rule_ids
 from ai_lab.review.rules import merge
 
 __all__ = []
@@ -50,9 +50,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         '--method', default=METHOD_DIR, help='a method directory read in place (default: the packaged one)'
     )
+    parser.add_argument(
+        '--rules', help='the registry rule ids, comma-separated (required: the caller owns the registry)'
+    )
     args = parser.parse_args(argv)
     try:
-        doc = merge(load_method(args.method), **_run_record(sys.stdin.read()))
+        doc = merge(load_method(args.method, registry=rule_ids(args.rules)), **_run_record(sys.stdin.read()))
     except (FileNotFoundError, UnknownMethodVersion, ValueError, TypeError) as refused:
         sys.stderr.write(f'refused: {refused}\n')
         return _EXIT_REFUSED

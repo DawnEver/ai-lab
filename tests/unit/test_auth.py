@@ -6,6 +6,7 @@ Every secret here is a fake; ``credential_store`` points git at a file under ``t
 import io
 import subprocess
 import sys
+from urllib.parse import urlsplit
 
 import pytest
 from lab_commons.credentials import credential_for
@@ -15,6 +16,12 @@ from ai_lab import auth
 
 def _stdin(monkeypatch, text):
     monkeypatch.setattr('sys.stdin', io.StringIO(text))
+
+
+def _stored(text):
+    """``{(username, key, host)}`` of every stored credential line."""
+    urls = (urlsplit(line.strip()) for line in text.splitlines() if line.strip())
+    return {(u.username, u.password, u.hostname) for u in urls}
 
 
 def test_login_reads_the_key_from_stdin_and_stores_it_under_the_providers_host(credential_store, monkeypatch, capsys):
@@ -28,7 +35,7 @@ def test_login_reads_the_key_from_stdin_and_stores_it_under_the_providers_host(c
 def test_login_slot_2_stores_the_second_username(credential_store, monkeypatch, capsys):
     _stdin(monkeypatch, 'sk-fake-two\n')
     assert auth.main(['login', 'openai', '--slot', '2']) == 0
-    assert 'https://api-key-2:sk-fake-two@api.openai.com' in credential_store.file.read_text(encoding='utf-8')
+    assert ('api-key-2', 'sk-fake-two', 'api.openai.com') in _stored(credential_store.file.read_text(encoding='utf-8'))
     out = capsys.readouterr()
     assert 'sk-fake-two' not in out.out + out.err
 
@@ -140,8 +147,8 @@ def test_from_file_honours_task_and_slot(credential_store, tmp_path, capsys):
     keys.write_text('OPENAI_API_KEY sk-task-two\n', encoding='utf-8')
     assert auth.main(['login', '--from-file', str(keys), '--task', 'optimization', '-s', '2']) == 0
     text = credential_store.file.read_text(encoding='utf-8')
-    assert 'https://api-key-optimization-2:sk-task-two@api.openai.com' in text
-    assert 'https://api-key:' not in text
+    assert ('api-key-optimization-2', 'sk-task-two', 'api.openai.com') in _stored(text)
+    assert 'api-key' not in {user for user, _, _ in _stored(text)}
     out = capsys.readouterr()
     assert 'task optimization slot 2' in out.out
     assert 'sk-task-two' not in out.out + out.err
@@ -159,7 +166,7 @@ def test_provider_with_from_file_imports_only_that_providers_key(credential_stor
     keys.write_text('OPENAI_API_KEY sk-o\nDEEPSEEK_API_KEY sk-d\n', encoding='utf-8')
     assert auth.main(['login', 'openai', '--from-file', str(keys), '--task', 'pr-review']) == 0
     text = credential_store.file.read_text(encoding='utf-8')
-    assert 'https://api-key-pr-review:sk-o@api.openai.com' in text
+    assert ('api-key-pr-review', 'sk-o', 'api.openai.com') in _stored(text)
     assert 'sk-d' not in text
 
 

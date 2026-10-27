@@ -93,7 +93,7 @@ def _failed(kind):
 
 @pytest.fixture(scope='module')
 def method(method_dir):
-    return load_method(method_dir)
+    return load_method(method_dir, registry=())
 
 
 def _run(method, call, **kw):

@@ -17,7 +17,8 @@ and the reply, always one JSON object::
 
 ``result`` is the schema object (respond) or ``{"basis", "answers": {name: answer}}`` (decide). A
 provider failure is CLASSIFIED, not crashed: ``ok`` is false, ``kind`` is :attr:`ProviderError.kind`
-(``""`` for an unclassified one) or ``unsupported`` for :class:`Unsupported`, ``error`` names it --
+(``""`` for an unclassified one), ``exhausted`` for a reached :class:`DailyTokenCapReached` (its scope in
+``error``) or ``unsupported`` for :class:`Unsupported`, ``error`` names it --
 never a key -- and the exit status is 0. Only a MALFORMED request (not JSON, an unknown or missing
 field, a wrong type, an undeclared task, an EMPTY CONTEXT) exits non-zero (2), with the reason on stderr
 and nothing on stdout -- no vendor is called. A context is empty when no part has non-blank text,
@@ -39,7 +40,7 @@ from dataclasses import asdict
 from typing import Final
 
 from ai_lab.client import connect
-from ai_lab.errors import ERROR_KINDS, ProviderError, Unsupported
+from ai_lab.errors import ERROR_KINDS, DailyTokenCapReached, ProviderError, Unsupported
 from ai_lab.ledger import Ledger, Mode
 from ai_lab.spec import (
     DecisionRequest,
@@ -191,6 +192,8 @@ def answer(request: Mapping, *, ledger: str | None = None, **options: object) ->
         return _reply(ok=False, kind='unsupported', error=str(missing))
     except ProviderError as failed:
         return _reply(ok=False, kind=failed.kind, error=str(failed))
+    except DailyTokenCapReached as spent:  # temporary: today's tokens are spent, the account is not broken
+        return _reply(ok=False, kind='exhausted', error=f'{spent} (daily token cap of {spent.scope})')
 
 
 def main(argv: Sequence[str] | None = None) -> int:

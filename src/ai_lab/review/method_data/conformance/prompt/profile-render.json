@@ -1,5 +1,5 @@
 {
-  "description": "A diff-context profile on an inline (review-mode) manifest renders prompts/diff.md with the profile's framing and scope, the manifest's range, excluded summary and diff, the rules partial listing every principles.json entry and the registry ids, and the output_contract partial carrying the finding schema (without the rule-id enum, which the rules partial already lists) as compact JSON.",
+  "description": "A diff-context profile on an inline (review-mode) manifest renders prompts/diff.md with the profile's framing and scope, the manifest's range, excluded summary and diff, the rules partial listing every given principle and the registry ids, and the output_contract partial carrying the finding schema (without the rule-id enum, which the rules partial already lists) as compact JSON.",
   "input": {
     "profile": "security",
     "manifest": {

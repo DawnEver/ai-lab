@@ -26,7 +26,7 @@ from typing import Final
 
 from ai_lab.call import answer
 from ai_lab.client import catalogue
-from ai_lab.review.method import METHOD_DIR, UnknownMethodVersion, load_method, rule_ids
+from ai_lab.review.method import METHOD_DIR, UnknownMethodVersion, load_method, principle_list, rule_ids
 from ai_lab.review.run import LENSES, run
 
 __all__ = []
@@ -97,11 +97,14 @@ def main(
     parser.add_argument(
         '--rules', help='the registry rule ids, comma-separated (required: the caller owns the registry)'
     )
+    parser.add_argument(
+        '--principles', help='a JSON file {"principles": [{id, name, statement}]} (required: the caller owns them)'
+    )
     args = parser.parse_args(argv)
     try:
-        method = load_method(args.method, registry=rule_ids(args.rules))
+        method = load_method(args.method, principles=principle_list(args.principles), registry=rule_ids(args.rules))
         text = _change(args, diff, stat)
-    except (FileNotFoundError, UnknownMethodVersion, ValueError) as refused:
+    except (FileNotFoundError, UnknownMethodVersion, ValueError, TypeError) as refused:
         sys.stderr.write(f'refused: {refused}\n')
         return _EXIT_REFUSED
     doc = run(

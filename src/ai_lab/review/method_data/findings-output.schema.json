@@ -154,7 +154,7 @@
           },
           "rule": {
             "type": "string",
-            "description": "The principle id (principles.json) or registry rule id (the set the caller gives) it violates."
+            "description": "The principle id or registry rule id (both sets the caller gives) it violates."
           },
           "file": {
             "type": "string"

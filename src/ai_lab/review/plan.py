@@ -18,7 +18,16 @@ import sys
 from collections.abc import Collection, Mapping, Sequence
 from typing import Final
 
-from ai_lab.review.method import METHOD_DIR, Method, UnknownMethodVersion, load_method, principle_list, rule_ids
+from ai_lab.review.method import (
+    DEFAULT_CONFIG,
+    METHOD_DIR,
+    Method,
+    UnknownMethodVersion,
+    configured_providers,
+    load_method,
+    principle_list,
+    rule_ids,
+)
 from ai_lab.review.rules import pick, render_prompt
 
 __all__ = ['build_plan', 'effective_profiles', 'eligible_weights']
@@ -70,10 +79,10 @@ def _shuffle(keys: list[str], rands: Sequence[float]) -> list[str]:
     return out
 
 
-def _providers(mode: Mapping, name: str, *, requested: Sequence[str], config: Mapping, available: Collection[str],
-               seed: int) -> list[str]:  # fmt: skip
-    """Most specific first: *requested*, the config's ``providers.<run mode>``, the run mode's list, else its roster."""
-    configured = (config.get('providers') or {}).get(name)
+def _providers(mode: Mapping, name: str, *, requested: Sequence[str], config: Mapping, defaults: Mapping,
+               available: Collection[str], seed: int) -> list[str]:  # fmt: skip
+    """Most specific first: *requested*, config then *defaults* ``providers.<run mode>``, mode list, else roster."""
+    configured = configured_providers(config, name, defaults)
     if requested:
         return list(requested)
     if configured:
@@ -113,6 +122,7 @@ def build_plan(
     run_mode: str = 'interactive',
     requested: Sequence[str] = (),
     available: Collection[str] = (),
+    defaults: Mapping = DEFAULT_CONFIG,
 ) -> dict:
     """The plan of one run: its profiles, and per reviewer a provider, a status and (pending) the prompt."""
     config = config or {}
@@ -132,7 +142,9 @@ def build_plan(
         keys = pick(method, weights, method.spec['pick']['count'], rands['pick'])
     if method.spec['pick']['assignment'] == 'shuffled':
         keys = _shuffle(keys, rands['shuffle'])
-    providers = _providers(mode, run_mode, requested=requested, config=config, available=available, seed=seed)
+    providers = _providers(
+        mode, run_mode, requested=requested, config=config, defaults=defaults, available=available, seed=seed
+    )
     reviewers = []
     for i, key in enumerate(keys):
         provider = providers[i % len(providers)] if providers else None

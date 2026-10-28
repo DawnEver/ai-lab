@@ -30,8 +30,22 @@ def _plan(method, **kw):
     return build_plan(method, **{**BASE, **kw})
 
 
+@pytest.mark.parametrize('run_mode', ['interactive', 'headless'])
+def test_the_shipped_default_config_sends_every_run_mode_to_anthropic_only(method, run_mode):
+    # User ruling 2026-10-28: a DEFAULT CONFIGURATION, not method data -- no request, no project config.
+    p = _plan(method, run_mode=run_mode, forced='diff', available=['anthropic', 'claude', 'codex', 'kimi'])
+    assert {r['provider'] for r in p['reviewers']} == {'anthropic'}
+
+
+def test_a_project_config_overrides_the_shipped_default(method):
+    cfg = {'providers': {'interactive': ['kimi']}}
+    p = _plan(method, config=cfg, forced='diff', available=['anthropic', 'kimi'])
+    assert [r['provider'] for r in p['reviewers']] == ['kimi']
+
+
 def test_interactive_picks_two_profiles_over_the_alphabetical_roster_rotated_by_seed(method):
-    p = _plan(method, sources=['diff'], available=['kimi', 'claude', 'codex'], seed=1)
+    # Planted control: with the default config emptied the method's roster rotation still runs.
+    p = _plan(method, sources=['diff'], available=['kimi', 'claude', 'codex'], seed=1, defaults={})
     assert len(p['reviewers']) == 2
     assert sorted(r['provider'] for r in p['reviewers']) == ['codex', 'kimi']
     for r in p['reviewers']:
@@ -39,13 +53,13 @@ def test_interactive_picks_two_profiles_over_the_alphabetical_roster_rotated_by_
         assert '+x' in r['prompt']
 
 
-def test_interactive_claude_reviewers_carry_the_model_the_method_declares(method):
-    assert _plan(method, forced='diff', available=['claude'])['reviewers'][0]['model'] == 'opus'
+def test_interactive_anthropic_reviewers_carry_the_model_the_method_declares(method):
+    assert _plan(method, forced='diff', available=['anthropic'])['reviewers'][0]['model'] == 'opus'
 
 
 def test_a_diff_profile_on_an_empty_manifest_is_skipped_and_an_explore_profile_still_runs(method):
     empty = {**MANIFEST, 'mode': 'empty', 'diff': None}
-    p = _plan(method, manifest=empty, sources=['diff', 'deps'], available=['claude', 'codex'],
+    p = _plan(method, manifest=empty, sources=['diff', 'deps'], available=['anthropic'],
               rands={'pick': [0, 0.99], 'shuffle': [0, 0]})  # fmt: skip
     by_name = {r['name']: r for r in p['reviewers']}
     assert by_name['diff']['status'] == 'skipped'
@@ -117,7 +131,7 @@ def test_the_plan_names_the_top_confidence_label_a_host_counts_by(method):
 
 
 def test_the_module_reads_a_request_on_stdin_and_prints_the_plan(monkeypatch, capsys):
-    request = {**BASE, 'forced': 'diff', 'available': ['claude']}
+    request = {**BASE, 'forced': 'diff', 'available': ['anthropic']}
     monkeypatch.setattr('sys.stdin', io.StringIO(json.dumps(request)))
     assert main(['--principles', str(PRINCIPLES_FILE), '--rules', '']) == 0
     plan = json.loads(capsys.readouterr().out)
@@ -125,7 +139,7 @@ def test_the_module_reads_a_request_on_stdin_and_prints_the_plan(monkeypatch, ca
 
 
 def test_the_module_draws_its_own_randomness_when_the_request_carries_none(monkeypatch, capsys):
-    request = {k: v for k, v in BASE.items() if k != 'rands'} | {'sources': ['diff'], 'available': ['claude']}
+    request = {k: v for k, v in BASE.items() if k != 'rands'} | {'sources': ['diff'], 'available': ['anthropic']}
     monkeypatch.setattr('sys.stdin', io.StringIO(json.dumps(request)))
     assert main(['--principles', str(PRINCIPLES_FILE), '--rules', '']) == 0
     assert len(json.loads(capsys.readouterr().out)['reviewers']) == 2
@@ -178,5 +192,5 @@ def test_report_path_is_regenerable_output_under_the_dated_logs_tree():
 
 
 def test_interactive_plan_sinks_a_report_at_the_report_path_never_memory(method):
-    p = _plan(method, available=['claude'])
+    p = _plan(method, available=['anthropic'])
     assert (p['sink'], p['report']) == ('report', report_path('2026-10-20'))

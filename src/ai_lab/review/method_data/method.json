@@ -58,6 +58,7 @@
         "agent"
       ],
       "models": {
+        "anthropic": "opus",
         "claude": "opus"
       },
       "synthesis": false,

@@ -89,7 +89,7 @@ def main(
     )
     parser.add_argument('--range', required=True, dest='range_', help='the git range to review, e.g. main...HEAD')
     parser.add_argument('--model', required=True, help='the model id for every provider the method names none for')
-    parser.add_argument('--providers', nargs='+', help="override run_modes.headless.providers (default ['anthropic'])")
+    parser.add_argument('--providers', nargs='+', help="override the default config's providers.headless")
     parser.add_argument('--repo', default='.', help='the repository the range is in (default: the working directory)')
     parser.add_argument('--lens', choices=sorted(LENSES), default='standard', help='how many reviewers to plan')
     parser.add_argument('--paths', nargs='+', default=[], help="the slice: read only these paths' diff")

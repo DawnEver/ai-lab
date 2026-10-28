@@ -31,16 +31,23 @@ def _plan(method, **kw):
 
 
 @pytest.mark.parametrize('run_mode', ['interactive', 'headless'])
-def test_every_run_mode_calls_only_anthropic_by_default(method, run_mode):
-    # User ruling 2026-10-28: with no request and no config, every review calls the anthropic API alone.
-    p = _plan(method, run_mode=run_mode, forced='diff' if run_mode == 'headless' else None, sources=['diff'],
-              available=['anthropic', 'claude', 'codex', 'kimi'], seed=1)  # fmt: skip
+def test_the_shipped_default_config_sends_every_run_mode_to_anthropic_only(method, run_mode):
+    # User ruling 2026-10-28: a DEFAULT CONFIGURATION, not method data -- no request, no project config.
+    p = _plan(method, run_mode=run_mode, forced='diff', available=['anthropic', 'claude', 'codex', 'kimi'])
     assert {r['provider'] for r in p['reviewers']} == {'anthropic'}
 
 
-def test_interactive_picks_two_profiles(method):
-    p = _plan(method, sources=['diff'], available=['anthropic'], seed=1)
+def test_a_project_config_overrides_the_shipped_default(method):
+    cfg = {'providers': {'interactive': ['kimi']}}
+    p = _plan(method, config=cfg, forced='diff', available=['anthropic', 'kimi'])
+    assert [r['provider'] for r in p['reviewers']] == ['kimi']
+
+
+def test_interactive_picks_two_profiles_over_the_alphabetical_roster_rotated_by_seed(method):
+    # Planted control: with the default config emptied the method's roster rotation still runs.
+    p = _plan(method, sources=['diff'], available=['kimi', 'claude', 'codex'], seed=1, defaults={})
     assert len(p['reviewers']) == 2
+    assert sorted(r['provider'] for r in p['reviewers']) == ['codex', 'kimi']
     for r in p['reviewers']:
         assert (r['status'], r['call_mode']) == ('pending', 'review')
         assert '+x' in r['prompt']

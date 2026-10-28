@@ -47,15 +47,19 @@
   },
   "run_modes": {
     "interactive": {
-      "providers": [
-        "anthropic"
-      ],
+      "providers": {
+        "from": "available",
+        "order": "alphabetical",
+        "rotate_by": "seed",
+        "count": 2
+      },
       "call_modes": [
         "review",
         "agent"
       ],
       "models": {
-        "anthropic": "opus"
+        "anthropic": "opus",
+        "claude": "opus"
       },
       "synthesis": false,
       "sink": "report"

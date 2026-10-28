@@ -20,7 +20,7 @@ dependencies = [
 [project.optional-dependencies]
 # The family's development kit: rules registry, rendered configs, shared test bodies, verify entry.
 dev = [
-    "dev-lab @ git+https://gitea.mingyangbao.site/Tianjie-Zou-Team/dev-lab.git",
+    "dev-lab[test] @ git+https://gitea.mingyangbao.site/Tianjie-Zou-Team/dev-lab.git",
     "pytest",
     "ruff",
 ]

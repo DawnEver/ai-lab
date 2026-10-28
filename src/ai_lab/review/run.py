@@ -1,6 +1,7 @@
 """The headless run mode: plan the reviewers, render each prompt, ``respond`` through ai-lab, merge.
 
-``method.json``'s ``run_modes.headless`` is the configuration: its providers (overridable), the contexts
+``method.json``'s ``run_modes.headless`` is the capability: its providers (the shipped default config's, else
+overridable), the contexts
 and call modes it can execute, its per-provider models. A reviewer is ``skipped`` when its context has
 nothing to review, ``unavailable`` when its provider is not in the available set (never substituted),
 ``unsupported`` when the run mode cannot make its call; a failed call's ``kind`` is its status and its
@@ -13,7 +14,7 @@ import random
 from collections.abc import Callable, Collection, Mapping, Sequence
 from typing import Final
 
-from ai_lab.review.method import Method
+from ai_lab.review.method import DEFAULT_CONFIG, Method, configured_providers
 from ai_lab.review.rules import merge, pick, render_prompt
 
 __all__ = ['LENSES', 'REVIEW_TASK', 'run']
@@ -72,6 +73,7 @@ def run(
     call: Callable[[Mapping], Mapping],
     rng: random.Random,
     lens: str = 'standard',
+    defaults: Mapping = DEFAULT_CONFIG,
 ) -> dict:
     """The findings JSON of one headless review of *diff* (the change *range_* names).
 
@@ -80,7 +82,7 @@ def run(
     are planned (:data:`LENSES`); an unknown one is refused.
     """
     mode = method.spec['run_modes']['headless']
-    providers = list(providers or mode['providers'])
+    providers = list(providers or configured_providers({}, 'headless', defaults) or mode['providers'])
     manifest = {'mode': 'review' if diff.strip() else 'empty', 'range': range_, 'excludedSummary': '', 'diff': diff}
     schema = _schema(method)
     keys = _plan(method, mode, rng, lens)

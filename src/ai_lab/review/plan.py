@@ -70,22 +70,14 @@ def _shuffle(keys: list[str], rands: Sequence[float]) -> list[str]:
     return out
 
 
-def _providers(mode: Mapping, name: str, *, requested: Sequence[str], config: Mapping, available: Collection[str],
-               seed: int) -> list[str]:  # fmt: skip
-    """Most specific first: *requested*, the config's ``providers.<run mode>``, the run mode's list, else its roster."""
+def _providers(mode: Mapping, name: str, *, requested: Sequence[str], config: Mapping) -> list[str]:
+    """Most specific first: *requested*, the config's ``providers.<run mode>``, else the run mode's list."""
     configured = (config.get('providers') or {}).get(name)
     if requested:
         return list(requested)
     if configured:
         return list(configured)
-    spec = mode['providers']
-    if isinstance(spec, list):
-        return list(spec)
-    roster = sorted(available)
-    if not roster:
-        return []
-    start = seed % len(roster)
-    return (roster[start:] + roster[:start])[: spec['count']]
+    return list(mode['providers'])
 
 
 def report_path(date: str) -> str:
@@ -132,7 +124,7 @@ def build_plan(
         keys = pick(method, weights, method.spec['pick']['count'], rands['pick'])
     if method.spec['pick']['assignment'] == 'shuffled':
         keys = _shuffle(keys, rands['shuffle'])
-    providers = _providers(mode, run_mode, requested=requested, config=config, available=available, seed=seed)
+    providers = _providers(mode, run_mode, requested=requested, config=config)
     reviewers = []
     for i, key in enumerate(keys):
         provider = providers[i % len(providers)] if providers else None

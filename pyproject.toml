@@ -91,6 +91,10 @@ trunk = "main"
 integration = "integrate/main"
 pr_merges_since = "9d016300ccc6b19cad75729b8c4f22ad21817a03"  # INTEGRATION-TAKES-ONLY-FORGE-MERGES from here
 
+# GitHub Actions: the family's one PR lifecycle (dev_lab/dev/ci_base.toml) as is; rendered to
+# .github/workflows/ci.yml by `python -m dev_lab.dev.ciworkflows render`, never hand-edited.
+[tool.dev_lab.ci."ci.yml"]
+
 # Git hooks: the family base (dev_lab/dev/githooks/base.toml) as is; ai-lab adds no row.
 [tool.dev_lab.hooks]
 

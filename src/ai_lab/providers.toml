@@ -40,6 +40,7 @@ key_name = "ANTHROPIC_API_KEY"
 vision = true
 vendor = "anthropic"
 auth = "api"
+models = { base = "claude-sonnet-5-5", sonnet = "claude-sonnet-5-5", opus = "claude-opus-5-5", haiku = "claude-haiku-5-5", fable = "claude-fable-5-1" }
 
 [gemini]
 wire = "gemini"

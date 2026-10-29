@@ -10,7 +10,8 @@ import json
 import pytest
 from dev_lab.dev.rules import RULES
 
-from ai_lab.review.method import load_method
+from ai_lab import Provider, catalogue
+from ai_lab.review.method import DEFAULT_CONFIG, load_method
 from ai_lab.review.plan import build_plan, effective_profiles, eligible_weights, main, report_path
 from ai_lab.review.rules import render_prompt
 from tests.review_principles import PRINCIPLES, PRINCIPLES_FILE
@@ -194,3 +195,25 @@ def test_report_path_is_regenerable_output_under_the_dated_logs_tree():
 def test_interactive_plan_sinks_a_report_at_the_report_path_never_memory(method):
     p = _plan(method, available=['anthropic'])
     assert (p['sink'], p['report']) == ('report', report_path('2026-10-20'))
+
+
+def _run_mode_providers(method):
+    """Every provider a run mode chooses with no request: the shipped default config and each listed mode."""
+    named = {p for one in DEFAULT_CONFIG['providers'].values() for p in one}
+    return named | {p for mode in method.spec['run_modes'].values() if isinstance(mode['providers'], list)
+                    for p in mode['providers']}  # fmt: skip
+
+
+def test_every_shipped_row_a_run_mode_chooses_declares_its_models(method):
+    rows = catalogue()
+    chosen = sorted(p for p in _run_mode_providers(method) if p in rows)
+    assert chosen == ['anthropic']
+    assert {p: rows[p].models.get('base') for p in chosen} == {'anthropic': 'claude-sonnet-5-5'}
+
+
+def test_planted_a_run_mode_provider_without_models_is_refused_naming_the_remedy(method):
+    rows = {'anthropic': Provider('anthropic', 'anthropic_messages', 'https://x.test', 'api', anthropic_path='/v1')}
+    with pytest.raises(ValueError, match=r'^provider anthropic declares no models; add \[anthropic\.models\] base='):
+        _plan(method, forced='diff', available=['anthropic'], rows=rows)
+    # A REQUESTED provider is the caller's choice, not a run mode's: it is planned as given.
+    assert _plan(method, forced='diff', available=['anthropic'], requested=['anthropic'], rows=rows)['reviewers']

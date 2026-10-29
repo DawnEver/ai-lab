@@ -194,8 +194,12 @@ def merge(
     profiles: Sequence[str],
     reviewers: Sequence[Mapping],
     results: Sequence[Mapping],
+    disposed: Mapping[str, str] | None = None,
 ) -> dict:
     """The findings JSON of one run: each planned reviewer's final status, and the findings grouped by stable id.
+
+    A finding whose id is in *disposed* (id -> the reason it was disposed of earlier) is not re-raised; the
+    document lists every disposed id with its reason under ``disposed`` instead.
 
     A group carries its first-seen fields, the most severe severity any reviewer gave and ``security`` when any
     said so (``merge.escalate``).
@@ -232,13 +236,17 @@ def merge(
         if (error := _error(method, status, step, reviewer, result)) is not None:
             out['error'] = error
         out_reviewers.append(out)
-    return {
+    disposed = disposed or {}
+    doc = {
         'schema_version': method.schema_version,
         'range': range_,
         'profiles': list(profiles),
         'reviewers': out_reviewers,
-        'findings': [_finding(spec, schema, key, group) for key, group in groups.items()],
+        'findings': [_finding(spec, schema, key, group) for key, group in groups.items() if key not in disposed],
     }
+    if disposed:
+        doc['disposed'] = [{'id': key, 'reason': reason} for key, reason in disposed.items()]
+    return doc
 
 
 def _finding(spec: Mapping, schema: Mapping, key: str, group: Mapping) -> dict:

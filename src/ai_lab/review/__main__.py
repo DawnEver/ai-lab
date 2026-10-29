@@ -10,6 +10,12 @@ The forge reviews a large head in SLICES (dev-lab ``forgereview``): each slice r
 the method's count, ``light`` one). ``--findings <merged.json>`` is the SYNTHESIS pass: it reads the slices'
 merged findings and the range's file summary -- never the whole diff, which is what did not fit -- and
 reports what crosses slices.
+
+The document opens with ``summary`` -- what the change does and why, derived each run from the range's
+commits, merge resolutions, ``Merge-Audit`` lines, the memory it adds or changes and ``--pr-body``
+(:mod:`ai_lab.review.summary`); ``--no-summary`` omits it (a slice the caller summarizes once). ``--disposed
+<file>`` (``{"disposed": [{id, reason}]}``) names ids disposed of earlier: they are not re-raised, and the
+document lists them under ``disposed``.
 """
 
 from __future__ import annotations
@@ -28,6 +34,7 @@ from ai_lab.call import answer
 from ai_lab.client import catalogue
 from ai_lab.review.method import METHOD_DIR, UnknownMethodVersion, load_method, principle_list, rule_ids
 from ai_lab.review.run import LENSES, run
+from ai_lab.review.summary import change_summary, git_intent
 
 __all__ = []
 
@@ -75,12 +82,39 @@ def _change(args: argparse.Namespace, diff: Callable[..., str], stat: Callable[[
     return _SYNTHESIS.format(findings=reported, stat=stat(args.range_, args.repo))
 
 
+def _disposed(path: str | None) -> dict[str, str]:
+    """The ``{id: reason}`` the ``--disposed`` file names; ``ValueError``/``TypeError`` when it is not that shape."""
+    if path is None:
+        return {}
+    rows = json.loads(Path(path).read_text(encoding='utf-8')).get('disposed')
+    if not isinstance(rows, list) or not all(isinstance(row, dict) and {'id', 'reason'} <= set(row) for row in rows):
+        msg = f'{path} is not {{"disposed": [{{id, reason}}]}}'
+        raise ValueError(msg)
+    return {str(row['id']): str(row['reason']) for row in rows}
+
+
+def _summary(args: argparse.Namespace, intent: Callable[[str, str], dict], call: Callable, provider: str) -> dict:
+    """The summary section; an intent git cannot read is the section's ``error``, never a refused review."""
+    try:
+        found = intent(args.range_, args.repo)
+    except ValueError as unread:
+        found, error = {'commits': [], 'resolutions': [], 'merge_audit': [], 'memory': []}, str(unread)
+    else:
+        error = None
+    found['pr_body'] = Path(args.pr_body).read_text(encoding='utf-8') if args.pr_body else ''
+    summary = change_summary(found, call=call, provider=provider, model=args.model)
+    if error is not None:
+        summary['error'] = error
+    return summary
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
     call: Callable[[Mapping], Mapping] = answer,
     diff: Callable[..., str] = _git_diff,
     stat: Callable[[str, str], str] = _git_stat,
+    intent: Callable[[str, str], dict] | None = git_intent,
 ) -> int:
     """Run one headless review and print its findings JSON; exit 2 on a refused invocation."""
     parser = argparse.ArgumentParser(prog='python -m ai_lab.review', description=__doc__.split('\n', 1)[0])
@@ -100,17 +134,24 @@ def main(
     parser.add_argument(
         '--principles', help='a JSON file {"principles": [{id, name, statement}]} (required: the caller owns them)'
     )
+    parser.add_argument('--pr-body', help='a file holding the PR body, read for the summary')
+    parser.add_argument('--no-summary', action='store_true', help='omit the summary section (and its call)')
+    parser.add_argument('--disposed', help='a JSON file {"disposed": [{id, reason}]}: ids not to re-raise')
     args = parser.parse_args(argv)
     try:
         method = load_method(args.method, principles=principle_list(args.principles), registry=rule_ids(args.rules))
         text = _change(args, diff, stat)
+        disposed = _disposed(args.disposed)
     except (FileNotFoundError, UnknownMethodVersion, ValueError, TypeError) as refused:
         sys.stderr.write(f'refused: {refused}\n')
         return _EXIT_REFUSED
     doc = run(
         method, range_=args.range_, diff=text, model=args.model, providers=args.providers,
-        available=set(catalogue()), call=call, rng=random.SystemRandom(), lens=args.lens,
+        available=set(catalogue()), call=call, rng=random.SystemRandom(), lens=args.lens, disposed=disposed,
     )  # fmt: skip
+    if not args.no_summary and intent is not None:
+        provider = doc['reviewers'][0]['provider'] if doc['reviewers'] else 'anthropic'
+        doc = {'summary': _summary(args, intent, call, provider), **doc}
     sys.stdout.write(json.dumps(doc, ensure_ascii=False) + '\n')
     return 0
 

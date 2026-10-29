@@ -74,12 +74,13 @@ def run(
     rng: random.Random,
     lens: str = 'standard',
     defaults: Mapping = DEFAULT_CONFIG,
+    disposed: Mapping[str, str] | None = None,
 ) -> dict:
     """The findings JSON of one headless review of *diff* (the change *range_* names).
 
     *call* is ``ai_lab.call.answer`` (or a stand-in): one request dict in, one classified reply out.
     *model* serves every provider the run mode's ``models`` does not name. *lens* sets how many reviewers
-    are planned (:data:`LENSES`); an unknown one is refused.
+    are planned (:data:`LENSES`); an unknown one is refused. An id in *disposed* is not re-raised (``merge``).
     """
     mode = method.spec['run_modes']['headless']
     providers = list(providers or configured_providers({}, 'headless', defaults) or mode['providers'])
@@ -107,4 +108,4 @@ def run(
             'context': [{'kind': 'text', 'text': rendered['prompt']}], 'schema': schema,
         })  # fmt: skip
         results.append(_result(key, reply))
-    return merge(method, range_=range_, profiles=keys, reviewers=reviewers, results=results)
+    return merge(method, range_=range_, profiles=keys, reviewers=reviewers, results=results, disposed=disposed)

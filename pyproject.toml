@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ai_lab"
 dynamic = ["version"]
-license = "Apache-2.0"
+license = "MIT"
 license-files = ["LICENSE"]
 description = "Vendor-neutral typed decisions and schema-bound responses from any model"
 readme = "README.md"

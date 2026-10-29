@@ -106,7 +106,8 @@ def rule_ids(given: str | None) -> tuple[str, ...]:
 
 #: What an invocation without ``--principles`` is refused with: like the registry, the principles are the caller's.
 NO_PRINCIPLES: Final = (
-    'no principles given: the caller passes them as --principles FILE, a JSON {"principles": [{id, name, statement}]} '
+    '--principles FILE is required and was not passed: the caller (e.g. an older sharp-review plugin) must pass it, '
+    'a JSON {"principles": [{id, name, statement}]} file '
     "(dev-lab owns the family's; an empty list reviews against none); ai-lab keeps no list of its own"
 )
 

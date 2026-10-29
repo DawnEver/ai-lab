@@ -94,7 +94,8 @@ def test_the_method_keeps_no_principle_list_of_its_own(method_dir):
 def test_the_principles_come_from_the_caller_or_the_invocation_is_refused(tmp_path):
     """No file given: refused naming ``--principles``. An empty list is a project reviewed against none."""
     assert principle_list(PRINCIPLES_FILE) == PRINCIPLES
-    with pytest.raises(ValueError, match=r'--principles'):
+    refused = r'^--principles FILE is required and was not passed: the caller \(e\.g\. an older sharp-review plugin\)'
+    with pytest.raises(ValueError, match=refused + r' must pass it'):
         principle_list(None)
     with pytest.raises(FileNotFoundError, match=r'--principles'):
         principle_list(tmp_path / 'absent.json')

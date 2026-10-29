@@ -18,6 +18,7 @@ import sys
 from collections.abc import Collection, Mapping, Sequence
 from typing import Final
 
+from ai_lab.client import Provider, catalogue
 from ai_lab.review.method import (
     DEFAULT_CONFIG,
     METHOD_DIR,
@@ -97,6 +98,14 @@ def _providers(mode: Mapping, name: str, *, requested: Sequence[str], config: Ma
     return (roster[start:] + roster[:start])[: spec['count']]
 
 
+def _refuse_model_less(providers: Sequence[str], rows: Mapping[str, Provider]) -> None:
+    """``ValueError`` naming the remedy when a provider a run mode chose is a catalogue row with no ``models``."""
+    for name in providers:
+        if name in rows and not rows[name].models:
+            msg = f'provider {name} declares no models; add [{name}.models] base="<model>" to its providers.toml row'
+            raise ValueError(msg)
+
+
 def report_path(date: str) -> str:
     """Where the ``report`` sink writes run *date*'s (``YYYY-MM-DD``) review, relative to the reviewed checkout.
 
@@ -123,6 +132,7 @@ def build_plan(
     requested: Sequence[str] = (),
     available: Collection[str] = (),
     defaults: Mapping = DEFAULT_CONFIG,
+    rows: Mapping[str, Provider] | None = None,
 ) -> dict:
     """The plan of one run: its profiles, and per reviewer a provider, a status and (pending) the prompt."""
     config = config or {}
@@ -145,6 +155,8 @@ def build_plan(
     providers = _providers(
         mode, run_mode, requested=requested, config=config, defaults=defaults, available=available, seed=seed
     )
+    if not requested:
+        _refuse_model_less(providers, catalogue() if rows is None else rows)
     reviewers = []
     for i, key in enumerate(keys):
         provider = providers[i % len(providers)] if providers else None

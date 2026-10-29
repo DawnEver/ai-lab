@@ -30,6 +30,20 @@ The key never travels in argv: ``login <provider>`` reads it from the terminal w
 stdin when piped; ``--from-file -`` reads a key file from stdin (``ssh box python -m ai_lab.auth login
 --from-file - < keys``). ``--task`` and ``--slot`` apply to a key file exactly as to a prompted key, and
 ``login <provider> --from-file`` imports only that provider's line.
+
+ONE KEY FILE FORMAT, ONE PARSER, ONE WRITER. A line is ``NAME[:<task>][:<slot>] value`` (or ``=value``):
+``NAME:pr-review:2 sk-...`` is task ``pr-review`` slot 2, ``NAME:2`` the default's slot 2, ``NAME:session``
+that task's slot 1. A part the line omits comes from ``--task``/``--slot``, so a plain ``NAME value``
+line is the default slot 1. :func:`parse_key_file` reads it and :func:`format_key_file` writes it.
+
+MIGRATION IS ONE COMMAND (user ruling 2026-10-29). ``export`` writes every stored key -- every keyed
+host, the default and every task, every slot -- to stdout as a key file whose lines name their task and
+slot, and ``login --from-file -`` imports it whole, each key under its same username::
+
+    python -m ai_lab.auth export | ssh <target> 'cd <ai-lab> && .venv/bin/python -m ai_lab.auth login --from-file -'
+
+``export`` refuses a terminal stdout (a key is never printed to a screen), reports only a count, and
+carries what is stored, a default<->task duplicate included.
 """
 
 from __future__ import annotations
@@ -46,19 +60,23 @@ from lab_commons.credentials import API_KEY_TASKS, NoCredential, api_keys, key_u
 from ai_lab.budget import fingerprint
 from ai_lab.client import Provider, catalogue, stored_slots
 
-__all__ = ['main', 'parse_key_file']
+__all__ = ['format_key_file', 'main', 'parse_key_file']
 
-#: ``[export ]NAME<= or whitespace>value``: the name, then the first ``=`` or run of whitespace.
-_LINE = re.compile(r'^(?:export\s+)?([^=\s]+)\s*(?:=|\s)\s*(.*)$')
+#: ``[export ]NAME[:<task>][:<slot>]<= or whitespace>value``; a task is a part that is not all digits.
+_LINE = re.compile(r'^(?:export\s+)?([^=\s:]+)(?::([^=\s:]*[^=\s:\d][^=\s:]*))?(?::(\d+))?\s*(?:=|\s)\s*(.*)$')
+
+#: ``(NAME, task, slot, value)``; ``None`` is a part the line leaves to ``--task``/``--slot``.
+KeyLine = tuple[str, str | None, int | None, str]
 
 _QUOTES = ('"', "'")
 
 
-def parse_key_file(text: str) -> tuple[list[tuple[str, str]], list[int]]:
-    """``(NAME, value)`` pairs from a key file, and the line numbers that held no value.
+def parse_key_file(text: str) -> tuple[list[KeyLine], list[int]]:
+    """``(NAME, task, slot, value)`` lines from a key file, and the line numbers that held no value.
 
-    Accepts ``NAME=value``, ``export NAME=value`` and ``NAME value``; strips CR, a BOM and one pair
-    of surrounding quotes; skips blank and ``#`` lines.
+    Accepts ``NAME=value``, ``export NAME=value`` and ``NAME value``, ``NAME`` optionally followed by
+    ``:<task>`` and ``:<slot>``; strips CR, a BOM and one pair of surrounding quotes; skips blank and
+    ``#`` lines.
     """
     pairs, malformed = [], []
     for number, raw in enumerate(text.lstrip('﻿').splitlines(), start=1):
@@ -66,30 +84,58 @@ def parse_key_file(text: str) -> tuple[list[tuple[str, str]], list[int]]:
         if not line or line.startswith('#'):
             continue
         match = _LINE.match(line)
-        value = match.group(2).strip() if match else ''
+        value = match.group(4).strip() if match else ''
         if len(value) >= 2 and value[0] == value[-1] and value[0] in _QUOTES:  # noqa: PLR2004 -- a quote pair
             value = value[1:-1]
         if not value:
             malformed.append(number)
             continue
-        pairs.append((match.group(1), value))
+        slot = match.group(3)
+        pairs.append((match.group(1), match.group(2), None if slot is None else int(slot), value))
     return pairs, malformed
+
+
+def format_key_file(lines: Iterable[KeyLine]) -> str:
+    """The key file :func:`parse_key_file` reads back: ``NAME[:<task>]:<slot> value`` per line."""
+    return ''.join(f'{name}{"" if task is None else f":{task}"}:{slot} {value}\n' for name, task, slot, value in lines)
 
 
 def _keyed() -> dict[str, Provider]:
     return {name: row for name, row in catalogue().items() if row.keyed}
 
 
-def _held(host: str) -> dict[str, str]:
-    """``{username: key}`` for every key *host* holds: the default's slots, then each task's."""
+def _held_slots(host: str) -> dict[tuple[str | None, int], str]:
+    """``{(task, slot): key}`` for every key *host* holds: the default's slots, then each task's."""
     held = {}
     for task in (None, *sorted(API_KEY_TASKS)):
         try:
             keys = api_keys(host, task=task)
         except NoCredential:
             continue
-        held |= {key_username(task, slot): key for slot, key in enumerate(keys, start=1)}
+        held |= {(task, slot): key for slot, key in enumerate(keys, start=1)}
     return held
+
+
+def _held(host: str) -> dict[str, str]:
+    """``{username: key}`` for every key *host* holds."""
+    return {key_username(task, slot): key for (task, slot), key in _held_slots(host).items()}
+
+
+def _export() -> int:
+    """Write every stored key to stdout as a key file; refused when stdout is a terminal."""
+    if sys.stdout.isatty():
+        sys.stderr.write(
+            'refused: export writes keys and stdout is a terminal; pipe or redirect it, e.g. '
+            "python -m ai_lab.auth export | ssh <target> '... -m ai_lab.auth login --from-file -'\n"
+        )
+        return 1
+    names = {row.host: row.key_name for row in _keyed().values()}
+    lines = [
+        (names[host], task, slot, key) for host in sorted(names) for (task, slot), key in _held_slots(host).items()
+    ]
+    sys.stdout.write(format_key_file(lines))
+    sys.stderr.write(f'exported {len(lines)} key(s) from {len({line[0] for line in lines})} host(s)\n')
+    return 0
 
 
 def _store(host: str, secret: str, username: str) -> bool | None:
@@ -122,8 +168,8 @@ def _not_keyed(name: str | None, keyed: dict[str, Provider]) -> bool:
     return True
 
 
-def _read_pairs(source: str | None, provider: Provider | None, which: str) -> list[tuple[str, str]] | None:
-    """``(NAME, key)`` pairs from the key file *source*, else *provider*'s one key read without echo."""
+def _read_pairs(source: str | None, provider: Provider | None, which: str) -> list[KeyLine] | None:
+    """Key lines from the key file *source*, else *provider*'s one key read without echo."""
     if source is not None:
         text = sys.stdin.read() if source == '-' else Path(source).read_text(encoding='utf-8')
         pairs, malformed = parse_key_file(text)
@@ -135,18 +181,34 @@ def _read_pairs(source: str | None, provider: Provider | None, which: str) -> li
     if not secret:
         sys.stderr.write('empty key; nothing stored\n')
         return None
-    return [(provider.key_name, secret)]
+    return [(provider.key_name, None, None, secret)]
+
+
+def _addressed(lines: Iterable[KeyLine], task: str | None, slot: int) -> list[tuple[str, str, str, str]] | None:
+    """``(NAME, username, label, key)`` per line, an omitted task/slot taken from *task*/*slot*; ``None``: refused."""
+    pairs = []
+    for key_name, line_task, line_slot, secret in lines:
+        this_task, this_slot = line_task or task, line_slot or slot
+        try:
+            username = key_username(this_task, this_slot)
+        except ValueError as refused:
+            sys.stderr.write(f'{key_name}: {refused}\n')
+            return None
+        label = f'slot {this_slot}' if this_task is None else f'task {this_task} slot {this_slot}'
+        pairs.append((key_name, username, label, secret))
+    return pairs
 
 
 def _login(name: str | None, source: str | None, slot: int, task: str | None) -> int:
     """Store keys as ``key_username(task, slot)``: *name*'s key from the terminal/stdin, or a key file's.
 
-    *source* (a path, ``-`` for stdin) supplies ``NAME value`` lines; *name* alone prompts for its key,
-    and *name* with *source* imports only that provider's line. One path, so ``--task``/``--slot`` mean
-    the same thing whichever way the key arrives.
+    *source* (a path, ``-`` for stdin) supplies ``NAME[:<task>][:<slot>] value`` lines; *name* alone
+    prompts for its key, and *name* with *source* imports only that provider's line. One path, so
+    ``--task``/``--slot`` mean the same thing whichever way the key arrives; a line's own task or slot
+    takes precedence. Every line's username is checked before anything is stored.
     """
     try:
-        username = key_username(task, slot)
+        key_username(task, slot)
     except ValueError as refused:
         sys.stderr.write(f'{refused}\n')
         return 1
@@ -154,15 +216,15 @@ def _login(name: str | None, source: str | None, slot: int, task: str | None) ->
     if _not_keyed(name, keyed):
         return 1
     which = f'slot {slot}' if task is None else f'task {task} slot {slot}'
-    pairs = _read_pairs(source, keyed[name] if source is None else None, which)
-    if pairs is None:
+    lines = _read_pairs(source, keyed[name] if source is None else None, which)
+    if lines is None or (pairs := _addressed(lines, task, slot)) is None:
         return 1
     by_name: dict[str, list[Provider]] = {}
     for row in keyed.values() if name is None else [keyed[name]]:
         by_name.setdefault(row.key_name, []).append(row)
     scope = '' if name is None else f'{name!r} '
     stored = 0
-    for key_name, secret in pairs:
+    for key_name, username, label, secret in pairs:
         if key_name not in by_name:
             sys.stderr.write(f'{key_name}: no provider {scope}names this key; skipped\n')
             continue
@@ -172,9 +234,9 @@ def _login(name: str | None, source: str | None, slot: int, task: str | None) ->
                 return 1
             sharing = sorted(n for n, row in keyed.items() if row.host == host)
             sys.stdout.write(
-                f'{host} already holds this key as {username!r} ({which}); nothing changed\n'
+                f'{host} already holds this key as {username!r} ({label}); nothing changed\n'
                 if outcome is None
-                else f'{key_name}: stored key {which} for {host} ({", ".join(sharing)})\n'
+                else f'{key_name}: stored key {label} for {host} ({", ".join(sharing)})\n'
             )
             stored += 1
     if not stored:
@@ -215,14 +277,16 @@ def _shared_lines(rows: Iterable[Provider]) -> list[str]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run ``login <provider>``, ``login --from-file PATH|-`` or ``status``."""
+    """Run ``login <provider>``, ``login --from-file PATH|-``, ``export`` or ``status``."""
     parser = argparse.ArgumentParser(prog='python -m ai_lab.auth', description=__doc__.split('\n', 1)[0])
     verbs = parser.add_subparsers(dest='verb', required=True)
     login = verbs.add_parser('login', help='store a key: read from the terminal/stdin, or import a key file')
     login.add_argument(
         'provider', nargs='?', help='a keyed provider; its key is read without echo (or its line of --from-file)'
     )
-    login.add_argument('--from-file', metavar='PATH', help='a NAME=value / NAME value file; "-" reads stdin')
+    login.add_argument(
+        '--from-file', metavar='PATH', help='a NAME[:<task>][:<slot>]=value (or space) file; "-" reads stdin'
+    )
     login.add_argument(
         '-s', '--slot', '--seat', dest='slot', type=int, default=1,
         help='the key slot to store: 1 = api-key[-<task>], N = api-key[-<task>]-N, tried in order',
@@ -231,7 +295,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     verbs.add_parser(
         'status', help='each provider: auth kind, its key slots, and each task:slots it holds (never a key)'
     )
+    verbs.add_parser('export', help='write every stored key, task and slot to a pipe for login --from-file -')
     args = parser.parse_args(argv)
+    if args.verb == 'export':
+        return _export()
     if args.verb == 'status':
         rows = list(catalogue().values())
         sys.stdout.write('\n'.join(_status_lines(rows) + _shared_lines(rows)) + '\n')

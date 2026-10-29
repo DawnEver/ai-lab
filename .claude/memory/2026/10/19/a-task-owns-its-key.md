@@ -18,4 +18,4 @@ User ruling 2026-10-19: each task gets its own AI API key, in the one existing s
 - DEPENDENCY ORDER: this commit imports names only lab-commons `af6bb89` has. Until that lands and
   `uv.lock` is bumped to it, `tests/architecture/test_ai_lab_adopts_the_shared_registry.py` (a subprocess
   on the installed lab-commons) reds on the import. Measured green with PYTHONPATH on the lab-commons lane.
-- Follow-up in motronics: the `turing` decider passes `task='optimization'` to `connect`.
+- Follow-up in a downstream repo: its decider passes `task='optimization'` to `connect`.

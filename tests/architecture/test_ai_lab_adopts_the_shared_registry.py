@@ -82,7 +82,10 @@ _MECHANISMS: Final = {
     # `.claude/hooks/deny-rules.json` refuses these, each by its own rule, and the test pins it live.
     **dict.fromkeys(
         ('AGENT-GUARD', 'SUBAGENT-NO-PUSH', 'WORKTREES-STAY-INSIDE', 'REPORTS-LIVE-IN-MEMORY',
-         'INJECTED-TEXT-IS-PROGRESSIVE'),
+         'INJECTED-TEXT-IS-PROGRESSIVE',
+         # Gained 2026-10-29 with dev-lab 5abf8c4d: RECURSIVE-DELETE is a shipped deny rule, and the guard's
+         # WIRING installs the `dev_lab.dev.pushwatch` PostToolUse advisory the live test pins.
+         'RECURSIVE-DELETE', 'PUSHED-HEAD-IS-WATCHED'),
         (TestPath('tests/architecture/test_the_agent_guard_is_live.py'),),
     ),
 }  # fmt: skip

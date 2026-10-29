@@ -1,6 +1,7 @@
 """``python -m ai_lab.review.merge [--method <dir>]``: the merge of one recorded run, read on stdin.
 
-The run record is ``{range, profiles, reviewers, results}``, the shape sharp-review's planned
+The run record is ``{range, profiles, reviewers, results, disposed?}`` (``disposed``: ``{id: reason}`` of ids
+not to re-raise), the shape sharp-review's planned
 fan-out records (``results`` absent means no reviewer returned). It is merged by the method's rules --
 the ONE merge every sharp-review executor uses -- and the findings JSON (the method's
 ``findings-output.schema.json``) printed on stdout, exit 0. A refused invocation -- a method directory
@@ -41,6 +42,7 @@ def _run_record(text: str) -> dict:
     return {
         'range_': record['range'], 'profiles': record['profiles'],
         'reviewers': record['reviewers'], 'results': record.get('results') or [],
+        'disposed': record.get('disposed') or {},
     }  # fmt: skip
 
 

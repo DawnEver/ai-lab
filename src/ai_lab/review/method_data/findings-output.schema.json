@@ -12,6 +12,135 @@
     "findings"
   ],
   "properties": {
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What this change does, derived each run from the range's commits, merge resolutions and Merge-Audit lines, the memory documents it adds or changes, and the PR body (ai_lab.review.summary); never stored as truth. Every claim cites a commit sha or memory path in sources. Present unless the caller passed --no-summary; optional, so a schema_version 3 reader that ignores it reads the rest unchanged.",
+      "required": [
+        "changes",
+        "tests_altered",
+        "resolutions",
+        "open_items",
+        "sources"
+      ],
+      "properties": {
+        "changes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "claim",
+              "cites"
+            ],
+            "properties": {
+              "claim": {
+                "type": "string"
+              },
+              "cites": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "tests_altered": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "line",
+              "cites"
+            ],
+            "properties": {
+              "line": {
+                "type": "string"
+              },
+              "cites": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "resolutions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "line",
+              "cites"
+            ],
+            "properties": {
+              "line": {
+                "type": "string"
+              },
+              "cites": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "open_items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "item",
+              "cites"
+            ],
+            "properties": {
+              "item": {
+                "type": "string"
+              },
+              "cites": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "sources": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "commits",
+            "memory"
+          ],
+          "properties": {
+            "commits": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "memory": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "error": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Why the claims are the commit subjects: the summary call failed."
+        }
+      }
+    },
     "schema_version": {
       "const": 3
     },
@@ -209,6 +338,26 @@
         }
       },
       "description": "Deduplicated across reviewers by id (method.json merge.id), in first-seen order."
+    },
+    "disposed": {
+      "type": "array",
+      "description": "Ids the caller disposed of earlier, with their reasons: never re-raised in findings. Present only when the caller passed any.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "reason"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
     }
   }
 }

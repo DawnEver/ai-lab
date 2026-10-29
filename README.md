@@ -250,6 +250,16 @@ python -m ai_lab.auth login --from-file keys.env   # NAME=value, export NAME=val
 ssh box python -m ai_lab.auth login --from-file - < keys.env   # the same file over stdin
 python -m ai_lab.auth login openai --from-file keys.env --task pr-review -s 2   # one line, into a task slot
 python -m ai_lab.auth status                       # auth kind, key slots, task slots, shared keys; never a key
+python -m ai_lab.auth export > keys.env            # every stored key, task and slot; refuses a terminal
+```
+
+A key file line is `NAME[:<task>][:<slot>] value` (or `=value`): `OPENAI_API_KEY:pr-review:2 sk-...`
+is task `pr-review` slot 2; a part the line omits comes from `--task`/`--slot`, so `NAME value` is the
+default slot 1. Moving every key to another machine is one command; each key lands under its same
+username:
+
+```
+python -m ai_lab.auth export | ssh <target> 'cd <ai-lab> && .venv/bin/python -m ai_lab.auth login --from-file -'
 ```
 
 A key file maps names to providers through each row's `key_name`. Unknown names are reported by name

@@ -14,13 +14,13 @@ authors = [{ name = "Mingyang Bao" }]
 # HTTP is urllib and the provider table is tomllib. lab-commons supplies what the family already owns:
 # the config search path (`paths`) and the key store (`credentials`).
 dependencies = [
-    "lab-commons[paths] @ git+https://gitea.mingyangbao.site/Tianjie-Zou-Team/lab-commons.git",
+    "lab-commons[paths] @ git+https://github.com/DawnEver/lab-commons.git",
 ]
 
 [project.optional-dependencies]
 # The family's development kit: rules registry, rendered configs, shared test bodies, verify entry.
 dev = [
-    "dev-lab[test] @ git+https://gitea.mingyangbao.site/Tianjie-Zou-Team/dev-lab.git",
+    "dev-lab[test] @ git+https://github.com/DawnEver/dev-lab.git",
     "pytest",
     "ruff",
 ]

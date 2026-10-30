@@ -78,8 +78,10 @@ collect = 'tests'
 [tool.dev_lab.parts]
 output = "output/logs"
 # User ruling 2026-10-30: no hosted runner is a workstation, so the workstation-marked tests (host node) run
-# in no part and nothing waits on one (dev_lab.dev.unproduced; relock onto it pending).
-unproduced = ["workstation"]
+# in no part and nothing waits on one (dev_lab.dev.unproduced; relock onto it pending). User ruling 10-30 would
+# move live to a hosted row, but no hosted runner can produce it: ai-lab reads keys only from the git credential
+# store, never the environment, and the live part calls OpenAI too, whose key is no repo secret.
+unproduced = ["workstation", "live"]
 
 [tool.lab_commons.tests]
 produce = ["-m", "dev_lab.dev.verify", "--part", "{part}"]

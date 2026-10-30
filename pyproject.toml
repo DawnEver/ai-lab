@@ -38,9 +38,8 @@ ai_lab = ["providers.toml", "review/method_data/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-m 'not live'"
 markers = [
-    "live: calls a real model (network or a local CLI); run with -m live",
+    "live: calls a real model and needs its credential: its own part (tests/live), never tests/base",
     "workstation: needs a live checkout or agent tooling (hooks, origin refs, worktrees, node)",
 ]
 
@@ -81,7 +80,7 @@ output = "output/logs"
 
 [tool.lab_commons.tests]
 produce = ["-m", "dev_lab.dev.verify", "--part", "{part}"]
-resources = ["workstation"]
+resources = ["live", "workstation"]
 
 # The family branch flow: integrate/main coordinates; main moves only by `integrate promote` (fast-forward)
 # on a full forge PASS. Adopted 2026-10-18 (user ruling: every repo runs the lab-commons principles):

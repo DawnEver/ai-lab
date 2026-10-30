@@ -1,4 +1,4 @@
-"""Real calls. Deselected by default; ``pytest -m live``. A provider whose key is absent
+"""Real calls: the ``live`` part, produced only where the credential resource exists. A provider whose key is absent
 FAILS here with the Unsupported message naming what is missing -- it is never skipped."""
 
 import pytest

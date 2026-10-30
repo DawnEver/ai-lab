@@ -275,7 +275,7 @@ A user `providers.toml` that still uses a retired field is refused naming its re
 ```
 uv pip install -e ".[dev]"     # the family dev kit (dev-lab), pytest, ruff
 make verify                    # python -m dev_lab.dev.verify: ruff, the suite, hook wiring
-python -m pytest -m live       # real calls: every provider whose key is stored
+python -m dev_lab.dev.verify --part live   # real calls: every provider whose key is stored
 ```
 
 `.gitignore`, `.gitattributes`, `.rgignore` and `Makefile` are RENDERED from

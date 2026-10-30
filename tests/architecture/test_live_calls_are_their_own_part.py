@@ -1,7 +1,8 @@
 """A test calling a paid model needs a credential: it is the ``live`` need-set, never ``tests/base``.
 
-A hosted runner has no credential, so the ``live`` part is posted absent there -- on record, not failed and not
-skipped -- and a host declaring the resource produces it.
+User decision 2026-10-30: the ``live`` part runs on its own push-only hosted row, whose setup step imports the
+Anthropic key from a repository secret through ``ai_lab.auth login --from-file -`` (the declaration is
+``[tool.dev_lab.parts] hosted``). The OpenAI call is its own ``openai`` resource, declared unproduced.
 """
 
 import tomllib
@@ -31,6 +32,7 @@ def test_the_openai_call_is_its_own_unproduced_resource_so_live_runs_without_its
     text = PYPROJECT.read_text(encoding='utf-8')
     assert 'openai' in read_vocabulary(text).resources
     assert 'openai' in unproduced(text)
+    assert 'live' not in unproduced(text), 'live runs on its hosted row'
     marks = {test_openai.pytestmark.name}
     assert marks == {'openai'}, 'it is not in live, so live never falsely fails on a missing OpenAI key'
     assert not hasattr(test_live, 'test_openai_decisions_native')

@@ -81,7 +81,12 @@ output = "output/logs"
 # User ruling 2026-10-30: no hosted runner is a workstation, so the workstation-marked tests (host node) run
 # in no part and nothing waits on one (dev_lab.dev.unproduced). The OpenAI test is its own `openai` resource
 # (user decision 10-30): its key is no repository secret, so no producer holds it.
-unproduced = ["workstation", "live", "openai"]
+unproduced = ["workstation", "openai"]
+# User decision 10-30 (an approved exception to the 10-13 credential-store ruling): live runs on one push-only
+# hosted linux row (dev_lab.dev.jobparts.hosted_jobs). Its setup step alone holds the secret and hands it on stdin
+# to the one key door, `ai_lab.auth login --from-file -`; the code still never reads an environment key. A fresh
+# runner has no credential helper, so the step configures git's in-memory cache first.
+hosted = { live = { secrets = ["ANTHROPIC_API_KEY"], setup = "git config --global credential.helper 'cache --timeout=7200' && uv run --no-sync python -m ai_lab.auth login --from-file -" } }
 
 [tool.lab_commons.tests]
 produce = ["-m", "dev_lab.dev.verify", "--part", "{part}"]

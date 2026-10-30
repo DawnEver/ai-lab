@@ -25,7 +25,7 @@
       "scope": [
         "Module boundaries and layering violations",
         "Import architecture — map the import graph: circular imports, barrel (lib.mjs / index) re-export cycles, imports reaching across module or plugin boundaries into another module's internals, and import direction contradicting the documented layering",
-        "Coupling / cohesion problems and circular dependencies",
+        "Coupling / cohesion problems",
         "Duplication and missing abstractions across the codebase",
         "File size — code files > 300 lines warrant scrutiny; > 600 lines MUST be split into smaller modules",
         "Doc size — any single SKILL.md / AGENTS.md / CLAUDE.md > 100 lines warrants scrutiny: push mechanism, schemas, and edge-cases into reference/* (progressive disclosure), keeping runtime docs to the execution path",

@@ -120,7 +120,8 @@ def test_status_lists_each_provider_with_its_auth_kind_and_key_state_never_the_s
     assert 'sk-fake-status' not in out
 
 
-def test_status_counts_slots_up_to_the_first_gap(credential_store, capsys):
+def test_status_counts_slots_up_to_the_first_gap(credential_store, only_provider, capsys):
+    only_provider('openai')
     credential_store('api.openai.com', 'sk-a')
     credential_store('api.openai.com', 'sk-b', 'api-key-2')
     credential_store('api.openai.com', 'sk-d', 'api-key-4')

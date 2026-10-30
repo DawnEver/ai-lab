@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from lab_commons.credentials import store_credential
 
-from ai_lab import Choice, DecisionRequest, Fields, Image, Level, Option, Predicate, Score, Text
+from ai_lab import Choice, DecisionRequest, Fields, Image, Level, Option, Predicate, Score, Text, auth
 from ai_lab.review.method import METHOD_DIR
 
 PNG = b'\x89PNG\r\n\x1a\nfake'
@@ -53,6 +53,22 @@ def credential_store(tmp_path, monkeypatch):
 
     put.file = store
     return put
+
+
+@pytest.fixture
+def only_provider(monkeypatch):
+    """``only(name)``: ``auth`` sees the one catalogue row a test's claim is about.
+
+    Load, not behaviour: ``status`` asks git for every keyed host x (default + each task) x slot, one
+    ``git credential`` process each (~60 over the full catalogue, ~7 s on Windows). A claim about one
+    host's line is the same claim with the other rows absent.
+    """
+
+    def only(name):
+        row = auth.catalogue()[name]
+        monkeypatch.setattr(auth, 'catalogue', lambda: {name: row})
+
+    return only
 
 
 @pytest.fixture

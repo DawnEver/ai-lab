@@ -63,7 +63,8 @@ def test_a_distinct_key_still_stores(credential_store, monkeypatch):
     assert api_key(HOST, task='optimization') == 'sk-opt'
 
 
-def test_status_lists_a_default_and_task_group_sharing_one_key(credential_store, capsys):
+def test_status_lists_a_default_and_task_group_sharing_one_key(credential_store, only_provider, capsys):
+    only_provider('anthropic')
     store_credential(HOST, 'api-key', 'sk-migrated')
     store_credential(HOST, 'api-key-pr-review', 'sk-migrated')
     store_credential(HOST, 'api-key-optimization', 'sk-own')

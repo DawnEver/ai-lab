@@ -49,7 +49,8 @@ def test_slot_seat_and_s_are_one_argument(credential_store, monkeypatch, flag):
     assert api_key('api.openai.com', slot=3) == 'sk-fake-3'
 
 
-def test_status_lists_the_stored_task_keys(credential_store, capsys):
+def test_status_lists_the_stored_task_keys(credential_store, only_provider, capsys):
+    only_provider('anthropic')
     credential_store('api.anthropic.com', 'sk-default')
     credential_store('api.anthropic.com', 'sk-review', 'api-key-pr-review')
     credential_store('api.anthropic.com', 'sk-review-2', 'api-key-pr-review-2')

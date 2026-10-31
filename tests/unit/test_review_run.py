@@ -92,6 +92,10 @@ def _failed(kind):
             'error': 'it failed'}  # fmt: skip
 
 
+def _nothing(_asked):
+    return '(nothing)'
+
+
 @pytest.fixture(scope='module')
 def method(method_dir):
     return load_method(method_dir, principles=PRINCIPLES, registry=())
@@ -100,11 +104,11 @@ def method(method_dir):
 def _run(method, call, **kw):
     kw.setdefault('providers', None)
     kw.setdefault('available', {'anthropic', 'openai'})
-    return run(method, range_='main...HEAD', diff='+x = 1\n', model='claude-test', call=call,
+    return run(method, range_='main...HEAD', change='x.py  +1 -0', explore=_nothing, model='claude-test', call=call,
                rng=Draws(0.7, 0.1), **kw)  # fmt: skip
 
 
-def test_the_headless_default_reviews_the_diff_through_anthropic_and_validates(method):
+def test_the_headless_default_explores_the_change_through_anthropic_and_validates(method):
     call = FakeCall({'anthropic': _ok([FINDING, {'severity': 'NOPE'}])})
     doc = _run(method, call)
     assert _errors(method.output_schema, doc) == []
@@ -131,7 +135,7 @@ def test_the_headless_default_reviews_the_diff_through_anthropic_and_validates(m
         # The rendered prompt is the user turn: an empty context is an empty user message, which the
         # Messages API refuses with a 400 (`user messages must have non-empty content`).
         assert [part['kind'] for part in request['context']] == ['text']
-        assert '+x = 1' in request['context'][0]['text']
+        assert 'x.py  +1 -0' in request['context'][0]['text'], 'the map, never a diff'
 
 
 @pytest.mark.parametrize('kind', ['exhausted', 'auth', 'rate_limit', 'timeout', 'unsupported'])
@@ -160,9 +164,9 @@ def test_an_unavailable_provider_is_never_substituted(method):
     assert [r['provider'] for r in call.requests] == ['openai']
 
 
-def test_an_empty_diff_is_skipped_without_a_call(method):
+def test_an_empty_change_is_skipped_without_a_call(method):
     call = FakeCall({})
-    doc = run(method, range_='HEAD', diff='  \n', model='m', call=call, rng=Draws(0.5, 0.5),
+    doc = run(method, range_='HEAD', change='  \n', explore=_nothing, model='m', call=call, rng=Draws(0.5, 0.5),
               providers=None, available={'anthropic'})  # fmt: skip
     assert _errors(method.output_schema, doc) == []
     assert {r['status'] for r in doc['reviewers']} == {'skipped'}
@@ -214,8 +218,8 @@ def _eligible(method):
 
 def test_the_strict_lens_plans_every_eligible_profile(method):
     eligible = _eligible(method)
-    doc = run(method, range_='a..b', diff='+x = 1\n', model='m', providers=None, available={'anthropic'},
-              call=FakeCall({'anthropic': _ok([])}), rng=Draws(*[0.0] * len(eligible)),
+    doc = run(method, range_='a..b', change='x.py  +1 -0', explore=_nothing, model='m', providers=None,
+              available={'anthropic'}, call=FakeCall({'anthropic': _ok([])}), rng=Draws(*[0.0] * len(eligible)),
               lens='strict')  # fmt: skip
     assert sorted(doc['profiles']) == sorted(eligible)
 

@@ -5,9 +5,10 @@ reviewers' statuses. A refused invocation -- a method directory that is missing 
 ``schema_version``, a range git cannot diff, an unreadable ``--findings`` -- exits 2 naming it on stderr,
 with nothing on stdout.
 
-A reviewer is never handed the diff (user ruling 2026-10-31): it gets the range's CHANGE MAP -- the changed
-files with their line counts and the directory tree, the directory level alone past a bound -- and explores,
-asking each turn for the diffs, files and greps it chooses (:mod:`ai_lab.review.explore`). The forge reviews a
+A reviewer's prompt follows the change's SIZE TIER (user ruling 2026-10-31, :mod:`ai_lab.review.explore`): a
+small change's whole diff, a medium one's CHANGE MAP (the changed files with their line counts and the directory
+tree), a huge one's directory-level map and commit messages; in every tier it may ask each turn for the diffs,
+files and greps it chooses. The forge reviews a
 large head in SLICES (dev-lab ``forgereview``): each slice runs this with ``--paths`` (the map and every read
 are restricted to them) and a ``--lens`` (``strict`` plans every eligible reviewer, ``standard`` the method's
 count, ``light`` one). ``--findings <merged.json>`` is the SYNTHESIS pass: it reads the slices' merged findings
@@ -26,17 +27,20 @@ import argparse
 import json
 import random
 import sys
+import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Final
 
 from ai_lab.call import answer
 from ai_lab.client import catalogue
-from ai_lab.review.explore import Changed, change_map, serve
+from ai_lab.review.explore import Changed, brief, change_map, commit_messages, serve
+from ai_lab.review.explore import diff as git_diff
 from ai_lab.review.explore import numstat as git_numstat
 from ai_lab.review.method import METHOD_DIR, UnknownMethodVersion, load_method, principle_list, rule_ids
 from ai_lab.review.run import LENSES, run
 from ai_lab.review.summary import change_summary, git_intent
+from ai_lab.review.tiers import evidence, ledger_path, record
 
 __all__ = []
 
@@ -51,13 +55,16 @@ _SYNTHESIS: Final = (
 )
 
 
-def _change(args: argparse.Namespace, rows: Sequence[Changed]) -> str:
-    """The text the reviewers start from: the slice's change map, or for ``--findings`` the synthesis brief."""
+def _change(args: argparse.Namespace, rows: Sequence[Changed], diff: Callable[..., str],
+            log: Callable[[str, str], str]) -> dict:  # fmt: skip
+    """What the reviewers start from: the slice's tier brief, or for ``--findings`` the synthesis brief (explored)."""
     if args.findings is None:
-        return change_map(args.range_, rows)
+        return brief(args.range_, rows, read_diff=lambda: diff(args.range_, args.repo, tuple(args.paths)),
+                     read_log=lambda: log(args.range_, args.repo))  # fmt: skip
     findings = json.loads(Path(args.findings).read_text(encoding='utf-8'))
     reported = json.dumps(findings, ensure_ascii=False, indent=1)
-    return _SYNTHESIS.format(findings=reported, stat=change_map(args.range_, rows))
+    text = _SYNTHESIS.format(findings=reported, stat=change_map(args.range_, rows))
+    return {'mode': 'medium', 'manifest': text, 'diff': '', 'commits': '', 'diff_chars': len(text)}
 
 
 def _disposed(path: str | None) -> dict[str, str]:
@@ -91,6 +98,8 @@ def main(
     *,
     call: Callable[[Mapping], Mapping] = answer,
     numstat: Callable[..., list[Changed]] = git_numstat,
+    diff: Callable[..., str] = git_diff,
+    log: Callable[[str, str], str] = commit_messages,
     intent: Callable[[str, str], dict] | None = git_intent,
 ) -> int:
     """Run one headless review and print its findings JSON; exit 2 on a refused invocation."""
@@ -120,19 +129,37 @@ def main(
     try:
         method = load_method(args.method, principles=principle_list(args.principles), registry=rule_ids(args.rules))
         rows = numstat(args.range_, args.repo, () if args.findings else tuple(args.paths))
-        text = _change(args, rows)
+        change = _change(args, rows, diff, log)
         disposed = _disposed(args.disposed)
     except (FileNotFoundError, UnknownMethodVersion, ValueError, TypeError) as refused:
         sys.stderr.write(f'refused: {refused}\n')
         return _EXIT_REFUSED
 
-    def explore(asked: Mapping) -> str:
-        return serve(asked, range_=args.range_, repo=args.repo, rows=rows)
+    spent: dict = {'turns': 0, 'read_chars': 0, 'usage': {}}
 
+    def explore(asked: Mapping) -> str:
+        text = serve(asked, range_=args.range_, repo=args.repo, rows=rows)
+        spent['read_chars'] += len(text)
+        return text
+
+    def counted(request: Mapping) -> Mapping:
+        reply = call(request)
+        spent['turns'] += 1
+        for key, value in (reply.get('usage') or {}).items():
+            if isinstance(value, int):
+                spent['usage'][key] = spent['usage'].get(key, 0) + value
+        return reply
+
+    started = time.monotonic()
     doc = run(
-        method, range_=args.range_, change=text, explore=explore, model=args.model, providers=args.providers,
-        available=set(catalogue()), call=call, rng=random.SystemRandom(), lens=args.lens, disposed=disposed,
+        method, range_=args.range_, brief=change, explore=explore, model=args.model, providers=args.providers,
+        available=set(catalogue()), call=counted, rng=random.SystemRandom(), lens=args.lens, disposed=disposed,
     )  # fmt: skip
+    record(ledger_path(args.repo), evidence(
+        range_=args.range_, repo=args.repo, rows=rows, tier='synthesis' if args.findings else change['mode'],
+        diff_chars=change['diff_chars'], turns=spent['turns'], read_chars=spent['read_chars'],
+        findings=doc['findings'], seconds=time.monotonic() - started, usage=spent['usage'],
+    ))  # fmt: skip
     if not args.no_summary and intent is not None:
         provider = doc['reviewers'][0]['provider'] if doc['reviewers'] else 'anthropic'
         doc = {'summary': _summary(args, intent, call, provider), **doc}

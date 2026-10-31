@@ -92,6 +92,10 @@ def _failed(kind):
             'error': 'it failed'}  # fmt: skip
 
 
+_MEDIUM = {'mode': 'medium', 'manifest': 'x.py  +1 -0', 'diff': '', 'commits': ''}
+_EMPTY = {'mode': 'empty', 'manifest': '', 'diff': '', 'commits': ''}
+
+
 def _nothing(_asked):
     return '(nothing)'
 
@@ -104,7 +108,7 @@ def method(method_dir):
 def _run(method, call, **kw):
     kw.setdefault('providers', None)
     kw.setdefault('available', {'anthropic', 'openai'})
-    return run(method, range_='main...HEAD', change='x.py  +1 -0', explore=_nothing, model='claude-test', call=call,
+    return run(method, range_='main...HEAD', brief=_MEDIUM, explore=_nothing, model='claude-test', call=call,
                rng=Draws(0.7, 0.1), **kw)  # fmt: skip
 
 
@@ -166,7 +170,7 @@ def test_an_unavailable_provider_is_never_substituted(method):
 
 def test_an_empty_change_is_skipped_without_a_call(method):
     call = FakeCall({})
-    doc = run(method, range_='HEAD', change='  \n', explore=_nothing, model='m', call=call, rng=Draws(0.5, 0.5),
+    doc = run(method, range_='HEAD', brief=_EMPTY,explore=_nothing, model='m', call=call, rng=Draws(0.5, 0.5),
               providers=None, available={'anthropic'})  # fmt: skip
     assert _errors(method.output_schema, doc) == []
     assert {r['status'] for r in doc['reviewers']} == {'skipped'}
@@ -218,7 +222,7 @@ def _eligible(method):
 
 def test_the_strict_lens_plans_every_eligible_profile(method):
     eligible = _eligible(method)
-    doc = run(method, range_='a..b', change='x.py  +1 -0', explore=_nothing, model='m', providers=None,
+    doc = run(method, range_='a..b', brief=_MEDIUM, explore=_nothing, model='m', providers=None,
               available={'anthropic'}, call=FakeCall({'anthropic': _ok([])}), rng=Draws(*[0.0] * len(eligible)),
               lens='strict')  # fmt: skip
     assert sorted(doc['profiles']) == sorted(eligible)

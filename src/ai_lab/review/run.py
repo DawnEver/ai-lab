@@ -1,8 +1,8 @@
-"""The headless run mode: plan the reviewers, render each prompt, let each EXPLORE the change, merge.
+"""The headless run mode: plan the reviewers, render each prompt for the change's tier, let each explore, merge.
 
-A reviewer is given the change's map, never its diff (:mod:`ai_lab.review.explore`): each turn it answers with
-``findings`` or with ``requests`` the caller's *explore* answers, for at most ``turns`` turns, the last of which
-must answer.
+A reviewer is given its tier's brief (:func:`ai_lab.review.explore.brief`: the whole diff when small, the map when
+medium, the directory map and the commit messages when huge); each turn it answers with ``findings`` or with
+``requests`` the caller's *explore* answers, for at most ``turns`` turns, the last of which must answer.
 
 ``method.json``'s ``run_modes.headless`` is the capability: its providers (the shipped default config's, else
 overridable), the contexts
@@ -100,7 +100,7 @@ def run(
     method: Method,
     *,
     range_: str,
-    change: str,
+    brief: Mapping[str, str],
     explore: Callable[[Mapping], str],
     model: str,
     providers: Sequence[str] | None,
@@ -112,7 +112,7 @@ def run(
     disposed: Mapping[str, str] | None = None,
     turns: int = TURNS,
 ) -> dict:
-    """The findings JSON of one headless review of the change *range_* names, *change* its map.
+    """The findings JSON of one headless review of the change *range_* names, *brief* its tier's manifest fields.
 
     *explore* answers a turn's requests (:func:`ai_lab.review.explore.serve`); each reviewer has *turns* turns.
 
@@ -122,8 +122,7 @@ def run(
     """
     mode = method.spec['run_modes']['headless']
     providers = list(providers or configured_providers({}, 'headless', defaults) or mode['providers'])
-    manifest = {'mode': 'explore' if change.strip() else 'empty', 'range': range_, 'excludedSummary': '',
-                'manifest': change, 'turns': turns}  # fmt: skip
+    manifest = {**brief, 'range': range_, 'excludedSummary': '', 'turns': turns}
     schema = _schema(method)
     keys = _plan(method, mode, rng, lens)
     reviewers, results = [], []

@@ -15,6 +15,11 @@ from ai_lab.review.method import load_method
 from ai_lab.review.rules import finding_id
 from tests.review_principles import PRINCIPLES, PRINCIPLES_FILE
 
+
+def _no_diff(*_a):
+    return ''
+
+
 OK = {'schema_version': 1, 'ok': True, 'kind': '', 'result': {'findings': []}, 'usage': None, 'key_slot': 1,
       'error': ''}  # fmt: skip
 
@@ -28,7 +33,7 @@ def test_the_cli_prints_the_findings_json(method_dir, capsys):
     seen = []
     code = main(['--principles', str(PRINCIPLES_FILE), '--rules', '',
                  '--method', str(method_dir), '--range', 'main...HEAD', '--model', 'claude-test'],
-                call=lambda r: seen.append(r) or OK, numstat=_rows)  # fmt: skip
+                call=lambda r: seen.append(r) or OK, numstat=_rows, diff=_no_diff)  # fmt: skip
     assert code == 0
     doc = json.loads(capsys.readouterr().out)
     assert doc['schema_version'] == 3
@@ -40,7 +45,7 @@ def test_the_cli_prints_the_findings_json(method_dir, capsys):
 def test_providers_override_the_default(method_dir, capsys):
     main(['--principles', str(PRINCIPLES_FILE), '--rules', '',
           '--method', str(method_dir), '--range', 'main...HEAD', '--model', 'm', '--providers', 'ghost'],
-         call=lambda r: OK, numstat=_rows)  # fmt: skip
+         call=lambda r: OK, numstat=_rows, diff=_no_diff)  # fmt: skip
     doc = json.loads(capsys.readouterr().out)
     assert {(r['provider'], r['status']) for r in doc['reviewers']} == {('ghost', 'unavailable')}
 
@@ -65,6 +70,7 @@ def test_an_unknown_method_version_exits_2_naming_it(method_dir, tmp_path, capsy
             ],
             call=None,
             numstat=_rows,
+            diff=_no_diff,
         )
         == 2
     )
@@ -110,7 +116,7 @@ def test_the_run_takes_the_verb_less_argv_the_forge_declares(method_dir, capsys)
         '--model',
         'claude-test',
     ]
-    assert main(argv, call=lambda r: OK, numstat=_rows) == 0
+    assert main(argv, call=lambda r: OK, numstat=_rows, diff=_no_diff) == 0
     assert json.loads(capsys.readouterr().out)['schema_version'] == 3
 
 
@@ -120,6 +126,7 @@ def test_the_method_defaults_to_the_packaged_one(capsys):
             ['--principles', str(PRINCIPLES_FILE), '--rules', '', '--range', 'main...HEAD', '--model', 'm'],
             call=lambda r: OK,
             numstat=_rows,
+            diff=_no_diff,
         )
         == 0
     )
@@ -198,7 +205,7 @@ def test_paths_restrict_the_map_to_the_slice(method_dir, capsys):
         'src/x',
         'docs',
     ]
-    assert main(argv, call=lambda r: OK, numstat=rows) == 0
+    assert main(argv, call=lambda r: OK, numstat=rows, diff=_no_diff) == 0
     assert seen == [('src/x', 'docs')]
     assert len(json.loads(capsys.readouterr().out)['reviewers']) == 1
 
@@ -246,7 +253,7 @@ def test_synthesis_reads_the_merged_findings_and_the_range_shape(method_dir, tmp
         '--findings',
         str(merged),
     ]
-    code = main(argv, call=lambda r: seen.append(r) or OK, numstat=rows)
+    code = main(argv, call=lambda r: seen.append(r) or OK, numstat=rows, diff=_no_diff)
     assert code == 0
     text = seen[0]['context'][0]['text']
     assert 'SLICE-FINDING' in text
@@ -269,7 +276,7 @@ def test_an_unreadable_findings_file_exits_2(method_dir, tmp_path, capsys):
         '--findings',
         str(tmp_path / 'no.json'),
     ]
-    assert main(argv, call=None, numstat=lambda *a: []) == 2
+    assert main(argv, call=None, numstat=lambda *a: [], diff=_no_diff) == 2
     assert capsys.readouterr().out == ''
 
 
@@ -281,7 +288,9 @@ def test_every_review_entry_point_refuses_without_the_callers_rules_or_principle
     given = {'--rules': '', '--principles': str(PRINCIPLES_FILE)}
     owned = [part for flag, value in given.items() if flag != missing for part in (flag, value)]
     run = {
-        'review': lambda: main([*owned, '--range', 'main...HEAD', '--model', 'm'], call=lambda r: OK, numstat=_rows),
+        'review': lambda: main(
+            [*owned, '--range', 'main...HEAD', '--model', 'm'], call=lambda r: OK, numstat=_rows, diff=_no_diff
+        ),
         'merge': lambda: merge_cli.main(owned),
         'plan': lambda: plan_cli.main(owned),
     }[cli]

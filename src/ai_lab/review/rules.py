@@ -86,6 +86,7 @@ def render_prompt(method: Method, profile: Mapping, manifest: Mapping) -> dict:
         'diff': manifest.get('diff'),
         'manifest': manifest.get('manifest'),
         'turns': manifest.get('turns'),
+        'commits': manifest.get('commits'),
         'finding_schema': schema,
     }
     # method.json rules.list_item once per given principle, one per line; then the registry ids on one line.

@@ -51,7 +51,7 @@ from ai_lab.review.method import (
 )
 from ai_lab.review.run import REVIEW_TASK, explored
 
-__all__ = ['CLOSING', 'OUTCOMES', 'SCHEMA_VERSION', 'fence', 'judge_of', 'main', 'verified']
+__all__ = ['ANCHOR_WINDOW', 'CLOSING', 'OUTCOMES', 'SCHEMA_VERSION', 'fence', 'invalid', 'judge_of', 'main', 'verified']
 
 SCHEMA_VERSION: Final = 1
 _EXIT_REFUSED: Final = 2
@@ -64,6 +64,9 @@ CLOSING: Final = frozenset({'fixed', 'false-positive'})
 
 #: How much of the finding's own file the first turn carries (read at the HEAD, whatever the range touched).
 HELD_BYTES: Final = TURN_BYTES // 3
+
+#: How many LINES from the finding's anchor a cite in the finding's own file may sit, when the anchor is found.
+ANCHOR_WINDOW: Final = 40
 
 #: The default run budget: calls, and bytes of prompt context sent.
 MAX_CALLS: Final = 60
@@ -103,7 +106,8 @@ Decide ONE outcome:
 Answer with `outcome`, `evidence` (one or two sentences) and `cites`: the `path:line` places at the head that prove a
 `fixed` or `false-positive` outcome. A closing outcome whose cites do not exist at the head is rejected.
 
-The finding (rule {rule}, in {file}):
+The finding:
+{where}
 {finding}
 
 The author's claim that this is not a defect:
@@ -136,17 +140,58 @@ def _head(range_: str) -> str:
     return range_.rsplit('..', 1)[-1].lstrip('.') or 'HEAD'
 
 
-def verified(cites: object, *, repo: str, head: str) -> list[str]:
-    """The *cites* (``path:line``) that exist at *head*: the file is there and holds that line."""
-    good = []
+def _norm(line: str) -> str:
+    return ' '.join(line.split())
+
+
+def verified(
+    cites: object, *, repo: str, head: str, file: str, anchor: str, changed: frozenset[str] | set[str], outcome: str
+) -> list[str]:  # fmt: skip
+    """The *cites* (``path:line``) that prove *outcome* about a finding in *file* at *head*.
+
+    A cite counts only when its line exists at the head AND it is in the finding's own *file* -- within
+    :data:`ANCHOR_WINDOW` lines of the *anchor* when the anchor is still there -- or in a file the range *changed*.
+    A ``fixed`` cite must be in a file the range changed: a fix is a change. Any existing line elsewhere
+    (``README.md:1``) proves nothing.
+    """
+    good, shown = [], {}
     for cite in cites if isinstance(cites, list) else []:
         found = _CITE.match(str(cite).strip())
         if found is None:
             continue
-        shown = _git(repo, 'show', f'{head}:{found["path"]}')
-        if shown.returncode == 0 and int(found['line']) <= len(shown.stdout.splitlines()):
-            good.append(f'{found["path"]}:{found["line"]}')
+        path, line = found['path'], int(found['line'])
+        if path not in shown:
+            done = _git(repo, 'show', f'{head}:{path}')
+            shown[path] = done.stdout.splitlines() if done.returncode == 0 else None
+        text = shown[path]
+        if text is None or line > len(text) or (outcome == 'fixed' and path not in changed):
+            continue
+        if path == file:
+            at = [n for n, one in enumerate(text, 1) if _norm(anchor) and _norm(anchor) in _norm(one)]
+            if at and min(abs(line - n) for n in at) > ANCHOR_WINDOW:
+                continue
+        elif path not in changed:
+            continue
+        good.append(f'{path}:{line}')
     return good
+
+
+_CONTROL: Final = re.compile(r'[\x00-\x1f\x7f]')
+
+
+def invalid(finding: Mapping, rules: frozenset[str]) -> str | None:
+    """Why *finding* is not plain data the prompt may carry, or ``None``.
+
+    Its file is one repo-relative line with no control character and no ``..``; its rule is a known id (*rules*).
+    """
+    path, rule = str(finding['file']), str(finding['rule'])
+    if not path or _CONTROL.search(path) or path.startswith(('/', '\\')) or re.match(r'^[A-Za-z]:', path):
+        return f'file {path!r} is not one repo-relative line'
+    if '..' in path.replace('\\', '/').split('/'):
+        return f'file {path!r} leaves the repository'
+    if rule not in rules:
+        return f'rule {rule!r} is not a known principle or registry id'
+    return None
 
 
 def _findings(path: str) -> list[dict]:
@@ -198,7 +243,8 @@ def _prompt(finding: Mapping, nonce: str, *, range_: str, mapped: str, held: str
     listed = '\n'.join(f'- {p["id"]} ({p["name"]}): {p["statement"]}' for p in method.principles) or '(none)'
     written = '\n'.join(f'{key}: {finding[key]}' for key in ('anchor', 'summary', 'detail', 'suggestion'))
     return _PROMPT.format(
-        range_=range_, nonce=nonce, turns=TURNS, rule=finding['rule'], file=finding['file'],
+        range_=range_, nonce=nonce, turns=TURNS,
+        where=fence('WHERE', f"rule: {finding['rule']}\nfile: {finding['file']}", nonce),
         finding=fence('FINDING', written, nonce), claim=fence('CLAIM', str(finding['claim'] or '(none)'), nonce),
         held=held, principles=listed, rules=', '.join(method.registry) or '(none)', map=fence('MAP', mapped, nonce),
     )  # fmt: skip
@@ -230,7 +276,9 @@ def _sample(finding: Mapping, call: Callable, request: Mapping, *, args: argpars
     outcome = result.get('outcome') if isinstance(result, dict) else None
     if outcome not in OUTCOMES:
         return 'present', f'not judged: no valid outcome ({outcome!r})', []
-    cites = verified(result.get('cites'), repo=args.repo, head=_head(args.range_))
+    changed = frozenset(path for _a, _d, path in rows)
+    cites = verified(result.get('cites'), repo=args.repo, head=_head(args.range_), file=str(finding['file']),
+                     anchor=str(finding['anchor']), changed=changed, outcome=outcome)  # fmt: skip
     return outcome, str(result.get('evidence') or ''), cites
 
 
@@ -272,8 +320,12 @@ def main(argv: Sequence[str] | None = None, *, call: Callable[[Mapping], Mapping
     mapped = change_map(args.range_, rows)
     metered = _Metered(call, calls=args.max_calls, size=args.max_bytes)
     verdicts = []
+    known = frozenset([*(p['id'] for p in method.principles), *method.registry])
     for finding in findings:
         fid, chosen = str(finding['id']), judge_of(finding, providers, mode, args.model)
+        if (why := invalid(finding, known)) is not None:
+            verdicts.append({'id': fid, 'outcome': 'present', 'evidence': f'not judged: invalid finding ({why})'})
+            continue
         if chosen is None:
             verdicts.append({'id': fid, 'outcome': 'present', 'evidence': 'not judged: no independent judge'})
             continue

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from ai_lab.review.judge import judge_of, main, verified
+from ai_lab.review.judge import ANCHOR_WINDOW, judge_of, main, verified
 from tests.review_principles import PRINCIPLES_FILE
 from tests.unit.test_review_explore import _repo
 
@@ -216,10 +216,65 @@ def test_the_findings_file_is_read_at_the_head_even_when_the_range_never_touched
     assert SENTINEL not in prompt
 
 
-def test_a_cite_is_verified_by_code_against_the_head(tmp_path: Path) -> None:
-    repo, range_ = _repo(tmp_path, {'src/a.py': 'a = 1\nb = 2\n'})
-    head = range_.rsplit('..', 1)[1]
-    assert verified(['src/a.py:2', 'src/a.py:3', 'x.py:1', 'src/a.py'], repo=str(repo), head=head) == ['src/a.py:2']
+def test_a_cite_is_verified_by_code_against_the_head_the_change_and_the_anchor(tmp_path: Path) -> None:
+    """Only a line that exists, in the finding's file (near its anchor) or a file the range changed, counts."""
+    repo, range_ = _repo(tmp_path, {'src/a.py': 'compute = 1\n' + 'pad = 0\n' * 100, 'src/b.py': 'b = 1\n'})
+    head, changed = range_.rsplit('..', 1)[1], {'src/a.py', 'src/b.py'}
+
+    def ok(cites: list, outcome: str = 'false-positive', file: str = 'src/a.py') -> list:
+        return verified(cites, repo=str(repo), head=head, file=file, anchor='compute', changed=changed,
+                        outcome=outcome)  # fmt: skip
+
+    assert ok(['src/a.py:2']) == ['src/a.py:2'], 'near the anchor'
+    assert ok([f'src/a.py:{ANCHOR_WINDOW + 5}']) == [], 'in the file, but far from the anchor'
+    assert ok(['src/b.py:1']) == ['src/b.py:1'], 'a file the range changed'
+    assert ok(['README:1']) == [], 'an unrelated existing line no longer closes'
+    assert ok(['src/a.py:999', 'x.py:1', 'src/a.py']) == []
+    assert ok(['README:1'], file='README') == ['README:1'], 'the finding file itself, unchanged: false-positive'
+    assert ok(['README:1'], outcome='fixed', file='README') == [], 'a fix is in a file the range changed'
+
+
+def test_an_unrelated_existing_line_does_not_close_a_finding(tmp_path: Path, capsys) -> None:
+    """PLANTED CONTROL: the same verdict citing a line near the anchor closes (the first test)."""
+
+    def call(_request: Mapping) -> Mapping:
+        return _ok({'outcome': 'fixed', 'evidence': 'e', 'cites': ['README:1']})
+
+    _, doc, _ = _run(tmp_path, [_finding('a')], call, capsys)
+    assert doc['verdicts'][0]['outcome'] == 'present'
+
+
+@pytest.mark.parametrize(
+    'bad',
+    [
+        {'file': f'src/a.py\n{INJECTED}'},
+        {'file': '/etc/passwd'},
+        {'file': '../outside.py'},
+        {'file': 'src/a\x07.py'},
+        {'rule': f'occams-razor\n{INJECTED}'},
+        {'rule': 'NOT-A-KNOWN-RULE'},
+    ],
+)
+def test_a_finding_whose_file_or_rule_is_not_plain_data_is_not_judged(tmp_path: Path, capsys, bad: dict) -> None:
+    """The file is one repo-relative line with no control character; the rule is a known id.
+
+    PLANTED CONTROL: a well-formed finding is judged by the same obedient model (the injection tests).
+    """
+    _, doc, _ = _run(tmp_path, [_finding('a', **bad)], obedient, capsys)
+    assert doc['verdicts'][0]['outcome'] == 'present'
+    assert doc['verdicts'][0]['evidence'].startswith('not judged: invalid finding')
+
+
+def test_the_file_and_rule_are_fenced_too(tmp_path: Path, capsys) -> None:
+    prompts: list[str] = []
+
+    def call(request: Mapping) -> Mapping:
+        prompts.append(_text(request))
+        return obedient(request)
+
+    _run(tmp_path, [_finding('a')], call, capsys)
+    nonce = re.search(r'<<<([0-9a-f]+) WHERE>>>', prompts[0])[1]
+    assert f'<<<{nonce} WHERE>>>\nrule: occams-razor\nfile: src/a.py\n<<<{nonce} END WHERE>>>' in prompts[0]
 
 
 @pytest.mark.parametrize('content', ['not json', '{"findings": [{"id": "a"}]}', '{"other": []}'])

@@ -9,12 +9,28 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from ai_lab.review.__main__ import main
-from ai_lab.review.explore import MAX_LISTED_FILES, TURNS, change_map, numstat, serve
+from ai_lab.review.explore import (
+    HUGE_LINES,
+    INLINE_CHARS,
+    MAX_LISTED_FILES,
+    TURNS,
+    brief,
+    change_map,
+    numstat,
+    serve,
+    tier,
+)
+from ai_lab.review.tiers import ledger_path, report
+from ai_lab.review.tiers import main as tiers_main
 from tests.review_principles import PRINCIPLES_FILE
 
 _GIT = shutil.which('git') or 'git'
 SENTINEL = 'secret_sauce = compute_the_thing()'
+#: A file whose diff is past the inline bound and under the huge one: it makes a change MEDIUM.
+PAD = {'src/pad.txt': 'p = 0\n' * (INLINE_CHARS // 6)}
 FINDING = {'severity': 'LOW', 'security': False, 'rule': 'occams-razor', 'file': 'src/a.py',
            'anchor': SENTINEL, 'summary': 'S', 'category': 'Bug'}  # fmt: skip
 
@@ -28,7 +44,7 @@ def _git(repo: Path, *args: str) -> str:
 def _repo(tmp_path: Path, files: dict[str, str]) -> tuple[Path, str]:
     """A repository whose one commit past ``base`` adds *files*; the range."""
     repo = tmp_path / 'repo'
-    repo.mkdir()
+    repo.mkdir(parents=True)
     _git(repo, 'init', '-q', '-b', 'main')
     (repo / 'README').write_text('r\n', encoding='utf-8')
     _git(repo, 'add', '.')
@@ -68,9 +84,9 @@ def _prompt(request) -> str:
     return '\n'.join(part['text'] for part in request['context'])
 
 
-def test_the_prompt_carries_the_map_and_never_the_diff(tmp_path, capsys):
+def test_a_medium_prompt_carries_the_map_and_never_the_diff(tmp_path, capsys):
     """PLANTED CONTROL: the sentinel is in the change -- asking for its diff returns it."""
-    repo, range_ = _repo(tmp_path, {'src/a.py': f'{SENTINEL}\n', 'src/b.py': 'x = 1\ny = 2\n'})
+    repo, range_ = _repo(tmp_path, {'src/a.py': f'{SENTINEL}\n', 'src/b.py': 'x = 1\ny = 2\n', **PAD})
     call = Scripted({'findings': []})
     doc = _review(repo, range_, call, capsys)
     (only,) = call.requests
@@ -84,7 +100,7 @@ def test_the_prompt_carries_the_map_and_never_the_diff(tmp_path, capsys):
 
 
 def test_the_reviewer_reads_what_it_asks_for_and_then_answers(tmp_path, capsys):
-    repo, range_ = _repo(tmp_path, {'src/a.py': f'{SENTINEL}\n'})
+    repo, range_ = _repo(tmp_path, {'src/a.py': f'{SENTINEL}\n', **PAD})
     call = Scripted({'requests': {'diff': ['src/a.py'], 'grep': ['compute_the_thing']}}, {'findings': [FINDING]})
     doc = _review(repo, range_, call, capsys)
     first, second = call.requests
@@ -105,7 +121,7 @@ def test_the_last_turn_must_answer(tmp_path, capsys):
     assert {r['status'] for r in doc['reviewers']} == {'unavailable'}, 'a reviewer that never answered is no review'
 
 
-def test_a_large_change_is_mapped_by_directory_and_still_reviewed(tmp_path, capsys):
+def test_a_huge_change_is_mapped_by_directory_with_its_commits_and_still_reviewed(tmp_path, capsys):
     files = {f'pkg{d}/mod{n}.py': f'v = {n}\n' for d in range(8) for n in range(MAX_LISTED_FILES // 4)}
     files['pkg0/mod0.py'] = f'{SENTINEL}\n'
     repo, range_ = _repo(tmp_path, files)
@@ -114,7 +130,9 @@ def test_a_large_change_is_mapped_by_directory_and_still_reviewed(tmp_path, caps
     first = _prompt(call.requests[0])
     assert 'pkg3/' in first
     assert 'pkg3/mod7.py' not in first, 'past the bound the map is the directory level'
-    assert f'past {MAX_LISTED_FILES}' in first
+    assert 'mapped by directory only' in first
+    assert 'Commit messages:' in first and 'the change' in first, 'a huge change carries its commit messages'
+    assert SENTINEL not in first
     assert 'pkg0/mod5.py' in _prompt(call.requests[1]), 'list opens a directory'
     assert SENTINEL in _prompt(call.requests[2])
     assert {r['status'] for r in doc['reviewers']} == {'ok'}
@@ -156,3 +174,60 @@ def test_an_answer_past_the_turn_budget_is_cut_to_what_remains_and_says_so(tmp_p
     assert 'src/small.py' in out, 'what did not fit is named so it can be asked for again'
     whole = serve({'show': ['src/big.py']}, range_=range_, repo=str(repo), rows=rows, budget=10**6)
     assert whole.count('line = 1') == 2_000
+
+
+_ROW = [(10, 0, 'a.py')]
+
+
+def test_each_tier_is_chosen_at_its_boundary():
+    """Planted values on both sides of every bound."""
+    assert tier(_ROW, INLINE_CHARS) == 'small'
+    assert tier(_ROW, INLINE_CHARS + 1) == 'medium'
+    assert tier([(HUGE_LINES, 0, 'a.py')], INLINE_CHARS + 1) == 'medium'
+    assert tier([(HUGE_LINES, 1, 'a.py')], 0) == 'huge', 'past the line bound, whatever the diff measured'
+    files = [(1, 0, f'f{n}.py') for n in range(MAX_LISTED_FILES)]
+    assert tier(files, 0) == 'small'
+    assert tier([*files, (1, 0, 'one-more.py')], 0) == 'huge'
+
+
+def test_the_brief_reads_the_diff_only_below_huge_and_the_log_only_when_huge():
+    def never():
+        pytest.fail('not read')
+
+    small = brief('a..b', _ROW, read_diff=lambda: 'DIFF', read_log=never)
+    assert (small['mode'], small['diff'], small['diff_chars']) == ('small', 'DIFF', 4)
+    medium = brief('a..b', _ROW, read_diff=lambda: 'x' * (INLINE_CHARS + 1), read_log=never)
+    assert (medium['mode'], medium['diff']) == ('medium', '')
+    huge = brief('a..b', [(HUGE_LINES + 1, 0, 'a.py')], read_diff=never, read_log=lambda: 'LOG')
+    assert (huge['mode'], huge['commits'], huge['diff']) == ('huge', 'LOG', '')
+    assert 'a.py' not in huge['manifest'].split('Directories')[1].split('mapped')[0].replace('./', '')
+
+
+def test_a_small_prompt_carries_the_whole_diff_and_may_still_ask(tmp_path, capsys):
+    repo, range_ = _repo(tmp_path, {'src/a.py': f'{SENTINEL}\n'})
+    call = Scripted({'requests': {'grep': ['compute_the_thing']}}, {'findings': [FINDING]})
+    doc = _review(repo, range_, call, capsys)
+    first, second = call.requests
+    assert SENTINEL in _prompt(first) and '```diff' in _prompt(first)
+    assert 'src/a.py:1:' in _prompt(second)
+    assert [f['anchor'] for f in doc['findings']] == [SENTINEL]
+
+
+def test_every_tier_records_one_ledger_row_and_the_report_reads_it(tmp_path, capsys):
+    big = {f'pkg{n}/m{k}.py': 'v = 1\n' for n in range(4) for k in range(MAX_LISTED_FILES // 4 + 1)}
+    for at, (name, files) in enumerate({'small': {'src/a.py': 'x\n'}, 'medium': PAD, 'huge': big}.items()):
+        repo, range_ = _repo(tmp_path / name, files)
+        doc = _review(repo, range_, Scripted({'findings': [FINDING]}), capsys)
+        assert {r['status'] for r in doc['reviewers']} == {'ok'}, f'{name} is reviewed'
+        rows = [json.loads(line) for line in ledger_path(str(repo)).read_text(encoding='utf-8').splitlines()]
+        assert len(rows) == at + 1, 'one row per review, appended'
+        row = rows[-1]
+        assert row['tier'] == name
+        assert (row['files'], row['commits'], row['turns'], row['findings']['LOW']) == (len(files), 1, 1, 1)
+        assert row['sha'] == _git(repo, 'rev-parse', 'HEAD')
+        assert {'lines', 'diff_chars', 'read_chars', 'seconds', 'usage', 'repo'} <= set(row)
+    text = report(rows)
+    assert '| huge | 1 | 0 | 0 | 1 |' in text and '| small | 1 | 0 | 0 | 1 |' in text
+    assert '## By diff size' in text
+    assert tiers_main(['report', str(ledger_path(str(repo)))]) == 0
+    assert '# Review tier ledger: 3 review(s)' in capsys.readouterr().out

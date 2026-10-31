@@ -88,6 +88,9 @@
         "explore"
       ],
       "models": {},
+      "judge_models": {
+        "anthropic": "claude-opus-5-5"
+      },
       "synthesis": false,
       "sink": "stdout"
     }

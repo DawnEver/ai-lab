@@ -230,8 +230,23 @@ def test_a_cite_is_verified_by_code_against_the_head_the_change_and_the_anchor(t
     assert ok(['src/b.py:1']) == ['src/b.py:1'], 'a file the range changed'
     assert ok(['README:1']) == [], 'an unrelated existing line no longer closes'
     assert ok(['src/a.py:999', 'x.py:1', 'src/a.py']) == []
-    assert ok(['README:1'], file='README') == ['README:1'], 'the finding file itself, unchanged: false-positive'
+    assert ok(['README:1'], file='README') == [], 'the finding file, unchanged and without its anchor'
     assert ok(['README:1'], outcome='fixed', file='README') == [], 'a fix is in a file the range changed'
+
+
+def test_with_the_anchor_gone_a_cite_in_the_findings_file_counts_only_when_the_range_changed_it(
+    tmp_path: Path,
+) -> None:
+    """PLANTED CONTROL: the same cite counts once the range changed the file."""
+    repo, range_ = _repo(tmp_path, {'src/a.py': 'other = 1\n' * 60})
+    head = range_.rsplit('..', 1)[1]
+
+    def ok(changed: set) -> list:
+        return verified(['src/a.py:50'], repo=str(repo), head=head, file='src/a.py', anchor='compute',
+                        changed=changed, outcome='false-positive')  # fmt: skip
+
+    assert ok(set()) == [], 'anchor gone, file unchanged: no line in it proves anything'
+    assert ok({'src/a.py'}) == ['src/a.py:50'], 'anchor gone, file changed: the change is the evidence'
 
 
 def test_an_unrelated_existing_line_does_not_close_a_finding(tmp_path: Path, capsys) -> None:

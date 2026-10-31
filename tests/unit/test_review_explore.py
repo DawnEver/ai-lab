@@ -118,7 +118,7 @@ def test_a_large_change_is_mapped_by_directory_and_still_reviewed(tmp_path, caps
     assert 'pkg0/mod5.py' in _prompt(call.requests[1]), 'list opens a directory'
     assert SENTINEL in _prompt(call.requests[2])
     assert {r['status'] for r in doc['reviewers']} == {'ok'}
-    assert first.count('mod') == 0, 'no file of the change is listed: the reviewer opens the directories it chooses'
+    assert '/mod' not in first, 'no file of the change is listed: the reviewer opens the directories it chooses'
 
 
 def test_the_map_follows_a_rename_to_its_head_path(tmp_path):
@@ -142,3 +142,17 @@ def test_paths_given_empty_is_the_whole_range(tmp_path, capsys):
     assert 'src/a.py' in prompt
     assert 'lib/b.py' in prompt
     capsys.readouterr()
+
+
+def test_an_answer_past_the_turn_budget_is_cut_to_what_remains_and_says_so(tmp_path):
+    """A file larger than a turn is still readable in part, never dropped. PLANTED: under the budget, all of it."""
+    big = 'line = 1\n' * 2_000
+    repo, range_ = _repo(tmp_path, {'src/big.py': big, 'src/small.py': 'x = 1\n'})
+    rows = numstat(range_, str(repo))
+    out = serve({'show': ['src/big.py', 'src/small.py']}, range_=range_, repo=str(repo), rows=rows, budget=5_000)
+    assert 'line = 1' in out, 'the head of the big file is read'
+    assert len(out) <= 5_400
+    assert 'cut' in out and 'src/big.py' in out
+    assert 'src/small.py' in out, 'what did not fit is named so it can be asked for again'
+    whole = serve({'show': ['src/big.py']}, range_=range_, repo=str(repo), rows=rows, budget=10**6)
+    assert whole.count('line = 1') == 2_000

@@ -1,4 +1,8 @@
-"""The headless run mode: plan the reviewers, render each prompt, ``respond`` through ai-lab, merge.
+"""The headless run mode: plan the reviewers, render each prompt, let each EXPLORE the change, merge.
+
+A reviewer is given the change's map, never its diff (:mod:`ai_lab.review.explore`): each turn it answers with
+``findings`` or with ``requests`` the caller's *explore* answers, for at most ``turns`` turns, the last of which
+must answer.
 
 ``method.json``'s ``run_modes.headless`` is the capability: its providers (the shipped default config's, else
 overridable), the contexts
@@ -10,10 +14,12 @@ nothing to review, ``unavailable`` when its provider is not in the available set
 
 from __future__ import annotations
 
+import json
 import random
 from collections.abc import Callable, Collection, Mapping, Sequence
 from typing import Final
 
+from ai_lab.review.explore import REQUESTS, TURNS
 from ai_lab.review.method import DEFAULT_CONFIG, Method, configured_providers
 from ai_lab.review.rules import merge, pick, render_prompt
 
@@ -22,7 +28,7 @@ __all__ = ['LENSES', 'REVIEW_TASK', 'run']
 #: The key task every review call is made under (its own key slots: ``auth login <provider> --task``).
 REVIEW_TASK = 'pr-review'
 
-#: The system turn of every review call. The rendered prompt (the profile's brief plus the diff) is the
+#: The system turn of every review call. The rendered prompt (the profile's brief plus the change map) is the
 #: CONTEXT -- the user turn -- because a wire builds its user message from the context, and an empty one
 #: is refused (Anthropic: ``user messages must have non-empty content``).
 _INSTRUCTIONS = 'Review the change the user turn describes; respond with the findings object the schema declares.'
@@ -55,6 +61,34 @@ def _schema(method: Method) -> dict:
     return {'type': 'object', 'required': ['findings'], 'properties': {'findings': {'type': 'array', 'items': item}}}
 
 
+def _asking(schema: Mapping) -> dict:
+    """The schema of a turn that may ask: ``findings`` (done) or ``requests`` (:data:`REQUESTS`), neither required."""
+    asks = {
+        kind: {'type': 'array', 'items': {'type': 'string'}, 'description': what} for kind, what in REQUESTS.items()
+    }
+    findings = schema['properties']['findings']
+    return {'type': 'object', 'properties': {'findings': findings, 'requests': {'type': 'object', 'properties': asks}}}
+
+
+def _explored(call: Callable[[Mapping], Mapping], request: Mapping, prompt: str, explore: Callable[[Mapping], str],
+              turns: int) -> Mapping:  # fmt: skip
+    """The reply that ends one reviewer's exploration: its findings, a failure, or the last turn's answer."""
+    context = [{'kind': 'text', 'text': prompt}]
+    for turn in range(1, turns + 1):
+        last = turn == turns
+        schema = request['schema'] if last else _asking(request['schema'])
+        reply = call({**request, 'context': list(context), 'schema': schema})
+        result = reply['result'] if reply['ok'] else None
+        asked = result.get('requests') if isinstance(result, dict) else None
+        if last or not asked:
+            return reply
+        left = turns - turn
+        close = 'the next turn is the LAST: answer with findings' if left == 1 else f'{left} turn(s) left'
+        said = f'Turn {turn}: you asked {json.dumps(asked, ensure_ascii=False)}\n{explore(asked)}\n({close}.)'
+        context.append({'kind': 'text', 'text': said})
+    return reply
+
+
 def _result(name: str, reply: Mapping) -> dict:
     if reply['ok']:
         findings = (reply['result'] or {}).get('findings')
@@ -66,7 +100,8 @@ def run(
     method: Method,
     *,
     range_: str,
-    diff: str,
+    change: str,
+    explore: Callable[[Mapping], str],
     model: str,
     providers: Sequence[str] | None,
     available: Collection[str],
@@ -75,8 +110,11 @@ def run(
     lens: str = 'standard',
     defaults: Mapping = DEFAULT_CONFIG,
     disposed: Mapping[str, str] | None = None,
+    turns: int = TURNS,
 ) -> dict:
-    """The findings JSON of one headless review of *diff* (the change *range_* names).
+    """The findings JSON of one headless review of the change *range_* names, *change* its map.
+
+    *explore* answers a turn's requests (:func:`ai_lab.review.explore.serve`); each reviewer has *turns* turns.
 
     *call* is ``ai_lab.call.answer`` (or a stand-in): one request dict in, one classified reply out.
     *model* serves every provider the run mode's ``models`` does not name. *lens* sets how many reviewers
@@ -84,7 +122,8 @@ def run(
     """
     mode = method.spec['run_modes']['headless']
     providers = list(providers or configured_providers({}, 'headless', defaults) or mode['providers'])
-    manifest = {'mode': 'review' if diff.strip() else 'empty', 'range': range_, 'excludedSummary': '', 'diff': diff}
+    manifest = {'mode': 'explore' if change.strip() else 'empty', 'range': range_, 'excludedSummary': '',
+                'manifest': change, 'turns': turns}  # fmt: skip
     schema = _schema(method)
     keys = _plan(method, mode, rng, lens)
     reviewers, results = [], []
@@ -102,10 +141,9 @@ def run(
         reviewers.append({'name': key, 'provider': provider, 'status': status})
         if status != 'pending':
             continue
-        reply = call({
+        request = {
             'verb': 'respond', 'provider': provider, 'model': mode['models'].get(provider, model),
-            'task': REVIEW_TASK, 'instructions': _INSTRUCTIONS,
-            'context': [{'kind': 'text', 'text': rendered['prompt']}], 'schema': schema,
-        })  # fmt: skip
-        results.append(_result(key, reply))
+            'task': REVIEW_TASK, 'instructions': _INSTRUCTIONS, 'schema': schema,
+        }  # fmt: skip
+        results.append(_result(key, _explored(call, request, rendered['prompt'], explore, turns)))
     return merge(method, range_=range_, profiles=keys, reviewers=reviewers, results=results, disposed=disposed)

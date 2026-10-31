@@ -136,7 +136,7 @@ def test_the_cli_puts_the_summary_first_and_honours_disposed(method_dir, tmp_pat
 
     argv = ['--principles', str(PRINCIPLES_FILE), '--rules', '', '--method', str(method_dir), '--range', 'a..b',
             '--model', 'm', '--disposed', str(disposed), '--pr-body', str(body)]  # fmt: skip
-    assert main(argv, call=lambda r: calls.append(r) or _ok_call(r), diff=lambda *a, **k: '+k = 1\n',
+    assert main(argv, call=lambda r: calls.append(r) or _ok_call(r), numstat=lambda *a, **k: [(1, 0, 'k.py')],
                 intent=intent) == 0  # fmt: skip
     doc = json.loads(capsys.readouterr().out)
     assert next(iter(doc)) == 'summary'
@@ -151,5 +151,5 @@ def test_the_cli_puts_the_summary_first_and_honours_disposed(method_dir, tmp_pat
 def test_no_summary_skips_the_summary_call(method_dir, capsys):
     argv = ['--principles', str(PRINCIPLES_FILE), '--rules', '', '--method', str(method_dir), '--range', 'a..b',
             '--model', 'm', '--no-summary']  # fmt: skip
-    assert main(argv, call=_ok_call, diff=lambda *a, **k: '+k = 1\n', intent=None) == 0
+    assert main(argv, call=_ok_call, numstat=lambda *a, **k: [(1, 0, 'k.py')], intent=None) == 0
     assert 'summary' not in json.loads(capsys.readouterr().out)

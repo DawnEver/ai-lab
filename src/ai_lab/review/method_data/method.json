@@ -23,6 +23,10 @@
         "template": "prompts/agent-diff.md",
         "call_mode": "agent"
       },
+      "explore": {
+        "template": "prompts/explore-diff.md",
+        "call_mode": "explore"
+      },
       "empty": {
         "status": "skipped"
       }
@@ -72,7 +76,7 @@
         "diff"
       ],
       "call_modes": [
-        "review"
+        "explore"
       ],
       "models": {},
       "synthesis": false,

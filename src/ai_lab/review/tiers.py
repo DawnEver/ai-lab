@@ -3,7 +3,7 @@
 User ruling 2026-10-31: the bounds :func:`ai_lab.review.explore.tier` uses are INITIAL values, to be learned. Every
 headless review appends one row (:func:`evidence`) to its repository's append-only JSONL, beside ai-lab's token
 ledger (``state_dir()/review-tiers/<repo>.jsonl``); ``python -m ai_lab.review.tiers report <ledger>`` summarises
-findings per thousand diff characters and cost, by tier and by size bucket. Nothing tunes itself: a person reads the
+findings per thousand diff bytes (UTF-8) and cost, by tier and by size bucket. Nothing tunes itself: a person reads the
 report and moves the constants.
 """
 
@@ -20,11 +20,11 @@ from pathlib import Path
 from typing import Final
 
 from ai_lab.budget import state_dir
-from ai_lab.review.explore import DIFF_LINE_CHARS, Changed, git
+from ai_lab.review.explore import DIFF_LINE_BYTES, Changed, git
 
 __all__ = ['BUCKETS', 'evidence', 'ledger_path', 'record', 'report']
 
-#: Size buckets by diff CHARACTERS (upper bounds, each 4x the last); past the last is its own bucket.
+#: Size buckets by diff UTF-8 BYTES (upper bounds, each 4x the last); past the last is its own bucket.
 BUCKETS: Final = (4_000, 16_000, 64_000, 256_000, 1_024_000)
 
 _SEVERITIES: Final = ('HIGH', 'MEDIUM', 'LOW')
@@ -46,8 +46,8 @@ def ledger_path(repo: str) -> Path:
 
 
 def evidence(
-    *, range_: str, repo: str, rows: Sequence[Changed], tier: str, diff_chars: int | None, turns: int,
-    read_chars: int, findings: Iterable[Mapping], seconds: float, usage: Mapping[str, int],
+    *, range_: str, repo: str, rows: Sequence[Changed], tier: str, diff_bytes: int | None, turns: int,
+    read_bytes: int, findings: Iterable[Mapping], seconds: float, usage: Mapping[str, int],
 ) -> dict:  # fmt: skip
     """One review's row: the change's size, the tier chosen, what reviewing it cost and found."""
     counts = dict.fromkeys(_SEVERITIES, 0)
@@ -63,11 +63,11 @@ def evidence(
         'range': range_,
         'files': len(rows),
         'lines': sum((a or 0) + (d or 0) for a, d, _ in rows),
-        'diff_chars': diff_chars,
+        'diff_bytes': diff_bytes,
         'commits': int(commits) if commits and commits.isdigit() else None,
         'tier': tier,
         'turns': turns,
-        'read_chars': read_chars,
+        'read_bytes': read_bytes,
         'findings': counts,
         'seconds': round(seconds, 3),
         'usage': dict(usage),
@@ -81,9 +81,9 @@ def record(path: Path, row: Mapping) -> None:
         out.write(json.dumps(row, ensure_ascii=False) + '\n')
 
 
-def _chars(row: Mapping) -> int:
-    """The diff's characters; a huge change's diff is never read, so its lines estimate them."""
-    return row['diff_chars'] if row.get('diff_chars') is not None else row['lines'] * DIFF_LINE_CHARS
+def _bytes(row: Mapping) -> int:
+    """The diff's UTF-8 bytes; a huge change's diff is never read, so its lines estimate them."""
+    return row['diff_bytes'] if row.get('diff_bytes') is not None else row['lines'] * DIFF_LINE_BYTES
 
 
 def _bucket(chars: int) -> str:
@@ -94,17 +94,17 @@ def _bucket(chars: int) -> str:
 
 
 def _table(title: str, groups: Mapping[str, list[Mapping]]) -> list[str]:
-    columns = ('group', 'reviews', *_SEVERITIES, 'findings/kchar', 'tokens/review', 'read chars/review',
+    columns = ('group', 'reviews', *_SEVERITIES, 'findings/kB', 'tokens/review', 'read bytes/review',
                'turns/review', 's/review')  # fmt: skip
     lines = [f'## {title}', '', '| ' + ' | '.join(columns) + ' |', '|' + '---|' * len(columns)]
     for name, rows in groups.items():
         n = len(rows)
         found = {s: sum(r['findings'].get(s, 0) for r in rows) for s in _SEVERITIES}
-        kchars = sum(_chars(r) for r in rows) / 1000
+        kbytes = sum(_bytes(r) for r in rows) / 1000
         tokens = sum(sum(r['usage'].get(k, 0) for k in ('input_tokens', 'output_tokens')) for r in rows)
-        per_kchar = sum(found.values()) / kchars if kchars else 0.0
-        cells = [name, str(n), *(str(found[s]) for s in _SEVERITIES), f'{per_kchar:.3f}', f'{tokens / n:.0f}',
-                 f'{sum(r["read_chars"] for r in rows) / n:.0f}', f'{sum(r["turns"] for r in rows) / n:.1f}',
+        per_kb = sum(found.values()) / kbytes if kbytes else 0.0
+        cells = [name, str(n), *(str(found[s]) for s in _SEVERITIES), f'{per_kb:.3f}', f'{tokens / n:.0f}',
+                 f'{sum(r["read_bytes"] for r in rows) / n:.0f}', f'{sum(r["turns"] for r in rows) / n:.1f}',
                  f'{sum(r["seconds"] for r in rows) / n:.1f}']  # fmt: skip
         lines.append('| ' + ' | '.join(cells) + ' |')
     return [*lines, '']
@@ -116,8 +116,8 @@ def report(rows: Sequence[Mapping]) -> str:
     by_size: dict[str, list[Mapping]] = defaultdict(list)
     for row in rows:
         by_tier[row['tier']].append(row)
-    for row in sorted(rows, key=_chars):
-        by_size[_bucket(_chars(row))].append(row)
+    for row in sorted(rows, key=_bytes):
+        by_size[_bucket(_bytes(row))].append(row)
     head = [f'# Review tier ledger: {len(rows)} review(s)', '']
     return '\n'.join(head + _table('By tier', dict(sorted(by_tier.items()))) + _table('By diff size', by_size))
 

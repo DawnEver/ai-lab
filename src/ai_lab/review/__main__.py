@@ -34,7 +34,7 @@ from typing import Final
 
 from ai_lab.call import answer
 from ai_lab.client import catalogue
-from ai_lab.review.explore import Changed, brief, change_map, commit_messages, serve
+from ai_lab.review.explore import Changed, brief, change_map, commit_messages, serve, size
 from ai_lab.review.explore import diff as git_diff
 from ai_lab.review.explore import numstat as git_numstat
 from ai_lab.review.method import METHOD_DIR, UnknownMethodVersion, load_method, principle_list, rule_ids
@@ -64,7 +64,7 @@ def _change(args: argparse.Namespace, rows: Sequence[Changed], diff: Callable[..
     findings = json.loads(Path(args.findings).read_text(encoding='utf-8'))
     reported = json.dumps(findings, ensure_ascii=False, indent=1)
     text = _SYNTHESIS.format(findings=reported, stat=change_map(args.range_, rows))
-    return {'mode': 'medium', 'manifest': text, 'diff': '', 'commits': '', 'diff_chars': len(text)}
+    return {'mode': 'medium', 'manifest': text, 'diff': '', 'commits': '', 'diff_bytes': size(text)}
 
 
 def _disposed(path: str | None) -> dict[str, str]:
@@ -135,11 +135,11 @@ def main(
         sys.stderr.write(f'refused: {refused}\n')
         return _EXIT_REFUSED
 
-    spent: dict = {'turns': 0, 'read_chars': 0, 'usage': {}}
+    spent: dict = {'turns': 0, 'read_bytes': 0, 'usage': {}}
 
     def explore(asked: Mapping) -> str:
         text = serve(asked, range_=args.range_, repo=args.repo, rows=rows)
-        spent['read_chars'] += len(text)
+        spent['read_bytes'] += size(text)
         return text
 
     def counted(request: Mapping) -> Mapping:
@@ -157,7 +157,7 @@ def main(
     )  # fmt: skip
     record(ledger_path(args.repo), evidence(
         range_=args.range_, repo=args.repo, rows=rows, tier='synthesis' if args.findings else change['mode'],
-        diff_chars=change['diff_chars'], turns=spent['turns'], read_chars=spent['read_chars'],
+        diff_bytes=change['diff_bytes'], turns=spent['turns'], read_bytes=spent['read_bytes'],
         findings=doc['findings'], seconds=time.monotonic() - started, usage=spent['usage'],
     ))  # fmt: skip
     if not args.no_summary and intent is not None:

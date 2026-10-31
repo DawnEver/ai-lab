@@ -14,13 +14,15 @@ import pytest
 from ai_lab.review.__main__ import main
 from ai_lab.review.explore import (
     HUGE_LINES,
-    INLINE_CHARS,
+    INLINE_BYTES,
+    LOG_BYTES,
     MAX_LISTED_FILES,
     TURNS,
     brief,
     change_map,
     numstat,
     serve,
+    size,
     tier,
 )
 from ai_lab.review.tiers import ledger_path, report
@@ -30,7 +32,7 @@ from tests.review_principles import PRINCIPLES_FILE
 _GIT = shutil.which('git') or 'git'
 SENTINEL = 'secret_sauce = compute_the_thing()'
 #: A file whose diff is past the inline bound and under the huge one: it makes a change MEDIUM.
-PAD = {'src/pad.txt': 'p = 0\n' * (INLINE_CHARS // 6)}
+PAD = {'src/pad.txt': 'p = 0\n' * (INLINE_BYTES // 6)}
 FINDING = {'severity': 'LOW', 'security': False, 'rule': 'occams-razor', 'file': 'src/a.py',
            'anchor': SENTINEL, 'summary': 'S', 'category': 'Bug'}  # fmt: skip
 
@@ -181,9 +183,9 @@ _ROW = [(10, 0, 'a.py')]
 
 def test_each_tier_is_chosen_at_its_boundary():
     """Planted values on both sides of every bound."""
-    assert tier(_ROW, INLINE_CHARS) == 'small'
-    assert tier(_ROW, INLINE_CHARS + 1) == 'medium'
-    assert tier([(HUGE_LINES, 0, 'a.py')], INLINE_CHARS + 1) == 'medium'
+    assert tier(_ROW, INLINE_BYTES) == 'small'
+    assert tier(_ROW, INLINE_BYTES + 1) == 'medium'
+    assert tier([(HUGE_LINES, 0, 'a.py')], INLINE_BYTES + 1) == 'medium'
     assert tier([(HUGE_LINES, 1, 'a.py')], 0) == 'huge', 'past the line bound, whatever the diff measured'
     files = [(1, 0, f'f{n}.py') for n in range(MAX_LISTED_FILES)]
     assert tier(files, 0) == 'small'
@@ -195,8 +197,8 @@ def test_the_brief_reads_the_diff_only_below_huge_and_the_log_only_when_huge():
         pytest.fail('not read')
 
     small = brief('a..b', _ROW, read_diff=lambda: 'DIFF', read_log=never)
-    assert (small['mode'], small['diff'], small['diff_chars']) == ('small', 'DIFF', 4)
-    medium = brief('a..b', _ROW, read_diff=lambda: 'x' * (INLINE_CHARS + 1), read_log=never)
+    assert (small['mode'], small['diff'], small['diff_bytes']) == ('small', 'DIFF', 4)
+    medium = brief('a..b', _ROW, read_diff=lambda: 'x' * (INLINE_BYTES + 1), read_log=never)
     assert (medium['mode'], medium['diff']) == ('medium', '')
     huge = brief('a..b', [(HUGE_LINES + 1, 0, 'a.py')], read_diff=never, read_log=lambda: 'LOG')
     assert (huge['mode'], huge['commits'], huge['diff']) == ('huge', 'LOG', '')
@@ -225,9 +227,43 @@ def test_every_tier_records_one_ledger_row_and_the_report_reads_it(tmp_path, cap
         assert row['tier'] == name
         assert (row['files'], row['commits'], row['turns'], row['findings']['LOW']) == (len(files), 1, 1, 1)
         assert row['sha'] == _git(repo, 'rev-parse', 'HEAD')
-        assert {'lines', 'diff_chars', 'read_chars', 'seconds', 'usage', 'repo'} <= set(row)
+        assert {'lines', 'diff_bytes', 'read_bytes', 'seconds', 'usage', 'repo'} <= set(row)
     text = report(rows)
     assert '| huge | 1 | 0 | 0 | 1 |' in text and '| small | 1 | 0 | 0 | 1 |' in text
     assert '## By diff size' in text
     assert tiers_main(['report', str(ledger_path(str(repo)))]) == 0
     assert '# Review tier ledger: 3 review(s)' in capsys.readouterr().out
+
+
+def test_every_tier_bound_is_measured_in_utf8_bytes() -> None:
+    """One unit: a diff under the inline bound in CHARACTERS but over it in BYTES is not small.
+
+    PLANTED CONTROL: the same count of ASCII characters is small.
+    """
+    wide = 'é' * (INLINE_BYTES // 2 + 1)  # two bytes each: over the bound in bytes, under it in characters
+    assert len(wide) <= INLINE_BYTES < size(wide)
+    assert brief('a..b', _ROW, read_diff=lambda: wide, read_log=str)['mode'] == 'medium'
+    assert brief('a..b', _ROW, read_diff=lambda: wide, read_log=str)['diff_bytes'] == size(wide)
+    assert brief('a..b', _ROW, read_diff=lambda: 'e' * len(wide), read_log=str)['mode'] == 'small'
+
+
+def test_a_served_cut_counts_bytes_and_never_splits_a_character(tmp_path: Path) -> None:
+    files = {'src/a.py': '# ' + 'é' * 400 + '\n'}
+    repo, range_ = _repo(tmp_path, files)
+    out = serve({'show': ['src/a.py']}, range_=range_, repo=str(repo), rows=numstat(range_, str(repo)), budget=101)
+    shown, _, said = out.partition('\n### cut:')
+    assert size(shown) <= 101
+    assert '\ufffd' not in shown, 'a character is never split'
+    assert 'bytes (this turn holds 101)' in said
+
+
+def test_a_huge_changes_commit_log_is_cut_to_its_bound_and_says_so() -> None:
+    """PLANTED CONTROL: a log within the bound is carried whole."""
+    huge = [(HUGE_LINES + 1, 0, 'a.py')]
+    long_log = 'commit abc\nsubject\n' * (LOG_BYTES // 10)
+    commits = brief('a..b', huge, read_diff=str, read_log=lambda: long_log)['commits']
+    body, _, note = commits.rpartition('\n(commit log cut at ')
+    assert size(body) <= LOG_BYTES
+    assert note.startswith(f'{LOG_BYTES} of {size(long_log)} bytes; ask `show`')
+    short = 'commit abc\nsubject\n'
+    assert brief('a..b', huge, read_diff=str, read_log=lambda: short)['commits'] == short

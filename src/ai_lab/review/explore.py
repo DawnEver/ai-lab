@@ -4,7 +4,7 @@ User rulings 2026-10-31: every PR is reviewed however large; "a small diff is re
 directly; a large one opens agent mode; beyond that only the directory and the commit messages". :func:`tier` is
 the ONE place the tier is decided, and :func:`brief` the one place its prompt payload is built:
 
-* ``small`` -- the diff is at most :data:`INLINE_CHARS` characters: the prompt carries it whole;
+* ``small`` -- the diff is at most :data:`INLINE_BYTES` UTF-8 bytes: the prompt carries it whole;
 * ``medium`` -- the prompt carries the change map, never the diff;
 * ``huge`` -- past :data:`MAX_LISTED_FILES` files or :data:`HUGE_LINES` changed lines: the prompt carries the
   DIRECTORY-level map and the range's commit messages (subjects and bodies), never the diff.
@@ -34,8 +34,9 @@ from pathlib import PurePosixPath
 from typing import Final
 
 __all__ = [
-    'DIFF_LINE_CHARS', 'HUGE_LINES', 'INLINE_CHARS', 'MAX_LISTED_FILES', 'REQUESTS', 'TIERS', 'TURNS', 'TURN_BYTES',
-    'Changed', 'brief', 'change_map', 'commit_messages', 'diff', 'git', 'numstat', 'serve', 'tier',
+    'DIFF_LINE_BYTES', 'HUGE_LINES', 'INLINE_BYTES', 'LOG_BYTES', 'MAX_LISTED_FILES', 'REQUESTS', 'TIERS', 'TURNS',
+    'TURN_BYTES',
+    'Changed', 'brief', 'change_map', 'commit_messages', 'diff', 'git', 'numstat', 'serve', 'size', 'tier',
 ]  # fmt: skip
 
 #: How many turns a reviewer has: every one but the last may ask; the last must answer with findings.
@@ -49,18 +50,21 @@ MAX_LISTED_FILES: Final = 150
 TURN_BYTES: Final = 120_000
 
 #: INITIAL value, to be fitted from the tier ledger (:mod:`ai_lab.review.tiers`). A diff of at most this many
-#: CHARACTERS is inlined whole (``small``): half of one turn's answers, so the whole
+#: UTF-8 BYTES is inlined whole (``small``): half of one turn's answers, so the whole
 #: change plus the context it asks for still fits one turn -- reading it whole is cheaper and surer than exploring.
-INLINE_CHARS: Final = TURN_BYTES // 2
+INLINE_BYTES: Final = TURN_BYTES // 2
 
-#: The CHARACTERS one diff line averages (code plus its ``+``/``-`` and the hunk headers), turning a line count into
-#: the characters reading it costs.
-DIFF_LINE_CHARS: Final = 40
+#: The UTF-8 BYTES one diff line averages (code plus its ``+``/``-`` and the hunk headers), turning a line count
+#: into the bytes reading it costs. Every tier bound and every budget here is in UTF-8 bytes: one unit.
+DIFF_LINE_BYTES: Final = 40
 
 #: INITIAL value, to be fitted from the tier ledger. Past this many changed LINES (added plus deleted) the change
 #: is ``huge``: more than every asking turn together
 #: could read, so a file-level map only promises what the reviewer cannot keep.
-HUGE_LINES: Final = (TURNS - 1) * TURN_BYTES // DIFF_LINE_CHARS
+HUGE_LINES: Final = (TURNS - 1) * TURN_BYTES // DIFF_LINE_BYTES
+
+#: How much of a huge change's commit log its brief carries; past it the log is cut and the cut is said.
+LOG_BYTES: Final = TURN_BYTES // 2
 
 #: The tiers, smallest first; each is the headless ``diff`` context's manifest mode of the same name.
 TIERS: Final = ('small', 'medium', 'huge')
@@ -160,28 +164,47 @@ def _huge(rows: Sequence[Changed]) -> bool:
     return len(rows) > MAX_LISTED_FILES or sum((a or 0) + (d or 0) for a, d, _ in rows) > HUGE_LINES
 
 
-def tier(rows: Sequence[Changed], diff_chars: int) -> str:
-    """The tier (:data:`TIERS`) of a change of *rows* whose diff is *diff_chars* characters long."""
+def tier(rows: Sequence[Changed], diff_bytes: int) -> str:
+    """The tier (:data:`TIERS`) of a change of *rows* whose diff is *diff_bytes* UTF-8 bytes long."""
     if _huge(rows):
         return 'huge'
-    return 'small' if diff_chars <= INLINE_CHARS else 'medium'
+    return 'small' if diff_bytes <= INLINE_BYTES else 'medium'
 
 
 def brief(range_: str, rows: Sequence[Changed], *, read_diff: Callable[[], str], read_log: Callable[[], str]) -> dict:
     """The manifest fields of the change's tier, the one place each tier's prompt payload is built.
 
-    ``mode`` (the tier, ``empty`` for no change), ``manifest``, ``diff``, ``commits``, and ``diff_chars`` (``None``
+    ``mode`` (the tier, ``empty`` for no change), ``manifest``, ``diff``, ``commits``, and ``diff_bytes`` (``None``
     when huge: its diff is never read). *read_diff* is called only below huge, *read_log* only when huge.
     """
     if not rows:
-        return {'mode': 'empty', 'manifest': '', 'diff': '', 'commits': '', 'diff_chars': 0}
+        return {'mode': 'empty', 'manifest': '', 'diff': '', 'commits': '', 'diff_bytes': 0}
     if _huge(rows):
-        return {'mode': 'huge', 'manifest': change_map(range_, rows, max_files=0), 'diff': '', 'commits': read_log(),
-                'diff_chars': None}  # fmt: skip
+        return {'mode': 'huge', 'manifest': change_map(range_, rows, max_files=0), 'diff': '',
+                'commits': _capped(read_log()), 'diff_bytes': None}  # fmt: skip
     text = read_diff()
-    mode = tier(rows, len(text))
+    mode = tier(rows, size(text))
     return {'mode': mode, 'manifest': change_map(range_, rows), 'diff': text if mode == 'small' else '',
-            'commits': '', 'diff_chars': len(text)}  # fmt: skip
+            'commits': '', 'diff_bytes': size(text)}  # fmt: skip
+
+
+def size(text: str) -> int:
+    """*text*'s size in UTF-8 bytes: the ONE unit every tier bound and budget is measured in."""
+    return len(text.encode('utf-8'))
+
+
+def _cut(text: str, limit: int) -> str:
+    """The longest prefix of *text* within *limit* UTF-8 bytes, never splitting a character."""
+    return text.encode('utf-8')[:limit].decode('utf-8', errors='ignore')
+
+
+def _capped(log: str) -> str:
+    """A huge change's commit log, cut to :data:`LOG_BYTES` with the cut said."""
+    if size(log) <= LOG_BYTES:
+        return log
+    return (
+        f'{_cut(log, LOG_BYTES)}\n(commit log cut at {LOG_BYTES} of {size(log)} bytes; ask `show` or `diff` for more)'
+    )
 
 
 def _head(range_: str) -> str:
@@ -212,7 +235,7 @@ def _listed(value: object) -> list[object]:
 def serve(
     requests: Mapping[str, object], *, range_: str, repo: str, rows: Sequence[Changed], budget: int = TURN_BYTES
 ) -> str:
-    """The answers to one turn's *requests*, in :data:`REQUESTS` order, together at most *budget* characters.
+    """The answers to one turn's *requests*, in :data:`REQUESTS` order, together at most *budget* UTF-8 bytes.
 
     An answer past what remains is CUT to it, never dropped (a file larger than a turn is still read in part), and
     the cut names how much was shown and every request left unanswered, so the reviewer can narrow and ask again.
@@ -221,15 +244,15 @@ def serve(
     parts, used = [], 0
     for at, (kind, item) in enumerate(asked):
         text = f'### {kind} {item}\n{_answer(kind, item, range_, repo, rows)}\n'
-        if used + len(text) > budget:
+        if used + size(text) > budget:
             shown = max(budget - used, 0)
             left = ', '.join(f'{k} {i}' for k, i in asked[at + 1 :]) or 'none'
-            parts.append(text[:shown])
-            parts.append(f'\n### cut: {kind} {item} shown to {shown} of {len(text)} characters (this turn holds '
+            parts.append(_cut(text, shown))
+            parts.append(f'\n### cut: {kind} {item} shown to {shown} of {size(text)} bytes (this turn holds '
                          f'{budget}); not answered: {left}. Narrow it, or ask the rest, next turn.\n')  # fmt: skip
             return ''.join(parts)
         parts.append(text)
-        used += len(text)
+        used += size(text)
     unknown = sorted(set(requests) - set(REQUESTS))
     if unknown:
         parts.append(f'### refused: {unknown} are not requests; ask only {sorted(REQUESTS)}\n')

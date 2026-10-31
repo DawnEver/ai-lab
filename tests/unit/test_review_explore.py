@@ -118,7 +118,7 @@ def test_a_large_change_is_mapped_by_directory_and_still_reviewed(tmp_path, caps
     assert 'pkg0/mod5.py' in _prompt(call.requests[1]), 'list opens a directory'
     assert SENTINEL in _prompt(call.requests[2])
     assert {r['status'] for r in doc['reviewers']} == {'ok'}
-    assert first.count('mod') == 0, 'no file of the change is listed: the reviewer opens the directories it chooses'
+    assert '/mod' not in first, 'no file of the change is listed: the reviewer opens the directories it chooses'
 
 
 def test_the_map_follows_a_rename_to_its_head_path(tmp_path):

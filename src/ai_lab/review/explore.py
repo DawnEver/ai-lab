@@ -149,7 +149,7 @@ def serve(
             left = ', '.join(f'{k} {i}' for k, i in asked[at + 1 :]) or 'none'
             parts.append(text[:shown])
             parts.append(f'\n### cut: {kind} {item} shown to {shown} of {len(text)} characters (this turn holds '
-                         f'{budget}); not answered: {left}. Ask a narrower grep, or the rest, next turn.\n')  # fmt: skip
+                         f'{budget}); not answered: {left}. Narrow it, or ask the rest, next turn.\n')  # fmt: skip
             return ''.join(parts)
         parts.append(text)
         used += len(text)

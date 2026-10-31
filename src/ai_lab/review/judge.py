@@ -150,7 +150,8 @@ def verified(
     """The *cites* (``path:line``) that prove *outcome* about a finding in *file* at *head*.
 
     A cite counts only when its line exists at the head AND it is in the finding's own *file* -- within
-    :data:`ANCHOR_WINDOW` lines of the *anchor* when the anchor is still there -- or in a file the range *changed*.
+    :data:`ANCHOR_WINDOW` lines of the *anchor* -- or in a file the range *changed*. With the anchor gone from the
+    head, the finding's own file must itself be changed: an unchanged file without the anchor proves nothing.
     A ``fixed`` cite must be in a file the range changed: a fix is a change. Any existing line elsewhere
     (``README.md:1``) proves nothing.
     """
@@ -168,7 +169,7 @@ def verified(
             continue
         if path == file:
             at = [n for n, one in enumerate(text, 1) if _norm(anchor) and _norm(anchor) in _norm(one)]
-            if at and min(abs(line - n) for n in at) > ANCHOR_WINDOW:
+            if (at and min(abs(line - n) for n in at) > ANCHOR_WINDOW) or (not at and path not in changed):
                 continue
         elif path not in changed:
             continue

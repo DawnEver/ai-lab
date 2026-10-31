@@ -25,7 +25,7 @@ def _finding(fid: str, claim: str = '') -> dict:
 
 
 def _run(tmp_path: Path, findings: list[dict], call, capsys) -> tuple[int, dict | None, str]:
-    repo, range_ = _repo(tmp_path, {'src/a.py': SENTINEL + '\n'})
+    repo, range_ = _repo(tmp_path, {'src/a.py': 'compute = 1\n', 'src/b.py': SENTINEL + '\n'})
     file = tmp_path / 'findings.json'
     file.write_text(json.dumps({'findings': findings}), encoding='utf-8')
     code = main(['--range', range_, '--repo', str(repo), '--model', 'm', '--rules', 'R1,R2',
@@ -65,7 +65,7 @@ def test_a_judge_that_asks_to_show_the_file_reads_it_next_turn(tmp_path: Path, c
     def call(request: Mapping) -> Mapping:
         prompts.append('\n'.join(block['text'] for block in request['context']))
         if len(prompts) == 1:
-            return _ok({'requests': {'show': ['src/a.py']}})
+            return _ok({'requests': {'show': ['src/b.py']}})
         assert set(request['schema']['properties']) >= {'outcome', 'evidence', 'requests'}
         return _ok({'outcome': 'fixed', 'evidence': 'src/a.py:1 no longer has it'})
 
@@ -105,13 +105,14 @@ def test_the_claim_reaches_the_prompt_and_the_diff_never_does(tmp_path: Path, ca
     assert 'summary a' in prompt
     assert 'occams-razor' in prompt
     assert 'src/a.py' in prompt
-    assert SENTINEL not in prompt
+    assert SENTINEL not in prompt, 'another file of the change is read only when asked'
+    assert 'compute = 1' in prompt, "the finding's own file is read at the head"
     assert '@@' not in prompt
 
 
 @pytest.mark.parametrize('content', ['not json', '{"findings": [{"id": "a"}]}', '{"other": []}'])
 def test_a_bad_findings_file_is_refused(tmp_path: Path, capsys, content: str) -> None:
-    repo, range_ = _repo(tmp_path, {'src/a.py': SENTINEL + '\n'})
+    repo, range_ = _repo(tmp_path, {'src/a.py': 'compute = 1\n', 'src/b.py': SENTINEL + '\n'})
     file = tmp_path / 'findings.json'
     file.write_text(content, encoding='utf-8')
     code = main(['--range', range_, '--repo', str(repo), '--model', 'm', '--rules', 'R1',
@@ -131,3 +132,22 @@ def test_a_range_git_cannot_read_is_refused(tmp_path: Path, capsys) -> None:
                  '--principles', str(PRINCIPLES_FILE), '--findings', str(file)], call=lambda _r: {})  # fmt: skip
     assert code == 2
     assert capsys.readouterr().out == ''
+
+
+def test_the_findings_file_is_read_at_the_head_even_when_the_range_never_touched_it(tmp_path: Path, capsys) -> None:
+    """dev-lab #7 round 3: a finding about a file its increment did not change was judged without that file.
+
+    PLANTED CONTROL: a file neither changed nor named by the finding is not in the prompt.
+    """
+    prompts: list[str] = []
+
+    def call(request: Mapping) -> Mapping:
+        prompts.append('\n'.join(block['text'] for block in request['context']))
+        return _ok({'outcome': 'present', 'evidence': 'e'})
+
+    untouched = {**_finding('a'), 'file': 'README'}  # in the base, outside the range
+    _run(tmp_path, [untouched], call, capsys)
+    (prompt,) = prompts
+    assert 'The file README as the head holds it' in prompt
+    assert '### show README\nr\n' in prompt, 'its content at the head'
+    assert SENTINEL not in prompt

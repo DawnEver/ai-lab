@@ -38,6 +38,10 @@ __all__ = ['OUTCOMES', 'SCHEMA_VERSION', 'main']
 SCHEMA_VERSION: Final = 1
 _EXIT_REFUSED: Final = 2
 
+#: How much of the finding's own file the first turn carries: the judge reads it at the HEAD, never only the range's
+#: increment (dev-lab #7 round 3); past this it is cut, and the judge asks for the rest.
+HELD_BYTES: Final = 40_000
+
 #: The verdicts a judge may reach; anything else is not judged, and stays ``present``.
 OUTCOMES: Final = ('fixed', 'present', 'false-positive')
 
@@ -78,6 +82,9 @@ Principles:
 
 Registry rule ids: {rules}
 
+The file {file} as the head holds it (read whatever the range changed; cut when long):
+{held}
+
 The change map:
 {map}
 """
@@ -97,12 +104,14 @@ def _findings(path: str) -> list[dict]:
     return rows
 
 
-def _prompt(finding: Mapping, *, range_: str, mapped: str, principles: Sequence[Mapping], rules: Sequence[str]) -> str:
+def _prompt(
+    finding: Mapping, *, range_: str, mapped: str, held: str, principles: Sequence[Mapping], rules: Sequence[str]
+) -> str:
     listed = '\n'.join(f'- {p["id"]} ({p["name"]}): {p["statement"]}' for p in principles) or '(none)'
     return _PROMPT.format(
         range_=range_, turns=TURNS, rule=finding['rule'], file=finding['file'], anchor=finding['anchor'],
         summary=finding['summary'], detail=finding['detail'], claim=finding['claim'] or '(none)',
-        principles=listed, rules=', '.join(rules) or '(none)', map=mapped,
+        principles=listed, rules=', '.join(rules) or '(none)', map=mapped, held=held,
     )  # fmt: skip
 
 
@@ -146,7 +155,8 @@ def main(argv: Sequence[str] | None = None, *, call: Callable[[Mapping], Mapping
 
     verdicts = []
     for finding in findings:
-        prompt = _prompt(finding, range_=args.range_, mapped=mapped, principles=method.principles,
+        held = serve({'show': [finding['file']]}, range_=args.range_, repo=args.repo, rows=rows, budget=HELD_BYTES)
+        prompt = _prompt(finding, range_=args.range_, mapped=mapped, held=held, principles=method.principles,
                          rules=method.registry)  # fmt: skip
         verdicts.append(_verdict(str(finding['id']), explored(call, request, prompt, explore, TURNS)))
     sys.stdout.write(json.dumps({'schema_version': SCHEMA_VERSION, 'verdicts': verdicts}, ensure_ascii=False) + '\n')

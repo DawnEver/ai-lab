@@ -23,7 +23,7 @@ from ai_lab.review.explore import REQUESTS, TURNS
 from ai_lab.review.method import DEFAULT_CONFIG, Method, configured_providers
 from ai_lab.review.rules import merge, pick, render_prompt
 
-__all__ = ['LENSES', 'REVIEW_TASK', 'run']
+__all__ = ['LENSES', 'REVIEW_TASK', 'explored', 'run']
 
 #: The key task every review call is made under (its own key slots: ``auth login <provider> --task``).
 REVIEW_TASK = 'pr-review'
@@ -62,17 +62,17 @@ def _schema(method: Method) -> dict:
 
 
 def _asking(schema: Mapping) -> dict:
-    """The schema of a turn that may ask: ``findings`` (done) or ``requests`` (:data:`REQUESTS`), neither required."""
+    """A turn that may ask: the answer's properties or ``requests`` (:data:`REQUESTS`), none required."""
     asks = {
         kind: {'type': 'array', 'items': {'type': 'string'}, 'description': what} for kind, what in REQUESTS.items()
     }
-    findings = schema['properties']['findings']
-    return {'type': 'object', 'properties': {'findings': findings, 'requests': {'type': 'object', 'properties': asks}}}
+    requests = {'type': 'object', 'properties': asks}
+    return {'type': 'object', 'properties': {**schema['properties'], 'requests': requests}}
 
 
-def _explored(call: Callable[[Mapping], Mapping], request: Mapping, prompt: str, explore: Callable[[Mapping], str],
+def explored(call: Callable[[Mapping], Mapping], request: Mapping, prompt: str, explore: Callable[[Mapping], str],
               turns: int) -> Mapping:  # fmt: skip
-    """The reply that ends one reviewer's exploration: its findings, a failure, or the last turn's answer."""
+    """The reply that ends one exploration: its answer, a failure, or the last turn's answer (``request['schema']``)."""
     context = [{'kind': 'text', 'text': prompt}]
     for turn in range(1, turns + 1):
         last = turn == turns
@@ -83,7 +83,7 @@ def _explored(call: Callable[[Mapping], Mapping], request: Mapping, prompt: str,
         if last or not asked:
             return reply
         left = turns - turn
-        close = 'the next turn is the LAST: answer with findings' if left == 1 else f'{left} turn(s) left'
+        close = 'the next turn is the LAST: answer' if left == 1 else f'{left} turn(s) left'
         said = f'Turn {turn}: you asked {json.dumps(asked, ensure_ascii=False)}\n{explore(asked)}\n({close}.)'
         context.append({'kind': 'text', 'text': said})
     return reply
@@ -144,5 +144,5 @@ def run(
             'verb': 'respond', 'provider': provider, 'model': mode['models'].get(provider, model),
             'task': REVIEW_TASK, 'instructions': _INSTRUCTIONS, 'schema': schema,
         }  # fmt: skip
-        results.append(_result(key, _explored(call, request, rendered['prompt'], explore, turns)))
+        results.append(_result(key, explored(call, request, rendered['prompt'], explore, turns)))
     return merge(method, range_=range_, profiles=keys, reviewers=reviewers, results=results, disposed=disposed)

@@ -103,7 +103,9 @@ def main(
     parser.add_argument('--providers', nargs='+', help="override the default config's providers.headless")
     parser.add_argument('--repo', default='.', help='the repository the range is in (default: the working directory)')
     parser.add_argument('--lens', choices=sorted(LENSES), default='standard', help='how many reviewers to plan')
-    parser.add_argument('--paths', nargs='+', default=[], help='the slice: map and read only these paths')
+    parser.add_argument(
+        '--paths', nargs='*', default=[], help='the slice: map only these paths (none: the whole range)'
+    )
     parser.add_argument('--findings', help="synthesis: the slices' merged findings JSON, read with the range's map")
     parser.add_argument(
         '--rules', help='the registry rule ids, comma-separated (required: the caller owns the registry)'

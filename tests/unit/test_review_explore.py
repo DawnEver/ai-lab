@@ -129,3 +129,16 @@ def test_the_map_follows_a_rename_to_its_head_path(tmp_path):
     moved = f'{range_.split("..")[1]}..HEAD'
     assert [row[2] for row in numstat(moved, str(repo))] == ['new/name.py']
     assert 'new/name.py' in change_map(moved, numstat(moved, str(repo)))
+
+
+def test_paths_given_empty_is_the_whole_range(tmp_path, capsys):
+    """dev-lab reviews an oversize head as ONE slice with no paths: `--paths` with nothing after it (D123)."""
+    repo, range_ = _repo(tmp_path, {'src/a.py': f'{SENTINEL}\n', 'lib/b.py': 'x = 1\n'})
+    call = Scripted({'findings': []})
+    argv = ['--principles', str(PRINCIPLES_FILE), '--rules', '', '--range', range_, '--model', 'm',
+            '--repo', str(repo), '--lens', 'light', '--no-summary', '--paths']  # fmt: skip
+    assert main(argv, call=call) == 0
+    prompt = _prompt(call.requests[0])
+    assert 'src/a.py' in prompt
+    assert 'lib/b.py' in prompt
+    capsys.readouterr()

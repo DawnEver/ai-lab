@@ -142,3 +142,17 @@ def test_paths_given_empty_is_the_whole_range(tmp_path, capsys):
     assert 'src/a.py' in prompt
     assert 'lib/b.py' in prompt
     capsys.readouterr()
+
+
+def test_an_answer_past_the_turn_budget_is_cut_to_what_remains_and_says_so(tmp_path):
+    """A file larger than a turn is still readable in part, never dropped. PLANTED: under the budget, all of it."""
+    big = 'line = 1\n' * 2_000
+    repo, range_ = _repo(tmp_path, {'src/big.py': big, 'src/small.py': 'x = 1\n'})
+    rows = numstat(range_, str(repo))
+    out = serve({'show': ['src/big.py', 'src/small.py']}, range_=range_, repo=str(repo), rows=rows, budget=5_000)
+    assert 'line = 1' in out, 'the head of the big file is read'
+    assert len(out) <= 5_400
+    assert 'cut' in out and 'src/big.py' in out
+    assert 'src/small.py' in out, 'what did not fit is named so it can be asked for again'
+    whole = serve({'show': ['src/big.py']}, range_=range_, repo=str(repo), rows=rows, budget=10**6)
+    assert whole.count('line = 1') == 2_000

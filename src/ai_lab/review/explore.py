@@ -8,7 +8,9 @@ diff into the prompt -- the reviewer explores. The headless run (:mod:`ai_lab.re
   reviewer lists a directory to see its files;
 * each turn, the reviewer answers with ``findings`` (done) or ``requests`` (:data:`REQUESTS`), which
   :func:`serve` answers from git -- the change to a path, a file at the head, a ``git grep`` over the head, the
-  changed files under a directory -- each answer bounded by :data:`TURN_BYTES`.
+  changed files under a directory. ``show`` and ``grep`` reach the WHOLE head, not only the changed files, so a
+  call can be followed into code the change did not touch. A turn's answers total at most :data:`TURN_BYTES`; one
+  past what remains is cut to it and the cut is said, never dropped.
 
 This runs on the one ``respond`` verb every provider wire already speaks: no tool-use API, no second client.
 """
@@ -126,20 +128,31 @@ def _answer(kind: str, item: str, range_: str, repo: str, rows: Sequence[Changed
     return done.stdout or '(empty)'
 
 
+def _listed(value: object) -> list[object]:
+    return value if isinstance(value, list) else []
+
+
 def serve(
     requests: Mapping[str, object], *, range_: str, repo: str, rows: Sequence[Changed], budget: int = TURN_BYTES
 ) -> str:
-    """The answers to one turn's *requests*, in :data:`REQUESTS` order, cut at *budget* bytes saying so."""
+    """The answers to one turn's *requests*, in :data:`REQUESTS` order, together at most *budget* characters.
+
+    An answer past what remains is CUT to it, never dropped (a file larger than a turn is still read in part), and
+    the cut names how much was shown and every request left unanswered, so the reviewer can narrow and ask again.
+    """
+    asked = [(kind, str(item)) for kind in REQUESTS for item in _listed(requests.get(kind))]
     parts, used = [], 0
-    for kind in REQUESTS:
-        asked = requests.get(kind) or []
-        for item in asked if isinstance(asked, list) else []:
-            text = f'### {kind} {item}\n{_answer(kind, str(item), range_, repo, rows)}\n'
-            if used + len(text) > budget:
-                parts.append(f'### cut: this turn is past {budget} bytes; ask for {kind} {item} and the rest again\n')
-                return ''.join(parts)
-            parts.append(text)
-            used += len(text)
+    for at, (kind, item) in enumerate(asked):
+        text = f'### {kind} {item}\n{_answer(kind, item, range_, repo, rows)}\n'
+        if used + len(text) > budget:
+            shown = max(budget - used, 0)
+            left = ', '.join(f'{k} {i}' for k, i in asked[at + 1 :]) or 'none'
+            parts.append(text[:shown])
+            parts.append(f'\n### cut: {kind} {item} shown to {shown} of {len(text)} characters (this turn holds '
+                         f'{budget}); not answered: {left}. Ask a narrower grep, or the rest, next turn.\n')  # fmt: skip
+            return ''.join(parts)
+        parts.append(text)
+        used += len(text)
     unknown = sorted(set(requests) - set(REQUESTS))
     if unknown:
         parts.append(f'### refused: {unknown} are not requests; ask only {sorted(REQUESTS)}\n')

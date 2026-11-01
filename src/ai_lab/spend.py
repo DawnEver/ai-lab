@@ -10,7 +10,7 @@ re-prices history. A row this reader cannot price (a legacy row with no model, a
 counted in ``unpriced_calls``, never as free.
 
 The ledger is machine-local (:func:`ai_lab.budget.state_dir`), so a family served by several hosts reads each
-host's share; the review runner sums what its hosts report.
+host's share only: a report is THIS host's month, and an ephemeral runner's is its own run.
 
 ``python -m ai_lab.spend --json`` prints :func:`report`.
 """

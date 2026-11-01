@@ -88,7 +88,8 @@ def test_an_invalid_custom_profile_is_refused_by_name_not_skipped(method):
 
 
 def test_headless_defaults_to_anthropic_diff_profiles_no_synthesis_stdout_sink(method):
-    p = _plan(method, run_mode='headless', sources=[], available=['anthropic'])
+    explore = {**MANIFEST, 'mode': 'medium', 'manifest': 'x.py  +1 -0'}
+    p = _plan(method, run_mode='headless', sources=[], available=['anthropic'], manifest=explore)
     assert p['reviewers']
     contexts = {row['key']: row['context'] for row in method.profiles}
     for r in p['reviewers']:
@@ -159,7 +160,7 @@ def test_the_module_refuses_a_malformed_request_with_exit_2(monkeypatch, capsys,
 # has a declared ceiling, the current size plus a small margin, that may only go down.
 
 #: Characters of the largest rendered prompt with an empty diff and manifest.
-PROMPT_BUDGET_CHARS = 5900  # raised 2026-10-27 with the keep-valuable-options principle (largest 5863)
+PROMPT_BUDGET_CHARS = 6600  # raised 2026-10-31: the huge tier states its structural brief (largest 6528)
 #: How far the ceiling may sit above the largest prompt before it must be lowered.
 MARGIN_CHARS = 100
 EMPTY = {'range': '', 'excludedSummary': '', 'diff': '', 'manifest': ''}

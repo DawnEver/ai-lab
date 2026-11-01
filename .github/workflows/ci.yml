@@ -93,7 +93,8 @@
     "absent-parts": {
       "needs": [
         "parts",
-        "part"
+        "part",
+        "part-live"
       ],
       "if": "${{ always() && needs.parts.result == 'success' }}",
       "runs-on": "ubuntu-latest",
@@ -273,6 +274,47 @@
         "statuses": "write",
         "pull-requests": "write"
       }
+    },
+    "part-live": {
+      "needs": "parts",
+      "name": "tests/live",
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4",
+          "with": {
+            "ref": "${{ env.HEAD_SHA }}",
+            "fetch-depth": 0
+          }
+        },
+        {
+          "name": "Install uv",
+          "uses": "astral-sh/setup-uv@v5",
+          "with": {
+            "enable-cache": true
+          }
+        },
+        {
+          "name": "Sync the environment",
+          "run": "uv sync --frozen --all-extras"
+        },
+        {
+          "name": "Set up tests/live from its secrets",
+          "run": "printf '%s=%s\\n' ANTHROPIC_API_KEY \"$ANTHROPIC_API_KEY\" | { git config --global credential.helper 'cache --timeout=7200' && uv run --no-sync python -m ai_lab.auth login --from-file -; }",
+          "env": {
+            "ANTHROPIC_API_KEY": "${{ secrets.ANTHROPIC_API_KEY }}"
+          }
+        },
+        {
+          "name": "Produce and post the part",
+          "run": "uv run --no-sync python -m dev_lab.dev.jobparts produce live"
+        }
+      ],
+      "permissions": {
+        "contents": "write",
+        "statuses": "write"
+      },
+      "if": "${{ github.event_name != 'pull_request' }}"
     }
   }
 }

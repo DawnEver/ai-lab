@@ -9,25 +9,31 @@ import pytest
 
 from ai_lab.review import merge as merge_cli
 from ai_lab.review import plan as plan_cli
-from ai_lab.review.__main__ import _git_diff, main
+from ai_lab.review.__main__ import main
+from ai_lab.review.explore import numstat
 from ai_lab.review.method import load_method
 from ai_lab.review.rules import finding_id
 from tests.review_principles import PRINCIPLES, PRINCIPLES_FILE
+
+
+def _no_diff(*_a):
+    return ''
+
 
 OK = {'schema_version': 1, 'ok': True, 'kind': '', 'result': {'findings': []}, 'usage': None, 'key_slot': 1,
       'error': ''}  # fmt: skip
 
 
-def _diff(range_, repo, paths=()):
+def _rows(range_, repo, paths=()):
     assert (range_, repo, tuple(paths)) == ('main...HEAD', '.', ())
-    return '+y = 2\n'
+    return [(1, 0, 'y.py')]
 
 
 def test_the_cli_prints_the_findings_json(method_dir, capsys):
     seen = []
     code = main(['--principles', str(PRINCIPLES_FILE), '--rules', '',
                  '--method', str(method_dir), '--range', 'main...HEAD', '--model', 'claude-test'],
-                call=lambda r: seen.append(r) or OK, diff=_diff)  # fmt: skip
+                call=lambda r: seen.append(r) or OK, numstat=_rows, diff=_no_diff)  # fmt: skip
     assert code == 0
     doc = json.loads(capsys.readouterr().out)
     assert doc['schema_version'] == 3
@@ -39,7 +45,7 @@ def test_the_cli_prints_the_findings_json(method_dir, capsys):
 def test_providers_override_the_default(method_dir, capsys):
     main(['--principles', str(PRINCIPLES_FILE), '--rules', '',
           '--method', str(method_dir), '--range', 'main...HEAD', '--model', 'm', '--providers', 'ghost'],
-         call=lambda r: OK, diff=_diff)  # fmt: skip
+         call=lambda r: OK, numstat=_rows, diff=_no_diff)  # fmt: skip
     doc = json.loads(capsys.readouterr().out)
     assert {(r['provider'], r['status']) for r in doc['reviewers']} == {('ghost', 'unavailable')}
 
@@ -63,7 +69,8 @@ def test_an_unknown_method_version_exits_2_naming_it(method_dir, tmp_path, capsy
                 'm',
             ],
             call=None,
-            diff=_diff,
+            numstat=_rows,
+            diff=_no_diff,
         )
         == 2
     )
@@ -109,7 +116,7 @@ def test_the_run_takes_the_verb_less_argv_the_forge_declares(method_dir, capsys)
         '--model',
         'claude-test',
     ]
-    assert main(argv, call=lambda r: OK, diff=_diff) == 0
+    assert main(argv, call=lambda r: OK, numstat=_rows, diff=_no_diff) == 0
     assert json.loads(capsys.readouterr().out)['schema_version'] == 3
 
 
@@ -118,7 +125,8 @@ def test_the_method_defaults_to_the_packaged_one(capsys):
         main(
             ['--principles', str(PRINCIPLES_FILE), '--rules', '', '--range', 'main...HEAD', '--model', 'm'],
             call=lambda r: OK,
-            diff=_diff,
+            numstat=_rows,
+            diff=_no_diff,
         )
         == 0
     )
@@ -173,12 +181,12 @@ def test_merge_refuses_a_malformed_record_with_exit_2(method_dir, monkeypatch, c
     assert out.err.startswith('refused: ')
 
 
-def test_paths_restrict_the_diff_to_the_slice(method_dir, capsys):
+def test_paths_restrict_the_map_to_the_slice(method_dir, capsys):
     seen = []
 
-    def diff(range_, repo, paths=()):
+    def rows(range_, repo, paths=()):
         seen.append(tuple(paths))
-        return '+y = 2\n'
+        return [(1, 0, 'src/x/y.py')]
 
     argv = [
         '--principles',
@@ -197,12 +205,12 @@ def test_paths_restrict_the_diff_to_the_slice(method_dir, capsys):
         'src/x',
         'docs',
     ]
-    assert main(argv, call=lambda r: OK, diff=diff) == 0
+    assert main(argv, call=lambda r: OK, numstat=rows, diff=_no_diff) == 0
     assert seen == [('src/x', 'docs')]
     assert len(json.loads(capsys.readouterr().out)['reviewers']) == 1
 
 
-def test_the_real_diff_reads_only_the_named_paths(tmp_path):
+def test_the_real_map_reads_only_the_named_paths(tmp_path):
 
     git = shutil.which('git')
 
@@ -219,9 +227,7 @@ def test_the_real_diff_reads_only_the_named_paths(tmp_path):
     (tmp_path / 'a.txt').write_text('a2\n', encoding='utf-8')
     (tmp_path / 'b.txt').write_text('b2\n', encoding='utf-8')
     g('commit', '-qam', 'two')
-    text = _git_diff('HEAD~1..HEAD', str(tmp_path), ('a.txt',))
-    assert 'a2' in text
-    assert 'b2' not in text
+    assert [row[2] for row in numstat('HEAD~1..HEAD', str(tmp_path), ('a.txt',))] == ['a.txt']
 
 
 def test_synthesis_reads_the_merged_findings_and_the_range_shape(method_dir, tmp_path, capsys):
@@ -229,8 +235,9 @@ def test_synthesis_reads_the_merged_findings_and_the_range_shape(method_dir, tmp
     merged.write_text(json.dumps({'findings': [{'summary': 'SLICE-FINDING'}]}), encoding='utf-8')
     seen = []
 
-    def diff(range_, repo, paths=()):
-        return 'FULL-DIFF-NEVER-READ'
+    def rows(range_, repo, paths=()):
+        assert paths == (), 'synthesis maps the whole range'
+        return [(1, 1, 'x.py')]
 
     argv = [
         '--principles',
@@ -246,12 +253,11 @@ def test_synthesis_reads_the_merged_findings_and_the_range_shape(method_dir, tmp
         '--findings',
         str(merged),
     ]
-    code = main(argv, call=lambda r: seen.append(r) or OK, diff=diff, stat=lambda range_, repo: ' x.py | 2 +-\n')
+    code = main(argv, call=lambda r: seen.append(r) or OK, numstat=rows, diff=_no_diff)
     assert code == 0
     text = seen[0]['context'][0]['text']
     assert 'SLICE-FINDING' in text
-    assert 'x.py | 2 +-' in text
-    assert 'FULL-DIFF-NEVER-READ' not in text
+    assert '+1 -1  x.py' in text
     assert json.loads(capsys.readouterr().out)['schema_version'] == 3
 
 
@@ -270,7 +276,7 @@ def test_an_unreadable_findings_file_exits_2(method_dir, tmp_path, capsys):
         '--findings',
         str(tmp_path / 'no.json'),
     ]
-    assert main(argv, call=None, diff=_diff) == 2
+    assert main(argv, call=None, numstat=lambda *a: [], diff=_no_diff) == 2
     assert capsys.readouterr().out == ''
 
 
@@ -282,7 +288,9 @@ def test_every_review_entry_point_refuses_without_the_callers_rules_or_principle
     given = {'--rules': '', '--principles': str(PRINCIPLES_FILE)}
     owned = [part for flag, value in given.items() if flag != missing for part in (flag, value)]
     run = {
-        'review': lambda: main([*owned, '--range', 'main...HEAD', '--model', 'm'], call=lambda r: OK, diff=_diff),
+        'review': lambda: main(
+            [*owned, '--range', 'main...HEAD', '--model', 'm'], call=lambda r: OK, numstat=_rows, diff=_no_diff
+        ),
         'merge': lambda: merge_cli.main(owned),
         'plan': lambda: plan_cli.main(owned),
     }[cli]

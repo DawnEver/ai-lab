@@ -23,6 +23,18 @@
         "template": "prompts/agent-diff.md",
         "call_mode": "agent"
       },
+      "small": {
+        "template": "prompts/small-diff.md",
+        "call_mode": "explore"
+      },
+      "medium": {
+        "template": "prompts/medium-diff.md",
+        "call_mode": "explore"
+      },
+      "huge": {
+        "template": "prompts/huge-diff.md",
+        "call_mode": "explore"
+      },
       "empty": {
         "status": "skipped"
       }
@@ -42,7 +54,8 @@
     "trim": true,
     "partials": {
       "rules": "prompts/rules.md",
-      "output_contract": "prompts/output-contract.md"
+      "output_contract": "prompts/output-contract.md",
+      "requests": "prompts/requests.md"
     }
   },
   "run_modes": {
@@ -72,9 +85,12 @@
         "diff"
       ],
       "call_modes": [
-        "review"
+        "explore"
       ],
       "models": {},
+      "judge_models": {
+        "anthropic": "claude-opus-5-5"
+      },
       "synthesis": false,
       "sink": "stdout"
     }

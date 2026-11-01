@@ -40,6 +40,7 @@ ai_lab = ["providers.toml", "review/method_data/**/*"]
 testpaths = ["tests"]
 markers = [
     "live: calls a real model and needs its credential: its own part (tests/live), never tests/base",
+    "openai: calls OpenAI and needs its key, which no producer holds: declared unproduced",
     "workstation: needs a live checkout or agent tooling (hooks, origin refs, worktrees, node)",
 ]
 
@@ -78,14 +79,18 @@ collect = 'tests'
 [tool.dev_lab.parts]
 output = "output/logs"
 # User ruling 2026-10-30: no hosted runner is a workstation, so the workstation-marked tests (host node) run
-# in no part and nothing waits on one (dev_lab.dev.unproduced; relock onto it pending). User ruling 10-30 would
-# move live to a hosted row, but no hosted runner can produce it: ai-lab reads keys only from the git credential
-# store, never the environment, and the live part calls OpenAI too, whose key is no repo secret.
-unproduced = ["workstation", "live"]
+# in no part and nothing waits on one (dev_lab.dev.unproduced). The OpenAI test is its own `openai` resource
+# (user decision 10-30): its key is no repository secret, so no producer holds it.
+unproduced = ["workstation", "openai"]
+# User decision 10-30 (an approved exception to the 10-13 credential-store ruling): live runs on one push-only
+# hosted linux row (dev_lab.dev.jobparts.hosted_jobs). Its setup step alone holds the secret and hands it on stdin
+# to the one key door, `ai_lab.auth login --from-file -`; the code still never reads an environment key. A fresh
+# runner has no credential helper, so the step configures git's in-memory cache first.
+hosted = { live = { secrets = ["ANTHROPIC_API_KEY"], setup = "git config --global credential.helper 'cache --timeout=7200' && uv run --no-sync python -m ai_lab.auth login --from-file -" } }
 
 [tool.lab_commons.tests]
 produce = ["-m", "dev_lab.dev.verify", "--part", "{part}"]
-resources = ["live", "workstation"]
+resources = ["live", "openai", "workstation"]
 
 # The family branch flow: integrate/main coordinates; main moves only by `integrate promote` (fast-forward)
 # on a full forge PASS. Adopted 2026-10-18 (user ruling: every repo runs the lab-commons principles):

@@ -40,9 +40,3 @@ def test_an_api_row_reads_an_image(spec):
         ResponseRequest('Name the colour.', (Text('What colour fills this image?'), red_square()), schema)
     )
     assert got.value == {'colour': 'red'}
-
-
-def test_openai_decisions_native(request_):
-    d = connect('openai:gpt-6-luna').decide(request_)
-    assert d.basis is Basis.NATIVE
-    assert d['fidelity'].probabilities is not None

@@ -229,8 +229,8 @@ wheels = [
 
 [[package]]
 name = "dev-lab"
-version = "0.0.1.dev1929+g91c0aa7ba"
-source = { git = "https://github.com/DawnEver/dev-lab.git#91c0aa7baaa739eb2c47d8b732de0c1760582948" }
+version = "0.0.1.dev1934+g4be952ff9"
+source = { git = "https://github.com/DawnEver/dev-lab.git#4be952ff9a3fb11ee96b259e874da432f982cc2a" }
 dependencies = [
     { name = "commitizen" },
     { name = "lab-commons", extra = ["io", "paths", "structured", "units"] },

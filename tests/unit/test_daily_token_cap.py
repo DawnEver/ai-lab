@@ -90,5 +90,6 @@ def test_the_ledger_names_provider_and_key_fingerprint_and_never_a_secret(keys, 
     caps(anthropic=1000)
     connect('anthropic:claude-x', post=_reply(7, 3)).respond(_REQUEST)
     text = budget.ledger_file().read_text('utf-8')
-    assert [json.loads(line) for line in text.splitlines()] == [{'provider': 'anthropic', 'key': _KEY, 'tokens': 10}]
+    (row,) = [json.loads(line) for line in text.splitlines()]
+    assert {k: row[k] for k in ('provider', 'key', 'tokens')} == {'provider': 'anthropic', 'key': _KEY, 'tokens': 10}
     assert 'ak-test' not in text

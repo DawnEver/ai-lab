@@ -372,7 +372,7 @@ class Client:
             call = self.wire.effort(call, self.effort)
         raw = self._post(call)
         if (usage := self._usage(raw)) is not None:
-            budget.charge(self.provider.name, key, usage.input_tokens + usage.output_tokens)
+            budget.charge(self.provider.name, key, usage, self.model)
         return raw
 
 

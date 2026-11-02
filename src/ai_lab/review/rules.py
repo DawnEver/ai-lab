@@ -15,11 +15,13 @@ from typing import Final
 
 from ai_lab.review.method import Method
 
-__all__ = ['finding_id', 'merge', 'pick', 'render', 'render_prompt', 'reviewer_status', 'valid_finding']
+__all__ = ['finding_id', 'merge', 'pick', 'prompt_parts', 'render', 'render_prompt', 'reviewer_status', 'valid_finding']
 
 _PLACEHOLDER = re.compile(r'\{\{(\w+)\}\}')
 _BLANK_RUN = re.compile(r'\n{3,}')
 _CLAMP = 0.999999
+#: What ``{{cache_break}}`` renders to before the split: a template's STABLE PREFIX ends there (:func:`prompt_parts`).
+_BREAK: Final = '\x00cache_break\x00'
 
 
 def pick(method: Method, weights: Sequence[tuple[str, float]], count: int, rands: Sequence[float]) -> list[str]:
@@ -55,7 +57,13 @@ def _value(value: object, join: str) -> str:
 def render(method: Method, template: str, variables: Mapping[str, object]) -> str:
     """*template* with each ``{{name}}`` substituted, blank runs collapsed and the result trimmed."""
     spec = method.spec['template']
-    out = _PLACEHOLDER.sub(lambda m: _value(variables.get(m[1], spec['missing']), spec['list_join']), template)
+    return _tidy(
+        spec, _PLACEHOLDER.sub(lambda m: _value(variables.get(m[1], spec['missing']), spec['list_join']), template)
+    )
+
+
+def _tidy(spec: Mapping, out: str) -> str:
+    """*out* with blank runs collapsed and trimmed, as the method's ``template`` spec says; nothing substituted."""
     if spec['collapse_blank_lines']:
         out = _BLANK_RUN.sub('\n\n', out)
     return out.strip() if spec['trim'] else out
@@ -74,6 +82,20 @@ def _context_entry(method: Method, profile: Mapping, manifest: Mapping) -> dict:
 
 def render_prompt(method: Method, profile: Mapping, manifest: Mapping) -> dict:
     """``{"call_mode", "prompt"}`` for *profile* on *manifest*, or the context's declared ``{"status"}``."""
+    rendered = prompt_parts(method, profile, manifest)
+    if 'parts' not in rendered:
+        return rendered
+    return {'call_mode': rendered['call_mode'], 'prompt': '\n\n'.join(rendered['parts'])}
+
+
+def prompt_parts(method: Method, profile: Mapping, manifest: Mapping) -> dict:
+    """``{"call_mode", "parts"}`` for *profile* on *manifest*, or the context's declared ``{"status"}``.
+
+    ``parts`` is the prompt (:func:`render_prompt`) cut at the template's ``{{cache_break}}``: the part before it is
+    the STABLE PREFIX every reviewer of one change shares (rules, principles, contract, map, diff), so a wire caches
+    it once and every other profile, turn and slice reads it back; the part after it is the profile's own (framing,
+    scope). A template with no break is one part.
+    """
     entry = _context_entry(method, profile, manifest)
     if 'template' not in entry:
         return {'status': entry['status']}
@@ -88,6 +110,7 @@ def render_prompt(method: Method, profile: Mapping, manifest: Mapping) -> dict:
         'turns': manifest.get('turns'),
         'commits': manifest.get('commits'),
         'finding_schema': schema,
+        'cache_break': _BREAK,
     }
     # method.json rules.list_item once per given principle, one per line; then the registry ids on one line.
     item = method.spec['rules']['list_item']
@@ -95,7 +118,9 @@ def render_prompt(method: Method, profile: Mapping, manifest: Mapping) -> dict:
     variables['registry_list'] = ', '.join(method.registry)
     for name, path in method.spec['template']['partials'].items():
         variables[name] = render(method, method.text(path), variables)
-    return {'call_mode': entry['call_mode'], 'prompt': render(method, method.text(entry['template']), variables)}
+    whole = render(method, method.text(entry['template']), variables)
+    parts = [part for part in (_tidy(method.spec['template'], piece) for piece in whole.split(_BREAK)) if part]
+    return {'call_mode': entry['call_mode'], 'parts': parts}
 
 
 def _placeholder(spec: Mapping, result: Mapping) -> bool:

@@ -4,8 +4,11 @@
 ``tool_choice`` is refused by the Claude 5.5 models ("type tool and any are not supported for this model",
 measured 2026-10-16). Top-level ``cache_control`` turns on automatic prompt caching: the repeated
 instructions and context prefix are read back at 0.05-0.1x the input rate once a request has written them;
-a second breakpoint on the block before the newest lets an append-only context read what the previous
-call wrote (the automatic one sits on the newest block, which no later request repeats).
+a breakpoint on the FIRST block caches the stable prefix a caller puts there (a review's rules, map and diff,
+which every reviewer, turn and slice of one change shares), and one on the block before the newest lets an
+append-only context read what the previous call wrote (the automatic one sits on the newest block, which no
+later request repeats): three of the four breakpoints a request may carry.
+A reply cut at its output budget (``stop_reason=max_tokens``) is a :class:`ProviderError`, never a parsed prefix.
 Anthropic refuses an object schema whose ``additionalProperties`` is not explicitly ``false`` (HTTP 400,
 measured 2026-10-21), so the wire sends a closed copy of the caller's schema.
 """
@@ -58,9 +61,10 @@ def _respond(request: ResponseRequest, model: str, endpoint: str, key: str) -> H
         else {'type': 'text', 'text': text_of(p)}
         for p in request.context
     ]
-    if len(content) > 1:
-        # an append-only context's next request repeats every block but the newest: break there
-        content[-2]['cache_control'] = {'type': 'ephemeral'}
+    for at in sorted({0, len(content) - 2}):
+        if 0 <= at < len(content) - 1:
+            # the stable prefix, and the block an append-only context's next request repeats last
+            content[at]['cache_control'] = {'type': 'ephemeral'}
     return HttpCall(
         url=f'{endpoint}/messages',
         body={
@@ -76,6 +80,9 @@ def _respond(request: ResponseRequest, model: str, endpoint: str, key: str) -> H
 
 
 def _parse_response(raw: dict) -> dict:
+    if raw.get('stop_reason') == 'max_tokens':
+        msg = 'the reply was cut at its output budget: stop_reason=max_tokens; raise the request max_tokens'
+        raise ProviderError(msg)
     text = ''.join(b.get('text', '') for b in raw.get('content', []) if b.get('type') == 'text')
     if not text:
         msg = f'the message carries no text: stop_reason={raw.get("stop_reason")}'

@@ -34,13 +34,18 @@ from pathlib import PurePosixPath
 from typing import Final
 
 __all__ = [
-    'DIFF_LINE_BYTES', 'HUGE_LINES', 'INLINE_BYTES', 'LOG_BYTES', 'MAX_LISTED_FILES', 'REQUESTS', 'TIERS', 'TURNS',
-    'TURN_BYTES',
-    'Changed', 'brief', 'change_map', 'commit_messages', 'diff', 'git', 'numstat', 'serve', 'size', 'tier',
+    'DIFF_LINE_BYTES', 'HUGE_LINES', 'INLINE_BYTES', 'LOG_BYTES', 'MAX_LISTED_FILES', 'REQUESTS', 'SMALL_TURNS',
+    'TIERS', 'TURNS', 'TURN_BYTES',
+    'Changed', 'brief', 'change_map', 'commit_messages', 'diff', 'git', 'numstat', 'serve', 'size', 'tier', 'turns_for',
 ]  # fmt: skip
 
 #: How many turns a reviewer has: every one but the last may ask; the last must answer with findings.
 TURNS: Final = 6
+
+#: How many turns a SMALL change's reviewer has (user ruling 2026-11-03): its whole diff is in the prompt, so one turn
+#: may ask for the context around it and the next must answer. Measured 2026-11-03: small reviews averaged 185k input
+#: tokens over 6 turns for no HIGH finding -- every turn re-sends the prompt and everything asked so far.
+SMALL_TURNS: Final = 2
 
 #: INITIAL value, to be fitted from the tier ledger. Past this many changed files the change is ``huge`` and its
 #: map lists directories only (``list`` opens one): a file list that long is a page of names, not a structure.
@@ -169,6 +174,11 @@ def tier(rows: Sequence[Changed], diff_bytes: int) -> str:
     if _huge(rows):
         return 'huge'
     return 'small' if diff_bytes <= INLINE_BYTES else 'medium'
+
+
+def turns_for(mode: str) -> int:
+    """How many turns a reviewer of a change of tier *mode* has: :data:`SMALL_TURNS` when small, else :data:`TURNS`."""
+    return SMALL_TURNS if mode == 'small' else TURNS
 
 
 def brief(range_: str, rows: Sequence[Changed], *, read_diff: Callable[[], str], read_log: Callable[[], str]) -> dict:

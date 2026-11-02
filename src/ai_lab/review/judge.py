@@ -270,7 +270,7 @@ def _sample(finding: Mapping, call: Callable, request: Mapping, *, args: argpars
 
     held = _held(finding, nonce, range_=args.range_, repo=args.repo, rows=rows)
     prompt = _prompt(finding, nonce, range_=args.range_, mapped=mapped, held=held, method=method)
-    reply = explored(call, request, prompt, explore, TURNS)
+    reply = explored(call, request, [prompt], explore, TURNS)
     if not reply.get('ok'):
         return 'present', f'not judged: {reply.get("kind") or "call failed"}', []
     result = reply.get('result')
@@ -331,7 +331,7 @@ def main(argv: Sequence[str] | None = None, *, call: Callable[[Mapping], Mapping
             verdicts.append({'id': fid, 'outcome': 'present', 'evidence': 'not judged: no independent judge'})
             continue
         request = {'verb': 'respond', 'provider': chosen[0], 'model': chosen[1], 'task': REVIEW_TASK,
-                   'instructions': _INSTRUCTIONS, 'schema': _SCHEMA}  # fmt: skip
+                   'instructions': _INSTRUCTIONS, 'schema': _SCHEMA, 'tag': 'judge'}  # fmt: skip
         try:
             verdict = _judged(finding, metered, request, args=args, rows=rows, mapped=mapped, method=method)
         except BudgetSpent:

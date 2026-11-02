@@ -21,7 +21,7 @@ from typing import Final
 
 from ai_lab.review.explore import REQUESTS, TURNS
 from ai_lab.review.method import DEFAULT_CONFIG, Method, configured_providers
-from ai_lab.review.rules import merge, pick, render_prompt
+from ai_lab.review.rules import merge, pick, prompt_parts
 
 __all__ = ['LENSES', 'REVIEW_TASK', 'explored', 'run']
 
@@ -70,10 +70,14 @@ def _asking(schema: Mapping) -> dict:
     return {'type': 'object', 'properties': {**schema['properties'], 'requests': requests}}
 
 
-def explored(call: Callable[[Mapping], Mapping], request: Mapping, prompt: str, explore: Callable[[Mapping], str],
-              turns: int) -> Mapping:  # fmt: skip
-    """The reply that ends one exploration: its answer, a failure, or the last turn's answer (``request['schema']``)."""
-    context = [{'kind': 'text', 'text': prompt}]
+def explored(call: Callable[[Mapping], Mapping], request: Mapping, prompt: Sequence[str],
+             explore: Callable[[Mapping], str], turns: int) -> Mapping:  # fmt: skip
+    """The reply that ends one exploration: its answer, a failure, or the last turn's answer (``request['schema']``).
+
+    *prompt* is the first turn's parts, the stable prefix first (:func:`ai_lab.review.rules.prompt_parts`): each is
+    its own context block, so the wire's breakpoint on the first block caches what every reviewer shares.
+    """
+    context = [{'kind': 'text', 'text': part} for part in prompt]
     for turn in range(1, turns + 1):
         last = turn == turns
         schema = request['schema'] if last else _asking(request['schema'])
@@ -128,7 +132,7 @@ def run(
     reviewers, results = [], []
     for i, key in enumerate(keys):
         provider = providers[i % len(providers)]
-        rendered = render_prompt(method, method.profile(key), manifest)
+        rendered = prompt_parts(method, method.profile(key), manifest)
         if 'status' in rendered:
             status = rendered['status']
         elif provider not in available:
@@ -142,7 +146,7 @@ def run(
             continue
         request = {
             'verb': 'respond', 'provider': provider, 'model': mode['models'].get(provider, model),
-            'task': REVIEW_TASK, 'instructions': _INSTRUCTIONS, 'schema': schema,
+            'task': REVIEW_TASK, 'instructions': _INSTRUCTIONS, 'schema': schema, 'tag': key,
         }  # fmt: skip
-        results.append(_result(key, explored(call, request, rendered['prompt'], explore, turns)))
+        results.append(_result(key, explored(call, request, rendered['parts'], explore, turns)))
     return merge(method, range_=range_, profiles=keys, reviewers=reviewers, results=results, disposed=disposed)

@@ -12,7 +12,8 @@ the table names it, on its key's cap. A key is named by its FINGERPRINT (:func:`
 ``python -m ai_lab.auth status`` prints it), never by its secret and never by the credential username, so the
 same key is one key on every host and two usernames holding one key are one key. The tokens a day has used are
 a ledger, one JSON line per call ``{"provider", "key", "tokens", "model", "input", "output", "cached", "at", "tag"}``
-(``tag``: what the call is charged to, :data:`TAG_ENV`, else ``null``; dollars are DERIVED from it by
+(``tag``: what the call is charged to, :data:`TAG_ENV` with the call's own tag appended (``owner/repo#5149/diff``),
+else whichever of the two is set, else ``null``; dollars are DERIVED from it by
 :mod:`ai_lab.spend`, never stored), appended to ``tokens-<UTC date>.jsonl``
 under :func:`state_dir` -- machine-local, never tracked, so every checkout of one box draws on one budget. The
 ledger is a fast LOCAL stop: a key held on several hosts is metered per host here, and the key's global truth
@@ -44,6 +45,7 @@ __all__ = [
     'key_scope',
     'ledger_file',
     'remaining',
+    'spend_tag',
     'state_dir',
     'used_today',
 ]
@@ -120,12 +122,17 @@ def remaining(provider: str, key: str | None = None) -> int:
     return min(left)
 
 
-def charge(provider: str, key: str | None, usage: Usage, model: str) -> None:
-    """Append one call's *usage* of *model* on *provider* through *key* to today's ledger, tagged :data:`TAG_ENV`."""
+def spend_tag(tag: str | None = None) -> str | None:
+    """What a call is charged to: :data:`TAG_ENV`, ``/``-joined with the call's own *tag* (a review profile)."""
+    return '/'.join(t for t in (os.environ.get(TAG_ENV), tag) if t) or None
+
+
+def charge(provider: str, key: str | None, usage: Usage, model: str, *, tag: str | None = None) -> None:
+    """Append one call's *usage* of *model* on *provider* through *key* to today's ledger, tagged :func:`spend_tag`."""
     row = {
         'provider': provider, 'key': key, 'tokens': usage.input_tokens + usage.output_tokens, 'model': model,
         'input': usage.input_tokens, 'output': usage.output_tokens, 'cached': usage.cached_tokens,
-        'at': datetime.now(UTC).isoformat(timespec='seconds'), 'tag': os.environ.get(TAG_ENV) or None,
+        'at': datetime.now(UTC).isoformat(timespec='seconds'), 'tag': spend_tag(tag),
     }  # fmt: skip
     path = ledger_file()
     path.parent.mkdir(parents=True, exist_ok=True)

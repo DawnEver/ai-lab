@@ -9,6 +9,10 @@ One model call writes the claims; every claim must cite a commit sha or memory p
 that cites nothing known is dropped. What tests were lost or altered and how conflicts were resolved are
 copied from the merge commits verbatim, never from the model. A failed call keeps the summary: its claims
 fall back to the commit subjects, each citing its sha, and ``error`` names the failure.
+
+The call's output budget is SIZED from what it must summarize (:func:`output_budget`): a fixed budget cut two
+round summaries at ``stop_reason=max_tokens`` (2026-11-03). A reply cut at its budget raises
+:class:`SummaryTruncated` -- a truncated summary is never returned as if it were whole.
 """
 
 from __future__ import annotations
@@ -19,7 +23,16 @@ import subprocess
 from collections.abc import Callable, Mapping
 from typing import Final
 
-__all__ = ['MEMORY_ROOT', 'change_summary', 'git_intent', 'parse_log']
+__all__ = [
+    'MEMORY_ROOT',
+    'SOURCE_TOKENS',
+    'SUMMARY_TOKENS',
+    'SummaryTruncated',
+    'change_summary',
+    'git_intent',
+    'output_budget',
+    'parse_log',
+]
 
 #: Where intent documents live in every family repo.
 MEMORY_ROOT: Final = '.claude/memory/'
@@ -29,6 +42,23 @@ _FIELD: Final = '\x00'
 _AUDIT: Final = re.compile(r'^Merge-Audit:\s*(.+)$')
 _RESOLUTION: Final = re.compile(r'^(\S+): (\S+) -- (.+)$')
 _MEMORY_CHARS: Final = 4000
+
+#: The output tokens a summary needs before its sources: the object's frame and a few open items.
+SUMMARY_TOKENS: Final = 2048
+#: The output tokens each source (a commit, resolution, audit line or memory document) may claim: a claim of a
+#: sentence or two plus its cites, with room for an open item.
+SOURCE_TOKENS: Final = 400
+
+
+class SummaryTruncated(RuntimeError):
+    """The summary call's reply was cut at its output budget: the summary would be partial."""
+
+
+def output_budget(intent: Mapping) -> int:
+    """The summary call's ``max_tokens``: :data:`SUMMARY_TOKENS` plus :data:`SOURCE_TOKENS` per source it covers."""
+    sources = sum(len(intent.get(kind) or ()) for kind in ('commits', 'resolutions', 'merge_audit', 'memory'))
+    return SUMMARY_TOKENS + SOURCE_TOKENS * sources
+
 
 _INSTRUCTIONS: Final = (
     'Summarize what this change does and why, from the commits, merge resolutions, memory documents and PR '
@@ -110,14 +140,21 @@ def _cited(rows: object, text_key: str, known: set[str]) -> list[dict]:
 
 
 def change_summary(intent: Mapping, *, call: Callable[[Mapping], Mapping], provider: str, model: str) -> dict:
-    """The summary section of *intent*, its claims written by one *call* (``ai_lab.call.answer`` or a fake)."""
+    """The summary section of *intent*, its claims written by one *call* (``ai_lab.call.answer`` or a fake).
+
+    :class:`SummaryTruncated` when the reply was cut at :func:`output_budget`.
+    """
     shas = [c['sha'] for c in intent['commits']]
     paths = [m['path'] for m in intent['memory']]
     known = set(shas) | set(paths)
     reply = call({
         'verb': 'respond', 'provider': provider, 'model': model, 'task': 'pr-review',
         'instructions': _INSTRUCTIONS, 'context': [{'kind': 'text', 'text': _brief(intent)}], 'schema': _SCHEMA,
+        'tag': 'summary', 'max_tokens': output_budget(intent),
     })  # fmt: skip
+    if not reply['ok'] and 'stop_reason=max_tokens' in reply['error']:
+        msg = f'the summary was cut at its {output_budget(intent)}-token budget: {reply["error"]}'
+        raise SummaryTruncated(msg)
     result = (reply.get('result') or {}) if reply['ok'] else {}
     summary = {
         'changes': _cited(result.get('changes'), 'claim', known),

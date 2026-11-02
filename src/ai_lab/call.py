@@ -8,7 +8,9 @@ without a vendor SDK, a key or a retry loop of its own. The request::
      "instructions": str, "context": [{"kind": "text", "text": str} | {"kind": "fields", "values": {}}],
      "schema"?: {JSON-schema object}      -- respond: required; decide: refused
      "questions"?: [question]             -- decide: required (ai_lab.spec's JSON form); respond: refused
-     "images"?: [{"mime": "image/png", "data": base64}]}
+     "images"?: [{"mime": "image/png", "data": base64}],
+     "tag"?: str,                         -- appended to the spend tag the call is charged to (``<tag env>/<tag>``)
+     "max_tokens"?: int}                  -- the reply's output budget, where the wire has one (default: the wire's)
 
 and the reply, always one JSON object::
 
@@ -63,7 +65,7 @@ REPLY_KINDS: Final = ERROR_KINDS | {'', 'unsupported'}
 
 _VERBS: Final = frozenset({'respond', 'decide'})
 _REQUIRED: Final = frozenset({'verb', 'provider', 'model', 'instructions', 'context'})
-_OPTIONAL: Final = frozenset({'task', 'effort', 'schema', 'questions', 'images'})
+_OPTIONAL: Final = frozenset({'task', 'effort', 'schema', 'questions', 'images', 'tag', 'max_tokens'})
 _EXIT_MALFORMED: Final = 2
 
 
@@ -115,9 +117,12 @@ def _request(request: Mapping) -> tuple[str, DecisionRequest | ResponseRequest]:
         raise Malformed(msg)
     for name in ('provider', 'model', 'instructions'):
         _field(request, name, str)
-    for name in ('task', 'effort'):
+    for name in ('task', 'effort', 'tag'):
         if name in request:
             _field(request, name, str)
+    if 'max_tokens' in request and (isinstance(request['max_tokens'], bool) or _field(request, 'max_tokens', int) < 1):
+        msg = f"'max_tokens' must be a positive int, got {request['max_tokens']!r}"
+        raise Malformed(msg)
     context = tuple(_part(p) for p in _field(request, 'context', list))
     context += tuple(_image(i) for i in _field(request, 'images', list, []))
     return verb, _typed(verb, request, context)
@@ -172,7 +177,9 @@ def answer(request: Mapping, *, ledger: str | None = None, **options: object) ->
     verb, typed = _request(request)
     spec = f'{request["provider"]}:{request["model"]}' + (f'@{request["effort"]}' if request.get('effort') else '')
     try:
-        client = connect(spec, task=request.get('task'), **options)
+        client = connect(
+            spec, task=request.get('task'), tag=request.get('tag'), max_tokens=request.get('max_tokens'), **options
+        )
     except Unsupported as missing:
         return _reply(ok=False, kind='unsupported', error=str(missing))
     except ValueError as bad:  # an undeclared task: the request named something no key can be under

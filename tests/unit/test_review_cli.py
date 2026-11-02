@@ -255,7 +255,7 @@ def test_synthesis_reads_the_merged_findings_and_the_range_shape(method_dir, tmp
     ]
     code = main(argv, call=lambda r: seen.append(r) or OK, numstat=rows, diff=_no_diff)
     assert code == 0
-    text = seen[0]['context'][0]['text']
+    text = next(r for r in seen if r.get('tag') != 'summary')['context'][0]['text']
     assert 'SLICE-FINDING' in text
     assert '+1 -1  x.py' in text
     assert json.loads(capsys.readouterr().out)['schema_version'] == 3

@@ -56,15 +56,16 @@ def test_openai_chat_without_a_key_sends_no_auth_header():
     assert openai_chat.WIRE.respond(REQ, 'llama', 'http://localhost:11434/v1', '').headers == {}
 
 
-def test_anthropic_messages_marks_the_block_before_the_newest_as_a_cache_breakpoint():
+def test_anthropic_messages_marks_the_stable_prefix_and_the_block_before_the_newest_as_breakpoints():
     # An append-only context grows by one block per call; the automatic breakpoint sits on the LAST
     # block, which the next request never repeats, so its entry is never read. The block before it is
-    # the next request's prefix: marked there, call N+1 reads what call N wrote.
+    # the next request's prefix: marked there, call N+1 reads what call N wrote. The FIRST block is the
+    # stable prefix every reviewer of one change shares: marked, another profile or slice reads it back.
     req = ResponseRequest('i', (Text('a'), Text('b'), Text('c')), SCHEMA)
     content = anthropic_messages.WIRE.respond(req, 'claude-x', 'https://api.anthropic.com/v1', 'k').body['messages'][0][
         'content'
     ]
-    assert [b.get('cache_control') for b in content] == [None, {'type': 'ephemeral'}, None]
+    assert [b.get('cache_control') for b in content] == [{'type': 'ephemeral'}, {'type': 'ephemeral'}, None]
     one = ResponseRequest('i', (Text('a'),), SCHEMA)
     only = anthropic_messages.WIRE.respond(one, 'claude-x', 'https://api.anthropic.com/v1', 'k').body['messages'][0]
     assert 'cache_control' not in only['content'][0]

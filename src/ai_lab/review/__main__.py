@@ -16,7 +16,8 @@ and the whole range's map, and reports what crosses slices.
 
 The document opens with ``summary`` -- what the change does and why, derived each run from the range's
 commits, merge resolutions, ``Merge-Audit`` lines, the memory it adds or changes and ``--pr-body``
-(:mod:`ai_lab.review.summary`); ``--no-summary`` omits it (a slice the caller summarizes once). ``--disposed
+(:mod:`ai_lab.review.summary`); ``--no-summary`` omits it (a slice the caller summarizes once). The summary is
+written FIRST: one cut at its output budget exits 3 naming it on stderr, before any reviewer is paid for. ``--disposed
 <file>`` (``{"disposed": [{id, reason}]}``) names ids disposed of earlier: they are not re-raised, and the
 document lists them under ``disposed``.
 """
@@ -34,17 +35,25 @@ from typing import Final
 
 from ai_lab.call import answer
 from ai_lab.client import catalogue
-from ai_lab.review.explore import Changed, brief, change_map, commit_messages, serve, size
+from ai_lab.review.explore import Changed, brief, change_map, commit_messages, serve, size, turns_for
 from ai_lab.review.explore import diff as git_diff
 from ai_lab.review.explore import numstat as git_numstat
-from ai_lab.review.method import METHOD_DIR, UnknownMethodVersion, load_method, principle_list, rule_ids
+from ai_lab.review.method import (
+    METHOD_DIR,
+    UnknownMethodVersion,
+    configured_providers,
+    load_method,
+    principle_list,
+    rule_ids,
+)
 from ai_lab.review.run import LENSES, run
-from ai_lab.review.summary import change_summary, git_intent
+from ai_lab.review.summary import SummaryTruncated, change_summary, git_intent
 from ai_lab.review.tiers import evidence, ledger_path, record
 
 __all__ = []
 
 _EXIT_REFUSED: Final = 2
+_EXIT_TRUNCATED: Final = 3
 
 #: The synthesis pass's change text: the slices' findings, then the range's file summary.
 _SYNTHESIS: Final = (
@@ -150,19 +159,29 @@ def main(
                 spent['usage'][key] = spent['usage'].get(key, 0) + value
         return reply
 
+    summary = None
+    if not args.no_summary and intent is not None:
+        provider = (
+            args.providers or configured_providers({}, 'headless') or method.spec['run_modes']['headless']['providers']
+        )[0]
+        try:
+            summary = _summary(args, intent, call, provider)
+        except SummaryTruncated as cut:
+            sys.stderr.write(f'truncated: {cut}\n')
+            return _EXIT_TRUNCATED
     started = time.monotonic()
     doc = run(
         method, range_=args.range_, brief=change, explore=explore, model=args.model, providers=args.providers,
         available=set(catalogue()), call=counted, rng=random.SystemRandom(), lens=args.lens, disposed=disposed,
+        turns=turns_for(change['mode']),
     )  # fmt: skip
     record(ledger_path(args.repo), evidence(
         range_=args.range_, repo=args.repo, rows=rows, tier='synthesis' if args.findings else change['mode'],
         diff_bytes=change['diff_bytes'], turns=spent['turns'], read_bytes=spent['read_bytes'],
         findings=doc['findings'], seconds=time.monotonic() - started, usage=spent['usage'],
     ))  # fmt: skip
-    if not args.no_summary and intent is not None:
-        provider = doc['reviewers'][0]['provider'] if doc['reviewers'] else 'anthropic'
-        doc = {'summary': _summary(args, intent, call, provider), **doc}
+    if summary is not None:
+        doc = {'summary': summary, **doc}
     sys.stdout.write(json.dumps(doc, ensure_ascii=False) + '\n')
     return 0
 

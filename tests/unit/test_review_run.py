@@ -137,8 +137,9 @@ def test_the_headless_default_explores_the_change_through_anthropic_and_validate
             'category',
         ]
         # The rendered prompt is the user turn: an empty context is an empty user message, which the
-        # Messages API refuses with a 400 (`user messages must have non-empty content`).
-        assert [part['kind'] for part in request['context']] == ['text']
+        # Messages API refuses with a 400 (`user messages must have non-empty content`). It is two blocks: the
+        # stable prefix every profile shares (cached once), then the profile's own framing and scope.
+        assert [part['kind'] for part in request['context']] == ['text', 'text']
         assert 'x.py  +1 -0' in request['context'][0]['text'], 'the map, never a diff'
 
 

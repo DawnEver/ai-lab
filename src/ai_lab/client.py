@@ -260,9 +260,15 @@ class Client:
         effort: str = '',
         task: str | None = None,
         protocol: str | None = None,
+        tag: str | None = None,
+        max_tokens: int | None = None,
         post: Callable[..., dict] = transport.post,
     ) -> None:
-        """Bind ``provider``, ``model`` and the wire serving that model; refuse a provider with no model."""
+        """Bind ``provider``, ``model`` and the wire serving that model; refuse a provider with no model.
+
+        *tag* is appended to what each call is charged to (:func:`ai_lab.budget.charge`); *max_tokens* replaces the
+        wire's output budget where its body carries one.
+        """
         if task is not None:
             key_username(task)  # an undeclared task is refused here, not at the first call
         self.wire: Wire = WIRES[provider.wire_for(model, protocol)]
@@ -280,6 +286,8 @@ class Client:
         self.model = model
         self.effort = effort
         self.task = task
+        self.tag = tag
+        self.max_tokens = max_tokens
         self._post = post
 
     @property
@@ -367,16 +375,17 @@ class Client:
         """Send *call* within its provider's and *key*'s token budgets, and charge what its reply reports."""
         left = budget.remaining(self.provider.name, key)
         if 'max_tokens' in call.body:
-            call = replace(call, body={**call.body, 'max_tokens': min(call.body['max_tokens'], left)})
+            wanted = self.max_tokens or call.body['max_tokens']
+            call = replace(call, body={**call.body, 'max_tokens': min(wanted, left)})
         if self.effort:
             call = self.wire.effort(call, self.effort)
         raw = self._post(call)
         if (usage := self._usage(raw)) is not None:
-            budget.charge(self.provider.name, key, usage, self.model)
+            budget.charge(self.provider.name, key, usage, self.model, tag=self.tag)
         return raw
 
 
-def connect(spec: str, *, task: str | None = None, protocol: str | None = None, **options: Callable) -> Client:
+def connect(spec: str, *, task: str | None = None, protocol: str | None = None, **options: object) -> Client:
     """``'openai:gpt-6-luna'``, ``'openai:gpt-x@high'``, ``'anthropic:<model>'``..."""
     spec, _, effort = spec.partition('@')
     name, _, model = spec.partition(':')

@@ -114,7 +114,7 @@ def test_the_reviewer_reads_what_it_asks_for_and_then_answers(tmp_path, capsys):
 
 
 def test_the_last_turn_must_answer(tmp_path, capsys):
-    repo, range_ = _repo(tmp_path, {'src/a.py': f'{SENTINEL}\n'})
+    repo, range_ = _repo(tmp_path, {'src/a.py': f'{SENTINEL}\n', **PAD})
     call = Scripted({'requests': {'show': ['src/a.py']}})
     doc = _review(repo, range_, call, capsys)
     assert len(call.requests) == TURNS

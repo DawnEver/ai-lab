@@ -60,7 +60,7 @@ from lab_commons.credentials import API_KEY_TASKS, NoCredential, api_keys, key_u
 from ai_lab.budget import fingerprint
 from ai_lab.client import Provider, catalogue, stored_slots
 
-__all__ = ['format_key_file', 'main', 'parse_key_file']
+__all__ = ['format_key_file', 'parse_key_file']
 
 #: ``[export ]NAME[:<task>][:<slot>]<= or whitespace>value``; a task is a part that is not all digits.
 _LINE = re.compile(r'^(?:export\s+)?([^=\s:]+)(?::([^=\s:]*[^=\s:\d][^=\s:]*))?(?::(\d+))?\s*(?:=|\s)\s*(.*)$')

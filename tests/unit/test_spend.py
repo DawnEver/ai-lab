@@ -58,13 +58,13 @@ def test_planted_control_an_untagged_call_is_charged_to_no_tag(keys, monkeypatch
     assert row['tag'] is None
 
 
-def test_the_report_prices_each_call_and_sums_the_month_and_each_tag(tmp_path):
+def test_the_report_prices_each_call_and_sums_the_month_and_each_tag(tmp_path, machine):
     _write(tmp_path, '2026-09-30', _row('r#1', 1_000_000))  # last month: in the window, not the month
     _write(tmp_path, '2026-10-05', _row('r#1', 1_000_000, 1_000_000), _row('r#2', 2_000_000))
     _write(tmp_path, '2026-10-06', _row(None, 1_000_000), _row('r#2', 1, model='unpriced-model'))
     got = spend.report(today=date(2026, 10, 6), directory=tmp_path, price=_price)
-    assert got['budget_usd'] == spend.FAMILY_MONTHLY_USD == 1000.0
-    assert got['month'] == '2026-10'
+    assert got['budget_usd'] == 1000.0
+    assert got['month'] == '2026-10-01'
     assert got['spent_usd'] == pytest.approx(3.0 + 2.0 + 1.0)
     assert got['month_by_tag'] == pytest.approx({'r#1': 3.0, 'r#2': 2.0})
     assert got['window']['by_tag'] == pytest.approx({'r#1': 4.0, 'r#2': 2.0})
@@ -98,3 +98,54 @@ def test_the_cli_prints_the_report_as_json(tmp_path, monkeypatch, capsys):
     got = json.loads(capsys.readouterr().out)
     assert got['schema'] == spend.SPEND_SCHEMA
     assert got['month_by_tag'] == {'r#1': 1.0}
+
+
+@pytest.fixture
+def machine(tmp_path, monkeypatch):
+    """The machine file's ``[ai_lab.spend]`` table, as TOML rows."""
+
+    def declare(rows=''):
+        path = tmp_path / 'machine.toml'
+        path.write_text(f'[ai_lab.spend]\n{rows}', encoding='utf-8')
+        monkeypatch.setenv('LAB_COMMONS_CONFIG', str(path))
+
+    declare()
+    return declare
+
+
+def test_by_default_750_of_the_1000_usd_month_is_allocated_and_250_is_the_reserve(tmp_path, machine):
+    got = spend.report(today=date(2026, 10, 6), directory=tmp_path / 'ledger', price=_price)
+    assert (got['budget_usd'], got['reserve_usd']) == (1000.0, 250.0)
+    assert (spend.DEFAULT_MONTHLY_USD, spend.DEFAULT_RESERVE_USD, spend.DEFAULT_RESET_DAY) == (1000.0, 250.0, 1)
+
+
+def test_the_machine_file_sets_the_budget_the_reserve_and_the_reset_day(tmp_path, machine):
+    machine('monthly_usd = 2000\nreserve_usd = 500\nreset_day = 15\n')
+    _write(tmp_path, '2026-10-14', _row('r#1', 1_000_000))  # before the 15th: last month
+    _write(tmp_path, '2026-10-15', _row('r#1', 2_000_000))
+    got = spend.report(today=date(2026, 10, 20), directory=tmp_path, price=_price)
+    assert (got['budget_usd'], got['reserve_usd']) == (2000.0, 500.0)
+    assert got['month'] == '2026-10-15', 'a month opens on its reset day'
+    assert got['spent_usd'] == pytest.approx(2.0)
+
+
+def test_a_month_opens_on_the_reset_day_of_the_previous_calendar_month_before_it(tmp_path, machine):
+    machine('reset_day = 15\n')
+    got = spend.report(today=date(2026, 1, 3), directory=tmp_path, price=_price)
+    assert got['month'] == '2025-12-15'
+
+
+def test_the_default_month_opens_on_the_first(tmp_path, machine):
+    got = spend.report(today=date(2026, 10, 6), directory=tmp_path, price=_price)
+    assert got['month'] == '2026-10-01'
+
+
+@pytest.mark.parametrize(
+    'rows',
+    ['monthly_usd = -1\n', 'reserve_usd = 1001\n', 'reserve_usd = -5\n', 'reset_day = 0\n', 'reset_day = 29\n',
+     'reset_day = 1.5\n', 'monthly_usd = true\n', 'unknown = 1\n'],
+)  # fmt: skip
+def test_a_malformed_spend_table_is_refused_by_name(tmp_path, machine, rows):
+    machine(rows)
+    with pytest.raises(ValueError, match=r'\[ai_lab\.spend\]'):
+        spend.report(today=date(2026, 10, 6), directory=tmp_path, price=_price)

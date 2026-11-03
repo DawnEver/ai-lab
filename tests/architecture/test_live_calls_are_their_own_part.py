@@ -35,5 +35,5 @@ def test_the_openai_call_is_its_own_unproduced_resource_so_live_runs_without_its
     assert 'live' not in unproduced(text), 'live runs on its hosted row'
     marks = {test_openai.pytestmark.name}
     assert marks == {'openai'}, 'it is not in live, so live never falsely fails on a missing OpenAI key'
-    assert not hasattr(test_live, 'test_openai_decisions_native')
+    assert 'def test_openai_decisions_native' not in Path(test_live.__file__).read_text(encoding='utf-8')
     assert test_live.pytestmark.name == 'live', 'PLANTED CONTROL: the rest stays live'

@@ -22,7 +22,7 @@ from typing import Final
 from ai_lab.budget import state_dir
 from ai_lab.review.explore import DIFF_LINE_BYTES, Changed, git
 
-__all__ = ['BUCKETS', 'evidence', 'ledger_path', 'record', 'report']
+__all__ = ['BUCKETS', 'evidence', 'ledger_path', 'record', 'summary']
 
 #: Size buckets by diff UTF-8 BYTES (upper bounds, each 4x the last); past the last is its own bucket.
 BUCKETS: Final = (4_000, 16_000, 64_000, 256_000, 1_024_000)
@@ -110,7 +110,7 @@ def _table(title: str, groups: Mapping[str, list[Mapping]]) -> list[str]:
     return [*lines, '']
 
 
-def report(rows: Sequence[Mapping]) -> str:
+def summary(rows: Sequence[Mapping]) -> str:
     """The Markdown summary of ledger *rows*: by tier, then by diff-size bucket."""
     by_tier: dict[str, list[Mapping]] = defaultdict(list)
     by_size: dict[str, list[Mapping]] = defaultdict(list)
@@ -129,7 +129,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     verbs.add_parser('report', help='summarise a ledger by tier and size').add_argument('ledger')
     args = parser.parse_args(argv)
     text = Path(args.ledger).read_text(encoding='utf-8')
-    sys.stdout.write(report([json.loads(line) for line in text.splitlines() if line.strip()]) + '\n')
+    sys.stdout.write(summary([json.loads(line) for line in text.splitlines() if line.strip()]) + '\n')
     return 0
 
 

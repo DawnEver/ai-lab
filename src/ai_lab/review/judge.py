@@ -51,7 +51,7 @@ from ai_lab.review.method import (
 )
 from ai_lab.review.run import REVIEW_TASK, explored
 
-__all__ = ['ANCHOR_WINDOW', 'CLOSING', 'OUTCOMES', 'SCHEMA_VERSION', 'fence', 'invalid', 'judge_of', 'main', 'verified']
+__all__ = ['ANCHOR_WINDOW', 'CLOSING', 'OUTCOMES', 'SCHEMA_VERSION', 'fence', 'invalid', 'judge_of', 'verified']
 
 SCHEMA_VERSION: Final = 1
 _EXIT_REFUSED: Final = 2

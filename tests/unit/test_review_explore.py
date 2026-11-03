@@ -25,7 +25,7 @@ from ai_lab.review.explore import (
     size,
     tier,
 )
-from ai_lab.review.tiers import ledger_path, report
+from ai_lab.review.tiers import ledger_path, summary
 from ai_lab.review.tiers import main as tiers_main
 from tests.review_principles import PRINCIPLES_FILE
 
@@ -228,7 +228,7 @@ def test_every_tier_records_one_ledger_row_and_the_report_reads_it(tmp_path, cap
         assert (row['files'], row['commits'], row['turns'], row['findings']['LOW']) == (len(files), 1, 1, 1)
         assert row['sha'] == _git(repo, 'rev-parse', 'HEAD')
         assert {'lines', 'diff_bytes', 'read_bytes', 'seconds', 'usage', 'repo'} <= set(row)
-    text = report(rows)
+    text = summary(rows)
     assert '| huge | 1 | 0 | 0 | 1 |' in text and '| small | 1 | 0 | 0 | 1 |' in text
     assert '## By diff size' in text
     assert tiers_main(['report', str(ledger_path(str(repo)))]) == 0

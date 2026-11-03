@@ -1,9 +1,12 @@
-"""``python -m ai_lab.review [--method <dir>] --range <a..b> --model <id> [--lens L] [--paths p ...]``: one review.
+"""``python -m ai_lab.review (--range <a..b> | --bundle <dir>) --model <id> [--lens L] [--paths p ...]``: one review.
+
+``--range`` reads the change with git in ``--repo``; ``--bundle`` reads a review bundle directory and
+never starts git (:mod:`ai_lab.review.source`, chosen once here).
 
 Prints the findings JSON (the method's ``findings-output.schema.json``) on stdout, exit 0, whatever the
 reviewers' statuses. A refused invocation -- a method directory that is missing or of an unknown
-``schema_version``, a range git cannot diff, an unreadable ``--findings`` -- exits 2 naming it on stderr,
-with nothing on stdout.
+``schema_version``, a range git cannot diff, a bundle that cannot be read, an unreadable ``--findings`` -- exits 2
+naming it on stderr, with nothing on stdout.
 
 A reviewer's prompt follows the change's SIZE TIER (user ruling 2026-10-31, :mod:`ai_lab.review.explore`): a
 small change's whole diff, a medium one's CHANGE MAP (the changed files with their line counts and the directory
@@ -47,6 +50,7 @@ from ai_lab.review.method import (
     rule_ids,
 )
 from ai_lab.review.run import LENSES, run
+from ai_lab.review.source import BundleSource, GitSource, Source
 from ai_lab.review.summary import SummaryTruncated, change_summary, git_intent
 from ai_lab.review.tiers import evidence, ledger_path, record
 
@@ -64,15 +68,13 @@ _SYNTHESIS: Final = (
 )
 
 
-def _change(args: argparse.Namespace, rows: Sequence[Changed], diff: Callable[..., str],
-            log: Callable[[str, str], str]) -> dict:  # fmt: skip
+def _change(args: argparse.Namespace, source: Source, rows: Sequence[Changed]) -> dict:
     """What the reviewers start from: the slice's tier brief, or for ``--findings`` the synthesis brief (explored)."""
     if args.findings is None:
-        return brief(args.range_, rows, read_diff=lambda: diff(args.range_, args.repo, tuple(args.paths)),
-                     read_log=lambda: log(args.range_, args.repo))  # fmt: skip
+        return brief(source.label, rows, read_diff=lambda: source.diff(args.paths), read_log=source.log)
     findings = json.loads(Path(args.findings).read_text(encoding='utf-8'))
     reported = json.dumps(findings, ensure_ascii=False, indent=1)
-    text = _SYNTHESIS.format(findings=reported, stat=change_map(args.range_, rows))
+    text = _SYNTHESIS.format(findings=reported, stat=change_map(source.label, rows))
     return {'mode': 'medium', 'manifest': text, 'diff': '', 'commits': '', 'diff_bytes': size(text)}
 
 
@@ -87,14 +89,19 @@ def _disposed(path: str | None) -> dict[str, str]:
     return {str(row['id']): str(row['reason']) for row in rows}
 
 
-def _summary(args: argparse.Namespace, intent: Callable[[str, str], dict], call: Callable, provider: str) -> dict:
-    """The summary section; an intent git cannot read is the section's ``error``, never a refused review."""
+def _summary(args: argparse.Namespace, source: Source, call: Callable, provider: str) -> dict | None:
+    """The summary section, ``None`` when the source reads no intent.
+
+    An intent the source cannot read is the section's ``error``, never a refused review.
+    """
     try:
-        found = intent(args.range_, args.repo)
+        found = source.intent()
     except ValueError as unread:
         found, error = {'commits': [], 'resolutions': [], 'merge_audit': [], 'memory': []}, str(unread)
     else:
         error = None
+    if found is None:
+        return None
     found['pr_body'] = Path(args.pr_body).read_text(encoding='utf-8') if args.pr_body else ''
     summary = change_summary(found, call=call, provider=provider, model=args.model)
     if error is not None:
@@ -116,7 +123,9 @@ def main(
     parser.add_argument(
         '--method', default=METHOD_DIR, help='a method directory read in place (default: the packaged one)'
     )
-    parser.add_argument('--range', required=True, dest='range_', help='the git range to review, e.g. main...HEAD')
+    given = parser.add_mutually_exclusive_group(required=True)
+    given.add_argument('--range', dest='range_', help='the git range to review, e.g. main...HEAD')
+    given.add_argument('--bundle', help='a review bundle directory to review instead: no git is started')
     parser.add_argument('--model', required=True, help='the model id for every provider the method names none for')
     parser.add_argument('--providers', nargs='+', help="override the default config's providers.headless")
     parser.add_argument('--repo', default='.', help='the repository the range is in (default: the working directory)')
@@ -137,8 +146,12 @@ def main(
     args = parser.parse_args(argv)
     try:
         method = load_method(args.method, principles=principle_list(args.principles), registry=rule_ids(args.rules))
-        rows = numstat(args.range_, args.repo, () if args.findings else tuple(args.paths))
-        change = _change(args, rows, diff, log)
+        source: Source = (
+            BundleSource(Path(args.bundle)) if args.bundle else
+            GitSource(args.range_, args.repo, read_numstat=numstat, read_diff=diff, read_log=log, read_intent=intent)
+        )  # fmt: skip
+        rows = source.numstat(() if args.findings else args.paths)
+        change = _change(args, source, rows)
         disposed = _disposed(args.disposed)
     except (FileNotFoundError, UnknownMethodVersion, ValueError, TypeError) as refused:
         sys.stderr.write(f'refused: {refused}\n')
@@ -147,7 +160,7 @@ def main(
     spent: dict = {'turns': 0, 'read_bytes': 0, 'usage': {}}
 
     def explore(asked: Mapping) -> str:
-        text = serve(asked, range_=args.range_, repo=args.repo, rows=rows)
+        text = serve(asked, source=source, rows=rows)
         spent['read_bytes'] += size(text)
         return text
 
@@ -160,23 +173,24 @@ def main(
         return reply
 
     summary = None
-    if not args.no_summary and intent is not None:
+    if not args.no_summary:
         provider = (
             args.providers or configured_providers({}, 'headless') or method.spec['run_modes']['headless']['providers']
         )[0]
         try:
-            summary = _summary(args, intent, call, provider)
+            summary = _summary(args, source, call, provider)
         except SummaryTruncated as cut:
             sys.stderr.write(f'truncated: {cut}\n')
             return _EXIT_TRUNCATED
     started = time.monotonic()
     doc = run(
-        method, range_=args.range_, brief=change, explore=explore, model=args.model, providers=args.providers,
+        method, range_=source.label, brief=change, explore=explore, model=args.model, providers=args.providers,
         available=set(catalogue()), call=counted, rng=random.SystemRandom(), lens=args.lens, disposed=disposed,
         turns=turns_for(change['mode']),
     )  # fmt: skip
-    record(ledger_path(args.repo), evidence(
-        range_=args.range_, repo=args.repo, rows=rows, tier='synthesis' if args.findings else change['mode'],
+    identity = source.identity()
+    record(ledger_path(identity['repo']), evidence(
+        label=source.label, identity=identity, rows=rows, tier='synthesis' if args.findings else change['mode'],
         diff_bytes=change['diff_bytes'], turns=spent['turns'], read_bytes=spent['read_bytes'],
         findings=doc['findings'], seconds=time.monotonic() - started, usage=spent['usage'],
     ))  # fmt: skip

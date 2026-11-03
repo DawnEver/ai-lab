@@ -16,9 +16,10 @@ run (:mod:`ai_lab.review.run`) therefore sends:
   directory tree of what changed. Past :data:`MAX_LISTED_FILES` files the map is the DIRECTORY level only, and the
   reviewer lists a directory to see its files;
 * each turn, the reviewer answers with ``findings`` (done) or ``requests`` (:data:`REQUESTS`), which
-  :func:`serve` answers from git -- the change to a path, a file at the head, a ``git grep`` over the head, the
-  changed files under a directory. ``show`` and ``grep`` reach the WHOLE head, not only the changed files, so a
-  call can be followed into code the change did not touch. A turn's answers total at most :data:`TURN_BYTES`; one
+  :func:`serve` answers from the change's source (:mod:`ai_lab.review.source`) -- the change to a path, a file at
+  the head, a ``git grep`` over the head, the changed files under a directory. From git, ``show`` and ``grep``
+  reach the WHOLE head, not only the changed files, so a call can be followed into code the change did not touch;
+  a review bundle holds the changed files alone, and says so. A turn's answers total at most :data:`TURN_BYTES`; one
   past what remains is cut to it and the cut is said, never dropped.
 
 This runs on the one ``respond`` verb every provider wire already speaks: no tool-use API, no second client.
@@ -31,7 +32,10 @@ import subprocess
 from collections import defaultdict
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import PurePosixPath
-from typing import Final
+from typing import TYPE_CHECKING, Final
+
+if TYPE_CHECKING:
+    from ai_lab.review.source import Source
 
 __all__ = [
     'DIFF_LINE_BYTES', 'HUGE_LINES', 'INLINE_BYTES', 'LOG_BYTES', 'MAX_LISTED_FILES', 'REQUESTS', 'SMALL_TURNS',
@@ -217,34 +221,19 @@ def _capped(log: str) -> str:
     )
 
 
-def _head(range_: str) -> str:
-    """The revision a range ends at: ``b`` of ``a..b`` / ``a...b``, else the range itself."""
-    return range_.rsplit('..', 1)[-1].lstrip('.') or 'HEAD'
-
-
-def _answer(kind: str, item: str, range_: str, repo: str, rows: Sequence[Changed]) -> str:
+def _answer(kind: str, item: str, source: Source, rows: Sequence[Changed]) -> str:
     if kind == 'list':
         prefix = item.strip('/')
         inside = [row for row in rows if prefix in {'', '.'} or row[2].startswith(prefix + '/')]
         return '\n'.join(f'{_counts(a, d):>14}  {path}' for a, d, path in inside) or '(no changed file under it)'
-    if kind == 'diff':
-        done = git(repo, 'diff', '-M', '--end-of-options', range_, '--', item)
-    elif kind == 'show':
-        done = git(repo, 'show', f'{_head(range_)}:{item}')
-    else:
-        done = git(repo, 'grep', '-n', '-I', '-e', item, _head(range_))
-    if done.returncode and not done.stdout:
-        return f'(nothing: {done.stderr.strip() or "no match"})'
-    return done.stdout or '(empty)'
+    return source.answer(kind, item)
 
 
 def _listed(value: object) -> list[object]:
     return value if isinstance(value, list) else []
 
 
-def serve(
-    requests: Mapping[str, object], *, range_: str, repo: str, rows: Sequence[Changed], budget: int = TURN_BYTES
-) -> str:
+def serve(requests: Mapping[str, object], *, source: Source, rows: Sequence[Changed], budget: int = TURN_BYTES) -> str:
     """The answers to one turn's *requests*, in :data:`REQUESTS` order, together at most *budget* UTF-8 bytes.
 
     An answer past what remains is CUT to it, never dropped (a file larger than a turn is still read in part), and
@@ -253,7 +242,7 @@ def serve(
     asked = [(kind, str(item)) for kind in REQUESTS for item in _listed(requests.get(kind))]
     parts, used = [], 0
     for at, (kind, item) in enumerate(asked):
-        text = f'### {kind} {item}\n{_answer(kind, item, range_, repo, rows)}\n'
+        text = f'### {kind} {item}\n{_answer(kind, item, source, rows)}\n'
         if used + size(text) > budget:
             shown = max(budget - used, 0)
             left = ', '.join(f'{k} {i}' for k, i in asked[at + 1 :]) or 'none'

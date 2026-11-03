@@ -18,8 +18,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "dev-lab", extras = ["test"], marker = "extra == 'dev'", git = "https://github.com/DawnEver/dev-lab.git" },
-    { name = "lab-commons", extras = ["paths"], git = "https://github.com/DawnEver/lab-commons.git" },
+    { name = "dev-lab", extras = ["test"], marker = "extra == 'dev'", git = "https://github.com/DawnEver/dev-lab.git?rev=integrate%2Fmain" },
+    { name = "lab-commons", extras = ["paths"], git = "https://github.com/DawnEver/lab-commons.git?rev=integrate%2Fmain" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "ruff", marker = "extra == 'dev'" },
 ]
@@ -229,8 +229,8 @@ wheels = [
 
 [[package]]
 name = "dev-lab"
-version = "0.0.1.dev1934+g4be952ff9"
-source = { git = "https://github.com/DawnEver/dev-lab.git#4be952ff9a3fb11ee96b259e874da432f982cc2a" }
+version = "0.0.1.dev2102+g50674240c"
+source = { git = "https://github.com/DawnEver/dev-lab.git?rev=integrate%2Fmain#50674240cf2af29278b65fea5c74fa885da0e665" }
 dependencies = [
     { name = "commitizen" },
     { name = "lab-commons", extra = ["io", "paths", "structured", "units"] },
@@ -540,11 +540,11 @@ wheels = [
 
 [[package]]
 name = "platformdirs"
-version = "4.14.2"
+version = "4.14.3"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/6e/4e/2684728d9f2c8c4110738dcadca7e0bed4b60c8dc68c40c2a9e0cf017900/platformdirs-4.14.2.tar.gz", hash = "sha256:6d13b4c1d66b7548dcec9e3db13c1ba9d9adb65041b5d07869313afc07e6e41b", size = 70792, upload-time = "2026-10-31T15:10:34.029Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9a/6e/886dc7c9d21e2d95aceb696f1e31271742033aeef3661f6e9c8921493592/platformdirs-4.14.3.tar.gz", hash = "sha256:021add1ab113483edbcd4694f5fbb2d688b893ea30d35e1155bb371cf4be0be8", size = 71124, upload-time = "2026-11-01T16:27:32.928Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0b/2d/98af31fdcd7c95c7114e2eb7c2eb0fa55d2a012c37ba4eb3722b7272abcb/platformdirs-4.14.2-py3-none-any.whl", hash = "sha256:dc1f93390f2a9265e44e5afc8667ec7faf737739604e39bc538fec889720c36b", size = 35291, upload-time = "2026-10-31T15:10:32.615Z" },
+    { url = "https://files.pythonhosted.org/packages/93/41/f0aa003909ee77a9e7e55f8659abb635ca23ab0d022a449bbb18da87a1ef/platformdirs-4.14.3-py3-none-any.whl", hash = "sha256:cba2d05fe5e18b26b1fa6f376b8e6234c012abe1f8696c486fface7d0054e931", size = 35276, upload-time = "2026-11-01T16:27:31.498Z" },
 ]
 
 [[package]]

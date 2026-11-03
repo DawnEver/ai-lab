@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Final
 
 from ai_lab.budget import state_dir
-from ai_lab.review.explore import DIFF_LINE_BYTES, Changed, git
+from ai_lab.review.explore import DIFF_LINE_BYTES, Changed
 
 __all__ = ['BUCKETS', 'evidence', 'ledger_path', 'record', 'summary']
 
@@ -30,41 +30,32 @@ BUCKETS: Final = (4_000, 16_000, 64_000, 256_000, 1_024_000)
 _SEVERITIES: Final = ('HIGH', 'MEDIUM', 'LOW')
 
 
-def _read(repo: str, *args: str) -> str | None:
-    """Git's stdout, or ``None`` when git cannot answer (a row is evidence, never a refused review)."""
-    try:
-        done = git(repo, *args)
-    except ValueError:
-        return None
-    return done.stdout.strip() if done.returncode == 0 else None
-
-
 def ledger_path(repo: str) -> Path:
-    """The ledger of *repo*: one JSONL per repository, named by its top-level directory."""
-    top = _read(repo, 'rev-parse', '--show-toplevel') or str(Path(repo).resolve())
-    return state_dir() / 'review-tiers' / f'{re.sub(r"[^\w.-]", "_", Path(top).name) or "repo"}.jsonl'
+    """The ledger of the repository named *repo*: one JSONL per repository."""
+    return state_dir() / 'review-tiers' / f'{re.sub(r"[^\w.-]", "_", repo) or "repo"}.jsonl'
 
 
 def evidence(
-    *, range_: str, repo: str, rows: Sequence[Changed], tier: str, diff_bytes: int | None, turns: int,
+    *, label: str, identity: Mapping, rows: Sequence[Changed], tier: str, diff_bytes: int | None, turns: int,
     read_bytes: int, findings: Iterable[Mapping], seconds: float, usage: Mapping[str, int],
 ) -> dict:  # fmt: skip
-    """One review's row: the change's size, the tier chosen, what reviewing it cost and found."""
+    """One review's row: the change's size, the tier chosen, what reviewing it cost and found.
+
+    *label* is the reviewed range and *identity* its source's ``{repo, sha, commits}`` (:mod:`ai_lab.review.source`).
+    """
     counts = dict.fromkeys(_SEVERITIES, 0)
     for finding in findings:
         if finding.get('severity') in counts:
             counts[finding['severity']] += 1
-    commits = _read(repo, 'rev-list', '--count', '--end-of-options', range_)
-    head = range_.rsplit('..', 1)[-1].lstrip('.') or 'HEAD'
     return {
         'at': datetime.now(UTC).isoformat(timespec='seconds'),
-        'repo': Path(_read(repo, 'rev-parse', '--show-toplevel') or repo).name,
-        'sha': _read(repo, 'rev-parse', '--verify', '--end-of-options', head),
-        'range': range_,
+        'repo': identity['repo'],
+        'sha': identity['sha'],
+        'range': label,
         'files': len(rows),
         'lines': sum((a or 0) + (d or 0) for a, d, _ in rows),
         'diff_bytes': diff_bytes,
-        'commits': int(commits) if commits and commits.isdigit() else None,
+        'commits': identity['commits'],
         'tier': tier,
         'turns': turns,
         'read_bytes': read_bytes,

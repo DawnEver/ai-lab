@@ -23,19 +23,25 @@ commits, merge resolutions, ``Merge-Audit`` lines, the memory it adds or changes
 written FIRST: one cut at its output budget exits 3 naming it on stderr, before any reviewer is paid for. ``--disposed
 <file>`` (``{"disposed": [{id, reason}]}``) names ids disposed of earlier: they are not re-raised, and the
 document lists them under ``disposed``.
+
+THE MODEL CALLS ARE BATCHED BY DEFAULT (:mod:`ai_lab.batch`; ``--no-batch`` makes them at once): the summary is one
+batch, then each turn of every reviewer one more. A run whose ``--wait`` is spent with a batch still running prints
+nothing, says ``pending: <line>`` on stderr and exits :data:`~ai_lab.batch.PENDING_EXIT`; run again with the same
+``--batch-state`` and it resumes that batch, never resubmitting. The reviewer plan is drawn from the state's seed, so
+the replay plans the same reviewers.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import random
 import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Final
 
+from ai_lab import batch
 from ai_lab.call import answer
 from ai_lab.client import catalogue
 from ai_lab.review.explore import Changed, brief, change_map, commit_messages, serve, size, turns_for
@@ -109,16 +115,8 @@ def _summary(args: argparse.Namespace, source: Source, call: Callable, provider:
     return summary
 
 
-def main(
-    argv: Sequence[str] | None = None,
-    *,
-    call: Callable[[Mapping], Mapping] = answer,
-    numstat: Callable[..., list[Changed]] = git_numstat,
-    diff: Callable[..., str] = git_diff,
-    log: Callable[[str, str], str] = commit_messages,
-    intent: Callable[[str, str], dict] | None = git_intent,
-) -> int:
-    """Run one headless review and print its findings JSON; exit 2 on a refused invocation."""
+def _parser() -> argparse.ArgumentParser:
+    """The command line's flags, the batch runner's among them."""
     parser = argparse.ArgumentParser(prog='python -m ai_lab.review', description=__doc__.split('\n', 1)[0])
     parser.add_argument(
         '--method', default=METHOD_DIR, help='a method directory read in place (default: the packaged one)'
@@ -143,7 +141,22 @@ def main(
     parser.add_argument('--pr-body', help='a file holding the PR body, read for the summary')
     parser.add_argument('--no-summary', action='store_true', help='omit the summary section (and its call)')
     parser.add_argument('--disposed', help='a JSON file {"disposed": [{id, reason}]}: ids not to re-raise')
-    args = parser.parse_args(argv)
+    batch.add_arguments(parser)
+    return parser
+
+
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    call: Callable[[Mapping], Mapping] = answer,
+    numstat: Callable[..., list[Changed]] = git_numstat,
+    diff: Callable[..., str] = git_diff,
+    log: Callable[[str, str], str] = commit_messages,
+    intent: Callable[[str, str], dict] | None = git_intent,
+    connect: Callable[..., object] = batch.connect,
+) -> int:
+    """Run one headless review and print its findings JSON; exit 2 on a refused invocation."""
+    args = _parser().parse_args(argv)
     try:
         method = load_method(args.method, principles=principle_list(args.principles), registry=rule_ids(args.rules))
         source: Source = (
@@ -153,41 +166,50 @@ def main(
         rows = source.numstat(() if args.findings else args.paths)
         change = _change(args, source, rows)
         disposed = _disposed(args.disposed)
+        runs = batch.from_arguments(args, answer=call, connect=connect)
     except (FileNotFoundError, UnknownMethodVersion, ValueError, TypeError) as refused:
         sys.stderr.write(f'refused: {refused}\n')
         return _EXIT_REFUSED
 
-    spent: dict = {'turns': 0, 'read_bytes': 0, 'usage': {}}
+    provider = (args.providers or configured_providers({}, 'headless')
+                or method.spec['run_modes']['headless']['providers'])[0]  # fmt: skip
+    label = f'review:{source.label}:{",".join(args.paths)}:{args.lens}:{bool(args.findings)}'
 
-    def explore(asked: Mapping) -> str:
-        text = serve(asked, source=source, rows=rows)
-        spent['read_bytes'] += size(text)
-        return text
+    def reviewed(call: Callable[[Mapping], Mapping]) -> tuple[dict | None, dict, dict]:
+        """One pass: the summary (alone, before any reviewer is paid for), then every reviewer."""
+        spent: dict = {'turns': 0, 'read_bytes': 0, 'usage': {}}
 
-    def counted(request: Mapping) -> Mapping:
-        reply = call(request)
-        spent['turns'] += 1
-        for key, value in (reply.get('usage') or {}).items():
-            if isinstance(value, int):
-                spent['usage'][key] = spent['usage'].get(key, 0) + value
-        return reply
+        def explore(asked: Mapping) -> str:
+            text = serve(asked, source=source, rows=rows)
+            spent['read_bytes'] += size(text)
+            return text
 
-    summary = None
-    if not args.no_summary:
-        provider = (
-            args.providers or configured_providers({}, 'headless') or method.spec['run_modes']['headless']['providers']
-        )[0]
-        try:
-            summary = _summary(args, source, call, provider)
-        except SummaryTruncated as cut:
-            sys.stderr.write(f'truncated: {cut}\n')
-            return _EXIT_TRUNCATED
+        def counted(request: Mapping) -> Mapping:
+            reply = call(request)
+            spent['turns'] += 1
+            for key, value in (reply.get('usage') or {}).items():
+                if isinstance(value, int):
+                    spent['usage'][key] = spent['usage'].get(key, 0) + value
+            return reply
+
+        summary = None if args.no_summary else _summary(args, source, call, provider)
+        doc = run(
+            method, range_=source.label, brief=change, explore=explore, model=args.model, providers=args.providers,
+            available=set(catalogue()), call=counted, rng=runs.rng(label), lens=args.lens, disposed=disposed,
+            turns=turns_for(change['mode']),
+        )  # fmt: skip
+        return summary, doc, spent
+
     started = time.monotonic()
-    doc = run(
-        method, range_=source.label, brief=change, explore=explore, model=args.model, providers=args.providers,
-        available=set(catalogue()), call=counted, rng=random.SystemRandom(), lens=args.lens, disposed=disposed,
-        turns=turns_for(change['mode']),
-    )  # fmt: skip
+    try:
+        settled = runs.settle(reviewed)
+    except SummaryTruncated as cut:
+        sys.stderr.write(f'truncated: {cut}\n')
+        return _EXIT_TRUNCATED
+    if isinstance(settled, batch.Pending):
+        sys.stderr.write(f'pending: {settled.line()}\n')
+        return batch.PENDING_EXIT
+    summary, doc, spent = settled
     identity = source.identity()
     record(ledger_path(identity['repo']), evidence(
         label=source.label, identity=identity, rows=rows, tier='synthesis' if args.findings else change['mode'],

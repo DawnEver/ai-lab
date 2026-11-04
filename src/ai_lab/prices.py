@@ -29,6 +29,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Final
 
 from lab_commons.paths import config_root, user_cache_path
 
@@ -36,6 +37,7 @@ from ai_lab.client import catalogue
 from ai_lab.usage import Usage
 
 __all__ = [
+    'BATCH_RATE',
     'SOURCES',
     'Price',
     'Quote',
@@ -47,6 +49,10 @@ __all__ = [
 ]
 
 _MILLION = 1_000_000
+
+#: What a call made through a vendor's batch endpoint costs, as a fraction of its listed rate: Anthropic's Message
+#: Batches bill every token at 50 % (https://platform.claude.com/docs/en/build-with-claude/batch-processing).
+BATCH_RATE: Final = 0.5
 _AGREE = 0.05
 STALE_AFTER = timedelta(days=1)
 _TIMEOUT_S = 30

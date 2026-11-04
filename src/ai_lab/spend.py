@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Final
 
 from ai_lab import budget
-from ai_lab.prices import Quote, cost, quote_for
+from ai_lab.prices import BATCH_RATE, Quote, cost, quote_for
 from ai_lab.usage import Usage
 
 __all__ = ['FAMILY_MONTHLY_USD', 'LOOKBACK_DAYS', 'SPEND_SCHEMA', 'report']
@@ -68,7 +68,8 @@ def _usd(row: dict, price: Price) -> float | None:
     at = datetime.fromisoformat(row['at']) if row.get('at') else None
     usage = Usage(row.get('input', 0), row.get('output', 0), row.get('cached', 0))
     quote = price(f'{row["provider"]}:{row["model"]}', at)
-    return cost(usage, None if quote is None else quote.price)
+    usd = cost(usage, None if quote is None else quote.price)
+    return usd * BATCH_RATE if usd is not None and row.get('batch') else usd
 
 
 def report(*, today: date | None = None, directory: Path | None = None, price: Price | None = None) -> dict:

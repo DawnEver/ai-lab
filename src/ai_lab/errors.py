@@ -1,6 +1,9 @@
 """The four ways a call cannot produce what was asked, each naming its remedy."""
 
-__all__ = ['ACCOUNT_KINDS', 'ERROR_KINDS', 'DailyTokenCapReached', 'ProviderError', 'ReplayMiss', 'Unsupported']
+__all__ = [
+    'ACCOUNT_KINDS', 'ERROR_KINDS', 'BatchLapsed', 'DailyTokenCapReached', 'ProviderError', 'ReplayMiss',
+    'Unsupported',
+]  # fmt: skip
 
 #: The failures another key of the same account may not share: a call moves to the next key slot on one.
 ACCOUNT_KINDS = frozenset({'exhausted', 'auth', 'rate_limit'})
@@ -28,6 +31,18 @@ class ProviderError(Exception):
             raise ValueError(msg)
         super().__init__(message)
         self.kind = kind
+
+
+class BatchLapsed(ProviderError):
+    """A batched call that never reached the model: its batch ``expired`` (kind ``timeout``) or was ``canceled``.
+
+    Unbilled; ``lapsed`` names which, so a caller may answer the same request another way.
+    """
+
+    def __init__(self, message: str, *, lapsed: str) -> None:
+        """Carry ``lapsed`` (``'expired'`` or ``'canceled'``)."""
+        super().__init__(message, kind='timeout' if lapsed == 'expired' else '')
+        self.lapsed = lapsed
 
 
 class ReplayMiss(Exception):

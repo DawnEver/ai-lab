@@ -3,8 +3,8 @@ import urllib.error
 
 import pytest
 
-from ai_lab import ProviderError
-from ai_lab.transport import HttpCall, post
+from ai_lab import ProviderError, Unsupported
+from ai_lab.transport import HttpCall, get, post
 
 
 def _http_error(code, body=b'detail'):
@@ -109,3 +109,43 @@ def test_an_exhausted_balance_in_a_200_body_is_not_retried(monkeypatch):
     with pytest.raises(ProviderError, match='insufficient_quota'):
         post(HttpCall('https://x.test', {}), sleep=lambda s: None)
     assert len(calls) == 1
+
+
+class _Body(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def test_get_returns_the_body_text_and_sends_no_body(monkeypatch):
+    seen = []
+
+    def urlopen(request, timeout):
+        seen.append(request)
+        return _Body(b'{"a": 1}\n{"b": 2}\n')
+
+    monkeypatch.setattr('urllib.request.urlopen', urlopen)
+    assert get('https://x.test/r', {'x-api-key': 'k'}) == '{"a": 1}\n{"b": 2}\n'
+    assert seen[0].get_method() == 'GET'
+    assert seen[0].data is None
+
+
+def test_get_retries_like_post(monkeypatch):
+    replies = [_http_error(529)]
+
+    def urlopen(request, timeout):
+        if replies:
+            raise replies.pop(0)
+        return _Body(b'ok')
+
+    monkeypatch.setattr('urllib.request.urlopen', urlopen)
+    sleeps = []
+    assert get('https://x.test', {}, sleep=sleeps.append) == 'ok'
+    assert sleeps == [1.0]
+
+
+def test_get_refuses_a_non_http_url():
+    with pytest.raises(Unsupported, match='not an http'):
+        get('file:///etc/passwd', {})

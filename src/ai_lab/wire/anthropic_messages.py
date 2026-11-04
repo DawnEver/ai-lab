@@ -11,23 +11,36 @@ later request repeats): three of the four breakpoints a request may carry.
 A reply cut at its output budget (``stop_reason=max_tokens``) is a :class:`ProviderError`, never a parsed prefix.
 Anthropic refuses an object schema whose ``additionalProperties`` is not explicitly ``false`` (HTTP 400,
 measured 2026-10-21), so the wire sends a closed copy of the caller's schema.
+
+MESSAGE BATCHES (:data:`BATCHES`, https://platform.claude.com/docs/en/build-with-claude/batch-processing): the
+same bodies, each the ``params`` of one ``{custom_id, params}`` request, POSTed together to ``/messages/batches``
+at half the price; the batch reads ``processing_status`` ``ended`` when every request has a result (most within an
+hour, expired at 24 h), and ``/results`` is JSONL in ANY order, matched by ``custom_id``. A result is
+``succeeded`` (the message), ``errored`` (unbilled; the error's type classifies it), ``canceled`` or ``expired``
+(unbilled, never sent to the model). The bodies keep their ``cache_control``: caching stacks with the batch
+discount, best-effort across a batch's concurrent requests.
 """
 
 from __future__ import annotations
 
 import base64
 import json
+from collections.abc import Mapping
 
 from ai_lab.errors import ProviderError, Unsupported
 from ai_lab.spec import Image, ResponseRequest
 from ai_lab.transport import HttpCall
 from ai_lab.usage import anthropic_usage
-from ai_lab.wire.base import Wire, text_of
+from ai_lab.wire.base import Batches, Outcome, Wire, text_of
 
-__all__ = ['WIRE']
+__all__ = ['BATCHES', 'WIRE']
 
 _VERSION = '2023-06-01'
 _MAX_TOKENS = 8192
+
+
+def _headers(key: str) -> dict[str, str]:
+    return {'x-api-key': key, 'anthropic-version': _VERSION}
 
 
 def _closed(node: object) -> object:
@@ -75,7 +88,7 @@ def _respond(request: ResponseRequest, model: str, endpoint: str, key: str) -> H
             'output_config': {'format': {'type': 'json_schema', 'schema': _closed(request.schema)}},
             'cache_control': {'type': 'ephemeral'},
         },
-        headers={'x-api-key': key, 'anthropic-version': _VERSION},
+        headers=_headers(key),
     )
 
 
@@ -94,10 +107,69 @@ def _parse_response(raw: dict) -> dict:
         raise ProviderError(msg) from exc
 
 
+#: An errored batch result's error type, as the kind the same failure carries on a synchronous call.
+_ERROR_KINDS = {
+    'authentication_error': 'auth', 'permission_error': 'auth', 'billing_error': 'exhausted',
+    'rate_limit_error': 'rate_limit', 'timeout_error': 'timeout',
+}  # fmt: skip
+
+
+def _batch_create(calls: Mapping[str, HttpCall], endpoint: str) -> HttpCall:
+    headers = next(iter(calls.values())).headers if calls else {}
+    requests = [{'custom_id': cid, 'params': dict(call.body)} for cid, call in calls.items()]
+    return HttpCall(url=f'{endpoint}/messages/batches', body={'requests': requests}, headers=headers)
+
+
+def _batch_url(endpoint: str, batch_id: str, part: str) -> str:
+    return f'{endpoint}/messages/batches/{batch_id}' + (f'/{part}' if part else '')
+
+
+def _error_of(result: Mapping) -> tuple[str, str]:
+    """The innermost ``{type, message}`` of an errored result (``error.error`` in the API's envelope)."""
+    error = result.get('error')
+    while isinstance(error, Mapping) and isinstance(error.get('error'), Mapping):
+        error = error['error']
+    if not isinstance(error, Mapping):
+        return '', 'errored with no error object'
+    return str(error.get('type', '')), str(error.get('message', ''))
+
+
+def _outcomes(text: str) -> dict[str, Outcome]:
+    out = {}
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        result = row.get('result') or {}
+        kind = result.get('type')
+        if kind == 'succeeded':
+            out[row['custom_id']] = Outcome(raw=result.get('message'))
+        elif kind in {'expired', 'canceled'}:
+            out[row['custom_id']] = Outcome(lapsed=kind, error=f'the batch request {kind} before it ran')
+        else:
+            error_type, message = _error_of(result)
+            error = f'batch request errored: {error_type}: {message}'[:500]
+            out[row['custom_id']] = Outcome(kind=_ERROR_KINDS.get(error_type, ''), error=error)
+    return out
+
+
+BATCHES = Batches(
+    create=_batch_create,
+    url=_batch_url,
+    ended=lambda batch: batch.get('processing_status') == 'ended',
+    expires_at=lambda batch: str(batch.get('expires_at') or ''),
+    outcomes=_outcomes,
+    headers=_headers,
+    custom_id=r'[a-zA-Z0-9_-]{1,64}',
+    batch_id=r'[A-Za-z0-9_-]{1,128}',
+)
+
+
 WIRE = Wire(
     name='anthropic_messages',
     protocol='anthropic',
     respond=_respond,
     parse_response=_parse_response,
     parse_usage=anthropic_usage,
+    batches=BATCHES,
 )

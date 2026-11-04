@@ -44,6 +44,8 @@ task's slot, never the default's. A task with no slot 1 is refused naming ``logi
 
 from __future__ import annotations
 
+import json
+import re
 import time
 import tomllib
 from collections.abc import Callable, Mapping
@@ -56,11 +58,11 @@ from lab_commons.paths import config_root
 
 from ai_lab import budget, emulate, retired, transport
 from ai_lab.answers import Basis, Decision, Response
-from ai_lab.errors import ACCOUNT_KINDS, DailyTokenCapReached, ProviderError, Unsupported
+from ai_lab.errors import ACCOUNT_KINDS, BatchLapsed, DailyTokenCapReached, ProviderError, Unsupported
 from ai_lab.spec import DecisionRequest, ResponseRequest
 from ai_lab.usage import Usage
 from ai_lab.wire import WIRES
-from ai_lab.wire.base import Wire
+from ai_lab.wire.base import Batches, Wire
 
 __all__ = [
     'APP',
@@ -69,6 +71,7 @@ __all__ = [
     'ROLES',
     'Client',
     'Provider',
+    'Ticket',
     'catalogue',
     'connect',
     'packaged_providers_file',
@@ -249,8 +252,22 @@ def catalogue() -> dict[str, Provider]:
     return table
 
 
+@dataclass(frozen=True, slots=True)
+class Ticket:
+    """A submitted batch: its id, the key slot it was submitted under (only that key reads it), its expiry."""
+
+    id: str
+    slot: int
+    expires_at: str
+
+
 class Client:
-    """One provider and one model. ``post``/``run`` are injectable so a test needs no network."""
+    """One provider and one model. ``post``/``get`` are injectable so a test needs no network.
+
+    BATCHES (:meth:`submit`, :meth:`ended`, :meth:`results`, :meth:`cancel`): a wire that declares
+    :attr:`~ai_lab.wire.base.Wire.batches` takes many ``respond`` calls as one asynchronous batch -- each the very
+    body :meth:`respond` would POST, budget-clamped alike -- read back by custom id once the batch has ended.
+    """
 
     def __init__(
         self,
@@ -263,6 +280,7 @@ class Client:
         tag: str | None = None,
         max_tokens: int | None = None,
         post: Callable[..., dict] = transport.post,
+        get: Callable[..., str] = transport.get,
     ) -> None:
         """Bind ``provider``, ``model`` and the wire serving that model; refuse a provider with no model.
 
@@ -289,6 +307,7 @@ class Client:
         self.tag = tag
         self.max_tokens = max_tokens
         self._post = post
+        self._get = get
 
     @property
     def name(self) -> str:
@@ -339,8 +358,12 @@ class Client:
 
     def _send(self, build: Callable[[str], transport.HttpCall]) -> tuple[object, int]:
         """``build(key)``'s reply and the key slot that served it, moving on a slot at an account failure."""
+        return self._with_key(lambda key, fingerprint: self._dispatch(build(key), fingerprint))
+
+    def _with_key(self, act: Callable[[str, str | None], object]) -> tuple[object, int]:
+        """``act(key, fingerprint)`` on the first key slot that does not fail at the ACCOUNT level, and that slot."""
         if not self.provider.keyed:
-            return self._dispatch(build(''), None), 0
+            return act('', None), 0
         host, failures, last = self.provider.host, [], None
         whose = '' if self.task is None else f'{self.task} task '
         slot = 0
@@ -354,7 +377,7 @@ class Client:
                     raise Unsupported(msg + login_command(self.provider.name, self.task)) from None
                 break
             try:
-                return self._dispatch(build(key), budget.fingerprint(key)), slot
+                return act(key, budget.fingerprint(key)), slot
             except DailyTokenCapReached as spent:
                 if spent.scope == self.provider.name:
                     raise
@@ -373,16 +396,106 @@ class Client:
 
     def _dispatch(self, call: transport.HttpCall, key: str | None) -> object:
         """Send *call* within its provider's and *key*'s token budgets, and charge what its reply reports."""
+        raw = self._post(self._bounded(call, key))
+        if (usage := self._usage(raw)) is not None:
+            budget.charge(self.provider.name, key, usage, self.model, tag=self.tag)
+        return raw
+
+    def _bounded(self, call: transport.HttpCall, key: str | None) -> transport.HttpCall:
+        """*call* with its output clamped to the token budgets left and the client's effort applied."""
         left = budget.remaining(self.provider.name, key)
         if 'max_tokens' in call.body:
             wanted = self.max_tokens or call.body['max_tokens']
             call = replace(call, body={**call.body, 'max_tokens': min(wanted, left)})
         if self.effort:
             call = self.wire.effort(call, self.effort)
-        raw = self._post(call)
-        if (usage := self._usage(raw)) is not None:
-            budget.charge(self.provider.name, key, usage, self.model, tag=self.tag)
-        return raw
+        return call
+
+    # --- batches ----------------------------------------------------------------------------------------------
+
+    @property
+    def can_batch(self) -> bool:
+        """Whether this client's wire takes respond calls as one asynchronous batch."""
+        return self.wire.batches is not None and self.wire.respond is not None
+
+    def _batches(self) -> Batches:
+        if not self.can_batch:
+            msg = (
+                f'{self.name}: wire {self.wire.name} has no batch endpoint; the wires that do are '
+                f'{sorted(n for n, w in WIRES.items() if w.batches)}'
+            )
+            raise Unsupported(msg)
+        return self.wire.batches
+
+    def _slot_secret(self, slot: int) -> str:
+        return _slot_key(self.provider.host, slot, self.task) if self.provider.keyed else ''
+
+    def _batch_url(self, ticket: Ticket, part: str = '') -> str:
+        batches = self._batches()
+        if not re.fullmatch(batches.batch_id, ticket.id):
+            msg = f'batch id {ticket.id!r} is not one the vendor issues ({batches.batch_id})'
+            raise ValueError(msg)
+        return batches.url(self.endpoint, ticket.id, part)
+
+    def _headers(self, slot: int) -> dict[str, str]:
+        return dict(self._batches().headers(self._slot_secret(slot)))
+
+    def submit(self, requests: Mapping[str, ResponseRequest]) -> Ticket:
+        """Submit every ``{custom_id: request}`` as ONE batch; the :class:`Ticket` that reads it back."""
+        batches = self._batches()
+        if bad := [cid for cid in requests if not re.fullmatch(batches.custom_id, cid)]:
+            msg = f'custom_id {bad[0]!r} does not match {batches.custom_id}'
+            raise ValueError(msg)
+        for request in requests.values():
+            self._require_vision(has_image=request.has_image)
+
+        def create(key: str, fingerprint: str | None) -> dict:
+            calls = {
+                cid: self._bounded(self.wire.respond(request, self.model, self.endpoint, key), fingerprint)
+                for cid, request in requests.items()
+            }
+            return self._post(batches.create(calls, self.endpoint))
+
+        created, slot = self._with_key(create)
+        return Ticket(id=str(created['id']), slot=slot, expires_at=batches.expires_at(created))
+
+    def ended(self, ticket: Ticket) -> bool:
+        """Whether every request of *ticket*'s batch has a result."""
+        url = self._batch_url(ticket)
+        return self._batches().ended(json.loads(self._get(url, self._headers(ticket.slot))))
+
+    def results(self, ticket: Ticket, *, charge: bool) -> dict[str, Response | ProviderError]:
+        """``{custom_id: Response or ProviderError}`` of an ended batch; *charge* books each success's usage.
+
+        A request that never ran is :class:`~ai_lab.errors.BatchLapsed`; an errored one a classified
+        :class:`~ai_lab.errors.ProviderError`; a success whose reply does not parse, the parser's error.
+        """
+        text = self._get(self._batch_url(ticket, 'results'), self._headers(ticket.slot))
+        key = self._slot_secret(ticket.slot)
+        fingerprint = budget.fingerprint(key) if key else None
+        out: dict[str, Response | ProviderError] = {}
+        for cid, outcome in self._batches().outcomes(text).items():
+            if outcome.lapsed:
+                out[cid] = BatchLapsed(outcome.error, lapsed=outcome.lapsed)
+                continue
+            if outcome.raw is None:
+                out[cid] = ProviderError(outcome.error, kind=outcome.kind)
+                continue
+            usage = self._usage(outcome.raw)
+            if charge and usage is not None:
+                budget.charge(self.provider.name, fingerprint, usage, self.model, tag=self.tag, batch=True)
+            try:
+                value = self.wire.parse_response(outcome.raw)
+            except ProviderError as failed:
+                out[cid] = failed
+                continue
+            out[cid] = Response(value, self.provider.name, self.model, 0.0, usage, ticket.slot)
+        return out
+
+    def cancel(self, ticket: Ticket) -> None:
+        """Ask the vendor to cancel *ticket*'s batch (its unsent requests come back ``canceled``)."""
+        url = self._batch_url(ticket, 'cancel')
+        self._post(transport.HttpCall(url=url, body={}, headers=self._headers(ticket.slot)))
 
 
 def connect(spec: str, *, task: str | None = None, protocol: str | None = None, **options: object) -> Client:

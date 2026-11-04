@@ -127,13 +127,20 @@ def spend_tag(tag: str | None = None) -> str | None:
     return '/'.join(t for t in (os.environ.get(TAG_ENV), tag) if t) or None
 
 
-def charge(provider: str, key: str | None, usage: Usage, model: str, *, tag: str | None = None) -> None:
-    """Append one call's *usage* of *model* on *provider* through *key* to today's ledger, tagged :func:`spend_tag`."""
+def charge(
+    provider: str, key: str | None, usage: Usage, model: str, *, tag: str | None = None, batch: bool = False
+) -> None:
+    """Append one call's *usage* of *model* on *provider* through *key* to today's ledger, tagged :func:`spend_tag`.
+
+    A *batch* call's row says so (``"batch": true``): the vendor bills it at :data:`ai_lab.prices.BATCH_RATE`.
+    """
     row = {
         'provider': provider, 'key': key, 'tokens': usage.input_tokens + usage.output_tokens, 'model': model,
         'input': usage.input_tokens, 'output': usage.output_tokens, 'cached': usage.cached_tokens,
         'at': datetime.now(UTC).isoformat(timespec='seconds'), 'tag': spend_tag(tag),
     }  # fmt: skip
+    if batch:
+        row['batch'] = True
     path = ledger_file()
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open('a', encoding='utf-8') as out:

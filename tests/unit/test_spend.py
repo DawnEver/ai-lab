@@ -6,7 +6,7 @@ from datetime import UTC, date, datetime
 import pytest
 
 from ai_lab import ResponseRequest, Text, budget, connect, spend
-from ai_lab.prices import Price, Quote
+from ai_lab.prices import BATCH_RATE, Price, Quote
 
 _REQUEST = ResponseRequest('i', (Text('t'),), {'type': 'object', 'properties': {}})
 _ONE_PER_MILLION = Quote(Price(1.0, 2.0, 0.5), 'test', agreed=True, sources={})
@@ -98,3 +98,10 @@ def test_the_cli_prints_the_report_as_json(tmp_path, monkeypatch, capsys):
     got = json.loads(capsys.readouterr().out)
     assert got['schema'] == spend.SPEND_SCHEMA
     assert got['month_by_tag'] == {'r#1': 1.0}
+
+
+def test_a_batch_row_is_priced_at_the_batch_rate(tmp_path):
+    _write(tmp_path, '2026-10-05', {**_row('r#1', 1_000_000, 1_000_000), 'batch': True}, _row('r#2', 1_000_000))
+    got = spend.report(today=date(2026, 10, 6), directory=tmp_path, price=_price)
+    assert got['month_by_tag'] == pytest.approx({'r#1': 3.0 * BATCH_RATE, 'r#2': 1.0})
+    assert BATCH_RATE == 0.5

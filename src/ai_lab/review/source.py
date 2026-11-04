@@ -197,9 +197,12 @@ class _File:
     chunk: str
 
 
-@dataclass(frozen=True)
+@dataclass
 class BundleSource:
-    """The review bundle materialized at *root* (the module docstring); every read is a file read."""
+    """The review bundle materialized at *root* (the module docstring); every read is a file read.
+
+    Its fields are set once, here, from the bundle: nothing assigns them after construction.
+    """
 
     root: Path
     label: str = field(init=False)
@@ -231,10 +234,10 @@ class BundleSource:
             sides = {side: self._side(root, side, path, row) for side in ('base', 'head')}
             files.append(_File(path, bool(row.get('binary')), sides['base'], sides['head'],
                                chunks.get(_header(path), '')))  # fmt: skip
-        object.__setattr__(self, 'root', root)
-        object.__setattr__(self, '_doc', doc)
-        object.__setattr__(self, '_files', tuple(sorted(files, key=lambda one: one.path.encode('utf-8'))))
-        object.__setattr__(self, 'label', f'{doc["base_sha"]}..{doc["head_sha"]}')
+        self.root = root
+        self._doc = doc
+        self._files = tuple(sorted(files, key=lambda one: one.path.encode('utf-8')))
+        self.label = f'{doc["base_sha"]}..{doc["head_sha"]}'
 
     @staticmethod
     def _side(root: Path, side: str, path: str, row: dict) -> bytes | None:

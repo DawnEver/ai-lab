@@ -9,7 +9,8 @@ import pytest
 from ai_lab import ProviderError, Unsupported
 from ai_lab.answers import Response
 from ai_lab.batch import PENDING_EXIT, Batched, Direct, NotYet, Pending, State, digest, runner
-from ai_lab.client import BatchLapsed, Ticket
+from ai_lab.client import Ticket
+from ai_lab.errors import BatchLapsed
 
 _T0 = datetime(2026, 11, 4, 9, 0, tzinfo=UTC)
 

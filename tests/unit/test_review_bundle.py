@@ -7,6 +7,7 @@ same change: same inputs, same prompts, same findings and verdicts.
 
 import base64
 import json
+import random
 import re
 import shutil
 import subprocess
@@ -14,6 +15,9 @@ from pathlib import Path
 
 import pytest
 
+from ai_lab.answers import Response
+from ai_lab.batch import PENDING_EXIT, Direct
+from ai_lab.client import Ticket
 from ai_lab.review.__main__ import main as review_main
 from ai_lab.review.explore import numstat
 from ai_lab.review.judge import main as judge_main
@@ -134,6 +138,8 @@ def _prompts(call: Scripted) -> list[str]:
 
 def test_a_bundle_review_sees_what_the_range_review_sees_and_starts_no_git(change, capsys, monkeypatch, request):
     repo, range_, bundle = change
+    # the two runs must plan the SAME reviewer to be compared: the plan is drawn from the runner's generator
+    monkeypatch.setattr(Direct, 'rng', lambda _self, label: random.Random(label))  # noqa: S311 -- a plan, not a secret
     turns = ({'requests': {'diff': ['src/a.py'], 'show': ['src/new.py'], 'grep': ['compute_the_thing']}},
              {'findings': [FINDING]})  # fmt: skip
     by_range = Scripted(*turns)
@@ -211,3 +217,79 @@ def test_a_bundle_judge_reaches_the_range_judges_verdicts_and_starts_no_git(chan
     assert masked['bundle'][:4] == masked['range'][:4], 'F1 and F2: the same prompts, sample by sample'
     assert 'does NOT exist at the head' in masked['bundle'][2]
     assert 'not in the review bundle' in masked['bundle'][4], 'an unchanged file is never called absent'
+
+
+# --- batched (the shipped default): a run whose wait is spent exits pending; the next resumes, never resubmits ---
+
+
+class _Vendor:
+    """A fake batch endpoint: each batch ends on its second poll; answers by what the request asks for."""
+
+    def __init__(self):
+        self.batches, self.submitted = {}, []
+
+    def connect(self, spec, **options):
+        vendor = self
+
+        class Client:
+            can_batch = True
+
+            def submit(self, requests):
+                batch_id = f'msgbatch_{len(vendor.batches) + 1}'
+                vendor.batches[batch_id] = {'requests': dict(requests), 'polls': 0}
+                vendor.submitted.append(batch_id)
+                return Ticket(batch_id, 1, '2099-01-01T00:00:00+00:00')
+
+            def ended(self, ticket):
+                vendor.batches[ticket.id]['polls'] += 1
+                return vendor.batches[ticket.id]['polls'] >= 2
+
+            def results(self, ticket, *, charge):
+                out = {}
+                for cid, request in vendor.batches[ticket.id]['requests'].items():
+                    judging = request.instructions.startswith('Judge')
+                    value = {'outcome': 'present', 'evidence': 'e', 'cites': []} if judging else {'findings': []}
+                    out[cid] = Response(value, 'anthropic', 'm', 0.0, None, 1)
+                return out
+
+            def cancel(self, ticket):
+                raise AssertionError(ticket)
+
+        return Client()
+
+
+def _never(_request):
+    pytest.fail('a batched run made a synchronous call')
+
+
+def test_a_batched_review_exits_pending_then_resumes_its_batch_without_resubmitting(change, tmp_path, capsys):
+    _repo, _range, bundle = change
+    vendor, state = _Vendor(), tmp_path / 'state.json'
+    argv = ['--principles', str(PRINCIPLES_FILE), '--rules', '', '--model', 'm', '--lens', 'light', '--no-summary',
+            '--bundle', str(bundle), '--batch', '--batch-state', str(state)]  # fmt: skip
+    assert review_main([*argv, '--wait', '0'], call=_never, connect=vendor.connect) == PENDING_EXIT
+    out = capsys.readouterr()
+    assert out.out == ''
+    assert 'pending: model batch msgbatch_1' in out.err
+    assert review_main(argv, call=_never, connect=vendor.connect) == 0
+    doc = json.loads(capsys.readouterr().out)
+    assert {r['status'] for r in doc['reviewers']} == {'ok'}
+    assert vendor.submitted == ['msgbatch_1'], 'resumed, never resubmitted'
+
+
+def test_a_batched_judge_exits_pending_then_resumes(change, tmp_path, capsys):
+    _repo, _range, bundle = change
+    findings = tmp_path / 'findings.json'
+    row = {'id': 'F1', 'severity': 'HIGH', 'security': False, 'rule': 'occams-razor', 'file': 'src/a.py',
+           'anchor': 'compute', 'summary': 's', 'detail': 'd', 'suggestion': 's', 'claim': '',
+           'reviewers': ['diff@anthropic']}  # fmt: skip
+    findings.write_text(json.dumps({'findings': [row]}), encoding='utf-8')
+    vendor, state = _Vendor(), tmp_path / 'state.json'
+    argv = ['--bundle', str(bundle), '--model', 'm', '--rules', 'R1', '--principles', str(PRINCIPLES_FILE),
+            '--findings', str(findings), '--batch', '--batch-state', str(state)]  # fmt: skip
+    assert judge_main([*argv, '--wait', '0'], call=_never, connect=vendor.connect) == PENDING_EXIT
+    assert capsys.readouterr().out == ''
+    assert judge_main(argv, call=_never, connect=vendor.connect) == 0
+    (verdict,) = json.loads(capsys.readouterr().out)['verdicts']
+    assert verdict['outcome'] == 'present'
+    assert vendor.submitted == ['msgbatch_1']

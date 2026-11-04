@@ -19,6 +19,7 @@ import random
 from collections.abc import Callable, Collection, Mapping, Sequence
 from typing import Final
 
+from ai_lab.batch import NotYet
 from ai_lab.review.explore import REQUESTS, TURNS
 from ai_lab.review.method import DEFAULT_CONFIG, Method, configured_providers
 from ai_lab.review.rules import merge, pick, prompt_parts
@@ -120,7 +121,9 @@ def run(
 
     *explore* answers a turn's requests (:func:`ai_lab.review.explore.serve`); each reviewer has *turns* turns.
 
-    *call* is ``ai_lab.call.answer`` (or a stand-in): one request dict in, one classified reply out.
+    *call* is ``ai_lab.call.answer`` (or a stand-in): one request dict in, one classified reply out. A batched
+    *call* (:mod:`ai_lab.batch`) raises :class:`~ai_lab.batch.NotYet` for a reply not returned yet: every reviewer is
+    still asked, so all of them join one batch, and the run raises it once they have.
     *model* serves every provider the run mode's ``models`` does not name. *lens* sets how many reviewers
     are planned (:data:`LENSES`); an unknown one is refused. An id in *disposed* is not re-raised (``merge``).
     """
@@ -129,7 +132,7 @@ def run(
     manifest = {**brief, 'range': range_, 'excludedSummary': '', 'turns': turns}
     schema = _schema(method)
     keys = _plan(method, mode, rng, lens)
-    reviewers, results = [], []
+    reviewers, results, waiting = [], [], False
     for i, key in enumerate(keys):
         provider = providers[i % len(providers)]
         rendered = prompt_parts(method, method.profile(key), manifest)
@@ -148,5 +151,10 @@ def run(
             'verb': 'respond', 'provider': provider, 'model': mode['models'].get(provider, model),
             'task': REVIEW_TASK, 'instructions': _INSTRUCTIONS, 'schema': schema, 'tag': key,
         }  # fmt: skip
-        results.append(_result(key, explored(call, request, rendered['parts'], explore, turns)))
+        try:
+            results.append(_result(key, explored(call, request, rendered['parts'], explore, turns)))
+        except NotYet:
+            waiting = True
+    if waiting:
+        raise NotYet
     return merge(method, range_=range_, profiles=keys, reviewers=reviewers, results=results, disposed=disposed)

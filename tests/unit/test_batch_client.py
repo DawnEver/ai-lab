@@ -5,7 +5,8 @@ import json
 import pytest
 
 from ai_lab import ProviderError, ResponseRequest, Text, Unsupported, budget, connect
-from ai_lab.client import BatchLapsed, Ticket
+from ai_lab.client import Ticket
+from ai_lab.errors import BatchLapsed
 
 _REQ = ResponseRequest('Be brief.', (Text('prefix'), Text('change')), {'type': 'object', 'properties': {}})
 

@@ -30,6 +30,7 @@ once by ``answer``. :class:`Direct` is ``batch = false``: every call answered at
 
 from __future__ import annotations
 
+import argparse
 import contextlib
 import hashlib
 import json
@@ -51,7 +52,7 @@ from ai_lab.errors import BatchLapsed, DailyTokenCapReached, ProviderError, Unsu
 
 __all__ = [
     'BATCH_BY_DEFAULT', 'EXPIRY_GRACE', 'ON_EXPIRY', 'PENDING_EXIT', 'POLL_FIRST_S', 'POLL_MAX_S', 'WAIT_S',
-    'Batched', 'Direct', 'NotYet', 'Pending', 'State', 'digest', 'runner',
+    'Batched', 'Direct', 'NotYet', 'Pending', 'State', 'add_arguments', 'digest', 'from_arguments', 'runner',
 ]  # fmt: skip
 
 #: Whether a call is batched when the caller says nothing (user ruling 2026-11-04): yes.
@@ -322,8 +323,42 @@ class Batched:
             self.state.save()
 
 
-def runner(*, batch: bool, state: str | Path | None, wait_s: float, on_expiry: str) -> Direct | Batched:
+def runner(
+    *, batch: bool, state: str | Path | None, wait_s: float, on_expiry: str,
+    answer: Callable[[Mapping], Mapping] = _answer, connect: Callable[..., object] = connect,
+) -> Direct | Batched:  # fmt: skip
     """The runner a command line asks for: :class:`Direct` without *batch*, else :class:`Batched` over *state*."""
     if not batch:
-        return Direct()
-    return Batched(State.load(state) if state else State.fresh(None), wait_s=wait_s, on_expiry=on_expiry)
+        return Direct(answer=answer)
+    loaded = State.load(state) if state else State.fresh(None)
+    return Batched(loaded, connect=connect, answer=answer, wait_s=wait_s, on_expiry=on_expiry)
+
+
+def add_arguments(parser: argparse.ArgumentParser) -> None:
+    """The flags every batched command line takes: ``--[no-]batch``, ``--batch-state``, ``--wait``, ``--on-expiry``."""
+    parser.add_argument(
+        '--batch', action=argparse.BooleanOptionalAction, default=BATCH_BY_DEFAULT,
+        help='make the model calls through the vendor batch endpoint (half price, asynchronous); --no-batch: at once',
+    )  # fmt: skip
+    parser.add_argument(
+        '--batch-state', metavar='FILE',
+        help=f'keep the batch state here: a run that ends pending (exit {PENDING_EXIT}) is resumed by the next run '
+        'given the same file, never resubmitted',
+    )  # fmt: skip
+    parser.add_argument(
+        '--wait', type=float, default=WAIT_S, metavar='SECONDS',
+        help=f'how long this run waits on a running batch before it exits {PENDING_EXIT} (default: its expiry)',
+    )  # fmt: skip
+    parser.add_argument(
+        '--on-expiry', choices=ON_EXPIRY, default=ON_EXPIRY[0],
+        help='an expired or canceled batch request: answered at once (sync) or a timeout failure (fail)',
+    )  # fmt: skip
+
+
+def from_arguments(
+    args: argparse.Namespace, *, answer: Callable[[Mapping], Mapping] = _answer,
+    connect: Callable[..., object] = connect,
+) -> Direct | Batched:  # fmt: skip
+    """The runner :func:`add_arguments`' flags ask for."""
+    return runner(batch=args.batch, state=args.batch_state, wait_s=args.wait, on_expiry=args.on_expiry,
+                  answer=answer, connect=connect)  # fmt: skip

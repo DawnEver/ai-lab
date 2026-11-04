@@ -23,19 +23,26 @@ THE JUDGE CANNOT BE TALKED INTO CLOSING A FINDING (independent pre-push review, 
 * A DELETED FILE is stated as deleted, so its absence is never read as a fix.
 
 Every failure fails CLOSED: the finding stays ``present``, with ``not judged: <why>``.
+
+THE CALLS ARE BATCHED BY DEFAULT (:mod:`ai_lab.batch`; ``--no-batch`` makes them at once): every finding's sample
+of one turn joins one batch, and a run whose ``--wait`` is spent exits :data:`~ai_lab.batch.PENDING_EXIT`, its
+``--batch-state`` naming the batch the next run resumes. A fence nonce is drawn from the runner's generator --
+seeded by the state when batched, so a replay rebuilds the very prompt it sent; the nonce is struck from every
+fenced text either way, so knowing it closes no fence.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import random
 import re
-import secrets
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Final
 
+from ai_lab import batch
 from ai_lab.call import answer
 from ai_lab.review.explore import TURN_BYTES, TURNS, change_map, serve
 from ai_lab.review.method import (
@@ -261,9 +268,9 @@ def _held(finding: Mapping, nonce: str, *, source: Source, rows: Sequence) -> st
 
 
 def _sample(finding: Mapping, call: Callable, request: Mapping, *, source: Source, rows: Sequence,
-            mapped: str, method: Method) -> tuple[str, str, list[str]]:  # fmt: skip
+            mapped: str, method: Method, rng: random.Random) -> tuple[str, str, list[str]]:  # fmt: skip
     """One independent judgement: its outcome, evidence and verified cites (a fresh nonce every time)."""
-    nonce = secrets.token_hex(12)
+    nonce = f'{rng.getrandbits(96):024x}'
 
     def explore(asked: Mapping) -> str:
         return fence('SERVED', serve(asked, source=source, rows=rows), nonce)
@@ -297,8 +304,8 @@ def _judged(finding: Mapping, call: Callable, request: Mapping, **given: object)
     return {'id': fid, 'outcome': outcome, 'evidence': f'{evidence} [{", ".join(cites)}]'}
 
 
-def main(argv: Sequence[str] | None = None, *, call: Callable[[Mapping], Mapping] = answer) -> int:
-    """Judge every finding against the range's head and print the verdicts JSON; exit 2 on a refused invocation."""
+def _parser() -> argparse.ArgumentParser:
+    """The command line's flags, the batch runner's among them."""
     parser = argparse.ArgumentParser(prog='python -m ai_lab.review.judge', description=__doc__.split('\n', 1)[0])
     given = parser.add_mutually_exclusive_group(required=True)
     given.add_argument('--range', dest='range_', help='the git range whose head is judged')
@@ -310,36 +317,60 @@ def main(argv: Sequence[str] | None = None, *, call: Callable[[Mapping], Mapping
     parser.add_argument('--findings', required=True, help='a JSON file {"findings": [...]}: the open findings')
     parser.add_argument('--max-calls', type=int, default=MAX_CALLS, help='the run budget in calls')
     parser.add_argument('--max-bytes', type=int, default=MAX_BYTES, help='the run budget in context bytes sent')
-    args = parser.parse_args(argv)
+    batch.add_arguments(parser)
+    return parser
+
+
+def main(
+    argv: Sequence[str] | None = None, *, call: Callable[[Mapping], Mapping] = answer,
+    connect: Callable[..., object] = batch.connect,
+) -> int:  # fmt: skip
+    """Judge every finding against the range's head and print the verdicts JSON; exit 2 on a refused invocation."""
+    args = _parser().parse_args(argv)
     try:
         method = load_method(METHOD_DIR, principles=principle_list(args.principles), registry=rule_ids(args.rules))
         findings = _findings(args.findings)
         source: Source = BundleSource(Path(args.bundle)) if args.bundle else GitSource(args.range_, args.repo)
         rows = source.numstat()
+        runs = batch.from_arguments(args, answer=call, connect=connect)
     except (FileNotFoundError, UnknownMethodVersion, ValueError, TypeError) as refused:
         sys.stderr.write(f'refused: {refused}\n')
         return _EXIT_REFUSED
     mode = method.spec['run_modes']['headless']
     providers = configured_providers({}, 'headless') or mode['providers']
     mapped = change_map(source.label, rows)
-    metered = _Metered(call, calls=args.max_calls, size=args.max_bytes)
-    verdicts = []
     known = frozenset([*(p['id'] for p in method.principles), *method.registry])
-    for finding in findings:
-        fid, chosen = str(finding['id']), judge_of(finding, providers, mode, args.model)
-        if (why := invalid(finding, known)) is not None:
-            verdicts.append({'id': fid, 'outcome': 'present', 'evidence': f'not judged: invalid finding ({why})'})
-            continue
-        if chosen is None:
-            verdicts.append({'id': fid, 'outcome': 'present', 'evidence': 'not judged: no independent judge'})
-            continue
-        request = {'verb': 'respond', 'provider': chosen[0], 'model': chosen[1], 'task': REVIEW_TASK,
-                   'instructions': _INSTRUCTIONS, 'schema': _SCHEMA, 'tag': 'judge'}  # fmt: skip
-        try:
-            verdict = _judged(finding, metered, request, source=source, rows=rows, mapped=mapped, method=method)
-        except BudgetSpent:
-            verdict = {'id': fid, 'outcome': 'present', 'evidence': 'not judged: budget'}
-        verdicts.append({**verdict, 'judge': f'{chosen[0]}:{chosen[1]}'})
+
+    def verdicts_of(call: Callable[[Mapping], Mapping]) -> list[dict]:
+        metered = _Metered(call, calls=args.max_calls, size=args.max_bytes)
+        verdicts, waiting = [], False
+        for finding in findings:
+            fid, chosen = str(finding['id']), judge_of(finding, providers, mode, args.model)
+            if (why := invalid(finding, known)) is not None:
+                verdicts.append({'id': fid, 'outcome': 'present', 'evidence': f'not judged: invalid finding ({why})'})
+                continue
+            if chosen is None:
+                verdicts.append({'id': fid, 'outcome': 'present', 'evidence': 'not judged: no independent judge'})
+                continue
+            request = {'verb': 'respond', 'provider': chosen[0], 'model': chosen[1], 'task': REVIEW_TASK,
+                       'instructions': _INSTRUCTIONS, 'schema': _SCHEMA, 'tag': 'judge'}  # fmt: skip
+            try:
+                verdict = _judged(finding, metered, request, source=source, rows=rows, mapped=mapped, method=method,
+                                  rng=runs.rng(f'judge:{fid}'))  # fmt: skip
+            except BudgetSpent:
+                verdict = {'id': fid, 'outcome': 'present', 'evidence': 'not judged: budget'}
+            except batch.NotYet:
+                waiting = True
+                continue
+            verdicts.append({**verdict, 'judge': f'{chosen[0]}:{chosen[1]}'})
+        if waiting:
+            raise batch.NotYet
+        return verdicts
+
+    verdicts = runs.settle(verdicts_of)
+    if isinstance(verdicts, batch.Pending):
+        sys.stderr.write(f'pending: {verdicts.line()}\n')
+        return batch.PENDING_EXIT
     sys.stdout.write(json.dumps({'schema_version': SCHEMA_VERSION, 'verdicts': verdicts}, ensure_ascii=False) + '\n')
     return 0
 

@@ -69,7 +69,6 @@ __all__ = [
     'AUTH_KINDS',
     'PROTOCOLS',
     'ROLES',
-    'BatchLapsed',
     'Client',
     'Provider',
     'Ticket',

@@ -5,7 +5,8 @@ named ``WIRE``, and :data:`ai_lab.wire.WIRES` is the one table of them. The verb
 read off that record -- ``respond`` and ``decide`` are present or ``None`` -- so capability is the
 declaration itself rather than something probed for at call time. The same holds for the two
 optional hooks: ``parse_usage`` reads the vendor's token counts off a raw reply, and ``effort`` puts
-a reasoning effort onto a call; a wire without one does not report usage or take an effort.
+a reasoning effort onto a call; a wire without one does not report usage or take an effort. And for
+``batches``: a wire whose vendor takes many calls as one asynchronous batch declares :class:`Batches`.
 """
 
 from __future__ import annotations
@@ -18,12 +19,46 @@ from ai_lab.spec import Context, DecisionRequest, Fields, Image, ResponseRequest
 from ai_lab.transport import HttpCall
 from ai_lab.usage import Usage
 
-__all__ = ['Wire', 'body_effort', 'is_closed', 'joined_text', 'text_of']
+__all__ = ['Batches', 'Outcome', 'Wire', 'body_effort', 'is_closed', 'joined_text', 'text_of']
 
 Call = HttpCall
 #: ``(request, model, endpoint, key) -> call``: the endpoint is the row's base URL for the wire's protocol.
 Build = Callable[[ResponseRequest, str, str, str], Call]
 BuildDecision = Callable[[DecisionRequest, str, str, str], Call]
+
+
+@dataclass(frozen=True, slots=True)
+class Outcome:
+    """One call's result inside a batch: the raw reply ``parse_response`` reads, or why there is none.
+
+    ``lapsed`` is ``'expired'`` or ``'canceled'`` when the call never ran (unbilled); ``kind`` classifies an
+    errored one like :class:`~ai_lab.errors.ProviderError`.
+    """
+
+    raw: object = None
+    kind: str = ''
+    error: str = ''
+    lapsed: str = ''
+
+
+@dataclass(frozen=True, slots=True)
+class Batches:
+    """A vendor's asynchronous batch endpoint: many built calls as one, its state, its results by custom id.
+
+    ``create(calls, endpoint)`` is the one POST carrying every call's body, each keyed by its custom id; ``url``
+    names a batch (part ``''``) or a part of it (``'results'``, ``'cancel'``); ``ended`` and ``expires_at`` read
+    a batch object; ``outcomes`` reads the results document; ``headers(key)`` authorizes a read or a cancel.
+    ``custom_id`` and ``batch_id`` are the patterns an id must match before it is sent or put in a URL.
+    """
+
+    create: Callable[[Mapping[str, HttpCall], str], HttpCall]
+    url: Callable[[str, str, str], str]
+    ended: Callable[[Mapping], bool]
+    expires_at: Callable[[Mapping], str]
+    outcomes: Callable[[str], dict[str, Outcome]]
+    headers: Callable[[str], Mapping[str, str]]
+    custom_id: str
+    batch_id: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +77,7 @@ class Wire:
     parse_decision: Callable[[object, DecisionRequest], dict[str, Answer]] | None = None
     parse_usage: Callable[[object], Usage | None] | None = None
     effort: Callable[[Call, str], Call] | None = None
+    batches: Batches | None = None
 
     def __post_init__(self) -> None:
         """Refuse a half-declared verb and a wire that carries none."""

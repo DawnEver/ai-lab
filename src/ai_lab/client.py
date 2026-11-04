@@ -414,8 +414,13 @@ class Client:
 
     # --- batches ----------------------------------------------------------------------------------------------
 
+    @property
+    def can_batch(self) -> bool:
+        """Whether this client's wire takes respond calls as one asynchronous batch."""
+        return self.wire.batches is not None and self.wire.respond is not None
+
     def _batches(self) -> Batches:
-        if self.wire.batches is None or self.wire.respond is None:
+        if not self.can_batch:
             msg = (
                 f'{self.name}: wire {self.wire.name} has no batch endpoint; the wires that do are '
                 f'{sorted(n for n, w in WIRES.items() if w.batches)}'

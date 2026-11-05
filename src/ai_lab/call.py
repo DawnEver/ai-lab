@@ -42,7 +42,7 @@ from dataclasses import asdict
 from typing import Final
 
 from ai_lab.answers import Response
-from ai_lab.client import Client, connect
+from ai_lab.client import Client, connect, tasks
 from ai_lab.errors import ERROR_KINDS, DailyTokenCapReached, ProviderError, Unsupported
 from ai_lab.ledger import Ledger, Mode
 from ai_lab.spec import (
@@ -190,9 +190,12 @@ def client_spec(request: Mapping) -> tuple[str, dict]:
 def client_of(request: Mapping, **options: object) -> Client:
     """The client a (well-formed) *request* names; :class:`Unsupported` naming what is missing.
 
-    An undeclared task is :class:`Malformed`: the request named something no key can be under.
+    An unrouted task (:func:`ai_lab.client.tasks`) is :class:`Malformed`: no key can be under it.
     """
     spec, named = client_spec(request)
+    if named['task'] is not None and named['task'] not in (routed := tasks()):
+        msg = f'{named["task"]!r} is not a routed task; the tasks are {sorted(routed)}'
+        raise Malformed(msg)
     try:
         return connect(spec, **named, **options)
     except Unsupported:

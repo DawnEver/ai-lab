@@ -11,7 +11,7 @@ import pytest
 from dev_lab.dev.rules import RULES
 
 from ai_lab import Provider, catalogue
-from ai_lab.review.method import DEFAULT_CONFIG, load_method
+from ai_lab.review.method import default_config, load_method
 from ai_lab.review.plan import build_plan, effective_profiles, eligible_weights, main, report_path
 from ai_lab.review.rules import render_prompt
 from tests.review_principles import PRINCIPLES, PRINCIPLES_FILE
@@ -200,7 +200,7 @@ def test_interactive_plan_sinks_a_report_at_the_report_path_never_memory(method)
 
 def _run_mode_providers(method):
     """Every provider a run mode chooses with no request: the shipped default config and each listed mode."""
-    named = {p for one in DEFAULT_CONFIG['providers'].values() for p in one}
+    named = {p for one in default_config()['providers'].values() for p in one}
     return named | {p for mode in method.spec['run_modes'].values() if isinstance(mode['providers'], list)
                     for p in mode['providers']}  # fmt: skip
 

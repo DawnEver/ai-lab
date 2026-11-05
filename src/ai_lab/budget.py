@@ -128,11 +128,19 @@ def spend_tag(tag: str | None = None) -> str | None:
 
 
 def charge(
-    provider: str, key: str | None, usage: Usage, model: str, *, tag: str | None = None, batch: bool = False
+    provider: str,
+    key: str | None,
+    usage: Usage,
+    model: str,
+    *,
+    tag: str | None = None,
+    batch: bool = False,
+    fallback_from: str | None = None,
 ) -> None:
     """Append one call's *usage* of *model* on *provider* through *key* to today's ledger, tagged :func:`spend_tag`.
 
-    A *batch* call's row says so (``"batch": true``): the vendor bills it at :data:`ai_lab.prices.BATCH_RATE`.
+    A *batch* call's row says so (``"batch": true``): the vendor bills it at :data:`ai_lab.prices.BATCH_RATE`. A call
+    a task's route moved to names the provider it stood in for (``"fallback_from"``).
     """
     row = {
         'provider': provider, 'key': key, 'tokens': usage.input_tokens + usage.output_tokens, 'model': model,
@@ -141,6 +149,8 @@ def charge(
     }  # fmt: skip
     if batch:
         row['batch'] = True
+    if fallback_from:
+        row['fallback_from'] = fallback_from
     path = ledger_file()
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open('a', encoding='utf-8') as out:

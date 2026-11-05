@@ -231,10 +231,36 @@ never a key. The slot that served a call is the `key_slot` of its `Decision`/`Re
 ledger entry. Failures are classified into `ProviderError.kind` (`ai_lab.errors.ERROR_KINDS`:
 `exhausted`, `auth`, `rate_limit`, `timeout`; `""` otherwise) for every wire.
 
-A TASK owns its own keys: usernames `api-key-<task>`, `api-key-<task>-2`, ... under the same host, for a
-task declared in `lab_commons.credentials.API_KEY_TASKS`. `connect(spec, task=...)` walks that task's
-slots in the same fall-over order, and only those -- never another task's, never the default's; a task
-with no slot 1 is refused by name. `-s`, `--slot` and `--seat` are one argument.
+A TASK owns its own keys: usernames `api-key-<task>`, `api-key-<task>-2`, ... under the same host. The
+tasks are the `[task.*]` tables of `routes.toml` (packaged, plus yours beside `providers.toml`, whose task
+replaces its namesake) -- `pr-review`, `optimization`, `session`, `live`. A task's route says which
+providers its call walks and when it moves on:
+
+```toml
+fall_over_on = ["quota", "auth", "rate_limit"]   # the default; classes: quota auth rate_limit server
+[task.pr-review]
+chain = ["anthropic", "deepseek"]                 # "provider" (the same role's model) or "provider:model"
+```
+
+`connect(task=...)` starts at the head of the chain, `connect(spec, task=...)` at *spec*; either walks
+every slot of that task on one provider, then the next provider on a failure whose class
+(`ai_lab.client.error_class`) is in `fall_over_on`; the ledger row of a stand-in names `fallback_from`.
+Never another task's slots, never the default's; a call without a task never moves. A review's default
+provider is the head of the `pr-review` route. `-s`, `--slot` and `--seat` are one argument.
+
+A task's keys arrive as ONE TOML bundle on stdin, replacing that task's slots of each provider it lists
+(slot order = list order; a provider not in the catalogue or not in the task's chain is refused by name):
+
+```
+printf '[keys]
+anthropic = ["sk-...", "sk-..."]
+deepseek = ["sk-..."]
+' |
+  python -m ai_lab.auth login --task pr-review --bundle -
+```
+
+A host's secret store holds one bundle per task as `AI_LAB_KEYS_<TASK>` (`-` becomes `_`); the `live`
+part's is `AI_LAB_KEYS_LIVE`.
 
 EVERY TASK AND SLOT GETS ITS OWN KEY. `login` refuses a key another credential of the same host already
 holds -- another task, another slot, or the default -- naming that credential and the key's sha256

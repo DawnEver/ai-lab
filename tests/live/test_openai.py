@@ -11,6 +11,6 @@ pytestmark = pytest.mark.live
 
 
 def test_openai_decisions_native(request_):
-    d = connect('openai:gpt-6-luna').decide(request_)
+    d = connect('openai:gpt-6-luna', task='live').decide(request_)
     assert d.basis is Basis.NATIVE
     assert d['fidelity'].probabilities is not None

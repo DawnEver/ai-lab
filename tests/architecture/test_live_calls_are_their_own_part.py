@@ -1,8 +1,9 @@
 """A test calling a paid model needs a credential: it is the ``live`` need-set, never ``tests/base``.
 
 User ruling 2026-11-05: every test completes on GitHub Actions alone. ``live`` -- the Anthropic and the OpenAI calls --
-runs on its own hosted row, whose setup step imports each key from a repository secret through
-``ai_lab.auth login --from-file -`` (the declaration is ``[tool.dev_lab.parts] hosted``). Nothing is unproduced.
+runs on its own hosted row, whose setup step imports the ``live`` task's key bundle from one repository secret
+through ``ai_lab.auth login --task live --bundle -`` (declared as ``[tool.dev_lab.parts] hosted``).
+Nothing is unproduced.
 """
 
 import tomllib
@@ -12,6 +13,7 @@ from dev_lab.dev.jobparts import hosted_parts
 from dev_lab.dev.unproduced import unproduced
 from lab_commons.hpc.needsets import BASE, read_vocabulary, selecting
 
+from ai_lab.client import route
 from tests.live import test_live, test_openai
 
 PYPROJECT = Path(__file__).resolve().parents[2] / 'pyproject.toml'
@@ -35,10 +37,14 @@ def test_every_resource_is_produced_on_actions():
     assert set(read_vocabulary(text).resources) == {'live'}
 
 
-def test_live_holds_both_providers_keys_from_its_own_repo_secrets():
-    """Never the org ``ANTHROPIC_API_KEY`` (being revoked): the live row names its own repo secrets."""
+def test_live_holds_its_task_bundle_from_its_one_repo_secret():
+    """Never the org ``ANTHROPIC_API_KEY``: the live row names ONE secret, the ``live`` task's key bundle.
+
+    User ruling 2026-11-05: a task's secret is ``AI_LAB_KEYS_<TASK>`` and its setup is the bundle door; the
+    ``live`` route's chain names every provider a live test calls, so the bundle may carry each one's keys.
+    """
     live = hosted_parts(PYPROJECT.read_text(encoding='utf-8'))['live']
-    assert set(live.secrets) == {'AI_LAB_LIVE_ANTHROPIC_KEY', 'AI_LAB_LIVE_OPENAI_KEY'}
-    for key_name in ('ANTHROPIC_API_KEY', 'OPENAI_API_KEY'):
-        assert f'/{key_name}=/' in live.setup, f'the setup renames a secret to {key_name}'
+    assert set(live.secrets) == {'AI_LAB_KEYS_LIVE'}
+    assert live.setup == 'python -m ai_lab.auth login --task live --bundle -'
+    assert {name for name, _ in route('live').chain} >= {'anthropic', 'openai'}
     assert test_openai.pytestmark.name == test_live.pytestmark.name == 'live'

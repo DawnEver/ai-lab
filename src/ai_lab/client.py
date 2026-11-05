@@ -40,11 +40,21 @@ A TASK OWNS ITS KEYS (user rulings 2026-10-19). ``connect(spec, task='optimizati
 slots -- usernames ``api-key-<task>``, ``api-key-<task>-2``... under the same host
 (:func:`lab_commons.credentials.key_username`) -- in the same fall-over order, and only those: never another
 task's slot, never the default's. A task with no slot 1 is refused naming ``login <provider> --task <task>``.
+
+A TASK ROUTES ITS CALLS (user ruling 2026-11-05). The tasks are exactly the ``[task.*]`` tables of the packaged
+``routes.toml`` and the user's beside ``providers.toml`` (:func:`routes`); a task's ``chain`` is the providers its
+call walks -- every key slot of one, then the next -- moving on when a failure's class (:func:`error_class`, one
+of :data:`ERROR_CLASSES`) is in the task's ``fall_over_on``. ``connect(task=t)`` starts at the head of the chain;
+``connect(spec, task=t)`` starts at *spec*'s provider and falls over along the rest. A stand-in takes the
+entry's model, else the model of the same Claude-class role (:func:`fallback_model`), and the same protocol
+when it serves it. Each move is logged (provider, task, class -- never a key) and the ledger row of the call
+it served names ``fallback_from``. A call without a task never moves; a batch stays on its provider.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 import tomllib
@@ -67,16 +77,26 @@ from ai_lab.wire.base import Batches, Wire
 __all__ = [
     'APP',
     'AUTH_KINDS',
+    'ERROR_CLASSES',
+    'FALL_OVER_ON',
     'PROTOCOLS',
     'ROLES',
     'Client',
     'Provider',
+    'Route',
     'Ticket',
     'catalogue',
     'connect',
+    'error_class',
+    'fallback_model',
     'packaged_providers_file',
+    'packaged_routes_file',
+    'route',
+    'routes',
     'stored_slots',
+    'tasks',
     'user_providers_file',
+    'user_routes_file',
 ]
 
 #: The application name the family's path helpers resolve this package's roots under.
@@ -91,6 +111,32 @@ PROTOCOLS = frozenset({'openai', 'anthropic', 'gemini', 'typesafe'})
 
 #: The Claude-class roles a row's ``models`` map may name; ``base`` is required and the default of the rest.
 ROLES = frozenset({'base', 'fable', 'opus', 'sonnet', 'haiku', 'subagent', 'codex'})
+
+#: The classes of failure a route may fall over on -- a closed set, each derived from a failure by
+#: :func:`error_class`: ``quota`` (402, a used-up balance, a daily token cap), ``auth`` (401/403, a refused key),
+#: ``rate_limit`` (429/529 past their retries) and ``server`` (any other 5xx).
+ERROR_CLASSES = frozenset({'quota', 'auth', 'rate_limit', 'server'})
+
+#: What a route falls over on when neither its file nor its task says (``server`` is legal, never the default).
+FALL_OVER_ON = frozenset({'quota', 'auth', 'rate_limit'})
+
+#: The HTTP statuses of a server error.
+_SERVER_STATUSES = range(500, 600)
+
+
+def error_class(error: BaseException) -> str | None:
+    """*error*'s class in :data:`ERROR_CLASSES`; ``None`` for a failure no route falls over on."""
+    if isinstance(error, DailyTokenCapReached):
+        return 'quota'
+    if not isinstance(error, ProviderError):
+        return None
+    if error.kind == 'exhausted':
+        return 'quota'
+    if error.kind in {'auth', 'rate_limit'}:
+        return error.kind
+    if not error.kind and error.status in _SERVER_STATUSES:
+        return 'server'
+    return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -238,6 +284,113 @@ def _rows(text: str, origin: str) -> dict[str, Provider]:
         raise Unsupported(msg) from None
 
 
+@dataclass(frozen=True, slots=True)
+class Route:
+    """One task's route: the ``(provider, model)`` entries its call walks (``''``: the role's model) and when."""
+
+    task: str
+    chain: tuple[tuple[str, str], ...]
+    fall_over_on: frozenset[str]
+
+
+_ROUTE_FILE_KEYS = frozenset({'fall_over_on', 'task'})
+_ROUTE_KEYS = frozenset({'chain', 'fall_over_on'})
+
+
+def _classes(value: object, where: str) -> frozenset[str]:
+    if not isinstance(value, list) or (bad := [c for c in value if c not in ERROR_CLASSES]):
+        shown = bad[0] if isinstance(value, list) else value
+        msg = f'{where}: fall_over_on {shown!r} is not an error class; the classes are {sorted(ERROR_CLASSES)}'
+        raise Unsupported(msg)
+    return frozenset(value)
+
+
+def _route_rows(text: str, origin: str, providers: Mapping[str, Provider]) -> dict[str, Route]:
+    """The ``[task.*]`` tables of one routes file, every key, task, class and provider checked by name."""
+    table = tomllib.loads(text)
+    if unknown := sorted(set(table) - _ROUTE_FILE_KEYS):
+        msg = f'{origin}: unknown key {unknown[0]!r}; a routes file holds {sorted(_ROUTE_FILE_KEYS)}'
+        raise Unsupported(msg)
+    default = _classes(table['fall_over_on'], origin) if 'fall_over_on' in table else FALL_OVER_ON
+    out = {}
+    for task, row in table.get('task', {}).items():
+        where = f'task {task!r} in {origin}'
+        try:
+            key_username(task)
+        except ValueError as refused:
+            msg = f'{where}: {refused}'
+            raise Unsupported(msg) from None
+        if unknown := sorted(set(row) - _ROUTE_KEYS):
+            msg = f'{where}: unknown key {unknown[0]!r}; a task holds {sorted(_ROUTE_KEYS)}'
+            raise Unsupported(msg)
+        chain = tuple(tuple(entry.partition(':')[::2]) for entry in row.get('chain', ()))
+        if not chain:
+            msg = f'{where}: chain is empty; name at least one provider'
+            raise Unsupported(msg)
+        names = [name for name, _ in chain]
+        if bad := [name for name in names if name not in providers]:
+            msg = f'{where}: unknown provider {bad[0]!r}; known: {sorted(providers)}'
+            raise Unsupported(msg)
+        if len(set(names)) != len(names):
+            msg = f'{where}: a provider appears twice in {names}; one entry walks all its slots'
+            raise Unsupported(msg)
+        classes = _classes(row['fall_over_on'], where) if 'fall_over_on' in row else default
+        out[task] = Route(task, chain, classes)
+    return out
+
+
+def packaged_routes_file() -> Path:
+    """The packaged baseline ``routes.toml``."""
+    return Path(__file__).with_name('routes.toml')
+
+
+def user_routes_file() -> Path:
+    """Where a user's own task routes live, beside :func:`user_providers_file` (it need not exist)."""
+    return user_providers_file().with_name('routes.toml')
+
+
+def routes() -> dict[str, Route]:
+    """The packaged routes, with every task of :func:`user_routes_file` replacing its namesake."""
+    providers = catalogue()
+    table = _route_rows(packaged_routes_file().read_text('utf-8'), 'the packaged routes.toml', providers)
+    user = user_routes_file()
+    if user.is_file():
+        table.update(_route_rows(user.read_text('utf-8'), str(user), providers))
+    return table
+
+
+def tasks() -> frozenset[str]:
+    """The tasks that own keys: exactly the routed ones."""
+    return frozenset(routes())
+
+
+def route(task: str) -> Route:
+    """*task*'s route; :class:`Unsupported` naming the routed tasks."""
+    table = routes()
+    if task not in table:
+        msg = f'{task!r} is not a routed task; the tasks are {sorted(table)} (add one in {user_routes_file()})'
+        raise Unsupported(msg)
+    return table[task]
+
+
+#: A launcher's context marker on a role's model (``deepseek-v4-flash[1m]``); not part of the API's model id.
+_CONTEXT_MARKER = re.compile(r'\[[^\]]*\]$')
+
+
+def fallback_model(primary: Provider | None, model: str, fallback: Provider) -> str:
+    """*fallback*'s model for the Claude-class role *model* plays on *primary* (``base`` when it plays none)."""
+    roles = primary.models.items() if primary is not None else ()
+    role = next((r for r, m in roles if _CONTEXT_MARKER.sub('', m) == model), 'base')
+    chosen = fallback.models.get(role) or fallback.models.get('base', '')
+    if not chosen:
+        msg = f'{fallback.name} declares no models, so a route cannot pick one; name it "{fallback.name}:<model>"'
+        raise Unsupported(msg)
+    return _CONTEXT_MARKER.sub('', chosen)
+
+
+_log = logging.getLogger(__name__)
+
+
 def packaged_providers_file() -> Path:
     """The packaged baseline ``providers.toml``."""
     return Path(__file__).with_name('providers.toml')
@@ -287,8 +440,15 @@ class Client:
         *tag* is appended to what each call is charged to (:func:`ai_lab.budget.charge`); *max_tokens* replaces the
         wire's output budget where its body carries one.
         """
-        if task is not None:
-            key_username(task)  # an undeclared task is refused here, not at the first call
+        #: The ``(provider, model)`` entries a task's call falls over to, and the classes it falls over on.
+        self.chain: tuple[tuple[str, str], ...] = ()
+        self.fall_over_on: frozenset[str] = frozenset()
+        if task is not None:  # an unrouted task is refused here, not at the first call
+            routed = route(task)
+            self.chain = tuple(entry for entry in routed.chain if entry[0] != provider.name)
+            self.fall_over_on = routed.fall_over_on
+        #: The provider whose failure this client stands in for; ``None`` on the first of a chain.
+        self.fallback_from: str | None = None
         self.wire: Wire = WIRES[provider.wire_for(model, protocol)]
         self.endpoint = provider.endpoint(self.wire.protocol)
         if not model:
@@ -320,6 +480,56 @@ class Client:
 
     def decide(self, request: DecisionRequest) -> Decision:
         """Answer every question: natively when the wire can, else through one derived schema."""
+        return self._along_chain(lambda client: client.decide_here(request))
+
+    def respond(self, request: ResponseRequest) -> Response:
+        """An object of the request's schema."""
+        return self._along_chain(lambda client: client.respond_here(request))
+
+    def _along_chain[T](self, call: Callable[[Client], T]) -> T:
+        """*call* on this client, then -- on a failure whose class the task falls over on -- on each next provider."""
+        try:
+            return call(self)
+        except (ProviderError, DailyTokenCapReached) as error:
+            if not self.chain or error_class(error) not in self.fall_over_on:
+                raise
+            failure, missing = error, []
+        table = catalogue()
+        for name, named in self.chain:
+            try:
+                standin = self._standin(table[name], named)
+                _log.warning(
+                    'fallback: task %s moves from %s to %s (%s)',
+                    self.task, self.name, standin.name, error_class(failure),
+                )  # fmt: skip
+                return call(standin)
+            except Unsupported as absent:
+                missing.append(f'{name}: {absent}')
+            except (ProviderError, DailyTokenCapReached) as error:
+                if error_class(error) not in self.fall_over_on:
+                    raise
+                failure = error
+        if missing:
+            msg = f'{failure}; fallback unavailable: {"; ".join(missing)}'
+            if isinstance(failure, DailyTokenCapReached):
+                raise DailyTokenCapReached(msg, scope=failure.scope) from failure
+            raise ProviderError(msg, kind=failure.kind, status=failure.status) from failure
+        raise failure
+
+    def _standin(self, row: Provider, named: str) -> Client:
+        """A client of *row* standing in for this one: *named*, else the same role's model; same protocol if served."""
+        protocol = self.wire.protocol if self.wire.protocol in row.protocols else None
+        model = named or fallback_model(self.provider, self.model, row)
+        effort = self.effort if WIRES[row.wire_for(model, protocol)].effort else ''
+        standin = Client(
+            row, model, effort=effort, protocol=protocol, tag=self.tag,
+            max_tokens=self.max_tokens, post=self._post, get=self._get,
+        )  # fmt: skip
+        standin.task, standin.fallback_from = self.task, self.provider.name
+        return standin
+
+    def decide_here(self, request: DecisionRequest) -> Decision:
+        """:meth:`decide` on this provider alone, never another of the task's chain."""
         self._require_vision(has_image=request.has_image)
         start = time.perf_counter()
         if self.wire.decide is not None:
@@ -331,8 +541,8 @@ class Client:
         latency = time.perf_counter() - start
         return Decision(answers, basis, self.provider.name, self.model, latency, usage, slot)
 
-    def respond(self, request: ResponseRequest) -> Response:
-        """An object of the request's schema."""
+    def respond_here(self, request: ResponseRequest) -> Response:
+        """:meth:`respond` on this provider alone, never another of the task's chain."""
         self._require_vision(has_image=request.has_image)
         start = time.perf_counter()
         value, usage, slot = self._respond_value(request)
@@ -392,13 +602,13 @@ class Client:
         msg = f'{self.provider.name}: every {whose}key slot for {host} failed ({", ".join(failures)}); last: {last}'
         if isinstance(last, DailyTokenCapReached):
             raise DailyTokenCapReached(msg, scope=last.scope) from last
-        raise ProviderError(msg, kind=last.kind) from last
+        raise ProviderError(msg, kind=last.kind, status=last.status) from last
 
     def _dispatch(self, call: transport.HttpCall, key: str | None) -> object:
         """Send *call* within its provider's and *key*'s token budgets, and charge what its reply reports."""
         raw = self._post(self._bounded(call, key))
         if (usage := self._usage(raw)) is not None:
-            budget.charge(self.provider.name, key, usage, self.model, tag=self.tag)
+            budget.charge(self.provider.name, key, usage, self.model, tag=self.tag, fallback_from=self.fallback_from)
         return raw
 
     def _bounded(self, call: transport.HttpCall, key: str | None) -> transport.HttpCall:
@@ -498,8 +708,20 @@ class Client:
         self._post(transport.HttpCall(url=url, body={}, headers=self._headers(ticket.slot)))
 
 
-def connect(spec: str, *, task: str | None = None, protocol: str | None = None, **options: object) -> Client:
-    """``'openai:gpt-6-luna'``, ``'openai:gpt-x@high'``, ``'anthropic:<model>'``..."""
+def connect(
+    spec: str | None = None, *, task: str | None = None, protocol: str | None = None, **options: object
+) -> Client:
+    """``'openai:gpt-6-luna'``, ``'openai:gpt-x@high'``, ``'anthropic:<model>'``...; *task* routes it.
+
+    With *task* alone the client starts at the head of the task's chain (its named model, else the provider's
+    ``base``); with *spec* too it starts at *spec* and falls over along the rest of the chain.
+    """
+    if spec is None:
+        if task is None:
+            msg = 'connect needs a spec ("provider:model"), a task, or both'
+            raise Unsupported(msg)
+        name, model = route(task).chain[0]
+        spec = f'{name}:{model or fallback_model(None, "", catalogue()[name])}'
     spec, _, effort = spec.partition('@')
     name, _, model = spec.partition(':')
     retired.refuse('provider', name, f'connect({spec!r})')

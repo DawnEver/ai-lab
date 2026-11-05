@@ -21,9 +21,9 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError, version
 
-from lab_commons.credentials import API_KEY_TASKS, key_username
+from lab_commons.credentials import key_username
 
-from ai_lab.client import PROTOCOLS, Provider, catalogue, packaged_providers_file, user_providers_file
+from ai_lab.client import PROTOCOLS, Provider, catalogue, packaged_providers_file, tasks, user_providers_file
 from ai_lab.wire import WIRES
 
 __all__ = ['CATALOGUE_SCHEMA_VERSION', 'document']
@@ -35,7 +35,7 @@ CATALOGUE_SCHEMA_VERSION = 1
 def _row(row: Provider) -> dict:
     keys = {}
     if row.keyed:
-        keys = {'default': key_username()} | {task: key_username(task) for task in sorted(API_KEY_TASKS)}
+        keys = {'default': key_username()} | {task: key_username(task) for task in sorted(tasks())}
     return {
         'wire': row.wire,
         'protocol': WIRES[row.wire].protocol,

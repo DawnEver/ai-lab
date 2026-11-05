@@ -21,13 +21,11 @@ from typing import Final
 
 from ai_lab.batch import NotYet
 from ai_lab.review.explore import REQUESTS, TURNS
-from ai_lab.review.method import DEFAULT_CONFIG, Method, configured_providers
+from ai_lab.review.method import REVIEW_TASK, Method, configured_providers
 from ai_lab.review.rules import merge, pick, prompt_parts
 
-__all__ = ['LENSES', 'REVIEW_TASK', 'explored', 'run']
+__all__ = ['LENSES', 'explored', 'run']
 
-#: The key task every review call is made under (its own key slots: ``auth login <provider> --task``).
-REVIEW_TASK = 'pr-review'
 
 #: The system turn of every review call. The rendered prompt (the profile's brief plus the change map) is the
 #: CONTEXT -- the user turn -- because a wire builds its user message from the context, and an empty one
@@ -113,7 +111,7 @@ def run(
     call: Callable[[Mapping], Mapping],
     rng: random.Random,
     lens: str = 'standard',
-    defaults: Mapping = DEFAULT_CONFIG,
+    defaults: Mapping | None = None,
     disposed: Mapping[str, str] | None = None,
     turns: int = TURNS,
 ) -> dict:

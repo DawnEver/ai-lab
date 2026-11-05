@@ -35,7 +35,8 @@ _PAYMENT = 402
 _AUTH = frozenset({401, 403})
 #: A body naming an invalid key under a generic status (Gemini answers a bad key with 400).
 _AUTH_MARKERS = ('API_KEY_INVALID',)
-_RATE_LIMIT = 429
+#: Statuses that, past their retries, are the account's capacity used up: rate limit and overload.
+_RATE_LIMIT = frozenset({429, 529})
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,7 +96,7 @@ def _exchange(
     *, timeout_s: float, attempts: int, sleep: Callable,
 ) -> object:  # fmt: skip
     """One request, retried: *parsed* turns a 2xx body into ``(True, value)`` or ``(False, why)`` (retried)."""
-    last, last_kind = '', ''
+    last, last_kind, last_status = '', '', None
     for attempt in range(attempts):
         request = urllib.request.Request(  # noqa: S310 -- the scheme is checked by the caller
             url, data=data, method=method, headers={'Content-Type': 'application/json', **headers}
@@ -110,14 +111,14 @@ def _exchange(
             detail = error.read().decode('utf-8', 'replace')[:500]
             last = f'HTTP {error.code} from {url}: {detail}'
             if (final := _final_kind(error.code, detail)) is not None:
-                raise ProviderError(last, kind=final) from None
-            last_kind = 'rate_limit' if error.code == _RATE_LIMIT else ''
+                raise ProviderError(last, kind=final, status=error.code) from None
+            last_kind, last_status = ('rate_limit' if error.code in _RATE_LIMIT else ''), error.code
         except (urllib.error.URLError, TimeoutError) as error:
             reason = error.reason if isinstance(error, urllib.error.URLError) else error
             timed_out = isinstance(reason, TimeoutError)
             last = f'{url} {"timed out" if timed_out else "unreachable"}: {error}'
-            last_kind = 'timeout' if timed_out else ''
+            last_kind, last_status = ('timeout' if timed_out else ''), None
         if attempt + 1 < attempts:
             sleep(2.0**attempt)
     msg = f'{last} (after {attempts} attempts)'
-    raise ProviderError(msg, kind=last_kind)
+    raise ProviderError(msg, kind=last_kind, status=last_status)

@@ -34,7 +34,7 @@ where = ["src"]
 include = ["ai_lab*"]
 
 [tool.setuptools.package-data]
-ai_lab = ["providers.toml", "review/method_data/**/*"]
+ai_lab = ["providers.toml", "routes.toml", "review/method_data/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -78,11 +78,11 @@ collect = 'tests'
 output = "output/logs"
 # User ruling 2026-11-05: every test completes on GitHub Actions alone. `live` (every real-model call, Anthropic and
 # OpenAI) is one hosted linux row on a non-PR event -- the nightly schedule, whose run gates `integrate promote`, and a
-# manual dispatch -- never per PR (dev_lab.dev.jobparts.hosted_jobs). Its setup step alone holds the repo secrets; it
-# renames each to the provider's key-file name and hands them on stdin to the one key door,
-# `ai_lab.auth login --from-file -`; the code never reads an environment key. A fresh runner has no credential
-# helper, so the step configures git's in-memory cache first.
-hosted = { live = { secrets = ["AI_LAB_LIVE_ANTHROPIC_KEY", "AI_LAB_LIVE_OPENAI_KEY"], setup = "sed -e 's/^AI_LAB_LIVE_ANTHROPIC_KEY=/ANTHROPIC_API_KEY=/' -e 's/^AI_LAB_LIVE_OPENAI_KEY=/OPENAI_API_KEY=/' | { git config --global credential.helper 'cache --timeout=7200' && uv run --no-sync python -m ai_lab.auth login --from-file -; }" } }
+# manual dispatch -- never per PR (dev_lab.dev.jobparts.hosted_jobs). Its setup step alone holds the ONE repo secret,
+# the `live` task's key bundle (user ruling 2026-11-05: AI_LAB_KEYS_<TASK>), and hands it on stdin to the one key
+# door, `ai_lab.auth login --task live --bundle -`; the code never reads an environment key. dev-lab renders how the
+# secret reaches stdin (and a fresh runner's credential helper).
+hosted = { live = { secrets = ["AI_LAB_KEYS_LIVE"], setup = "python -m ai_lab.auth login --task live --bundle -" } }
 
 [tool.lab_commons.tests]
 produce = ["-m", "dev_lab.dev.verify", "--part", "{part}"]

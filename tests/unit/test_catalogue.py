@@ -33,7 +33,7 @@ def test_deepseek_is_one_row_serving_two_protocols():
     row = catalogue()['deepseek']
     assert row.url == 'https://api.deepseek.com'
     assert row.endpoint('openai') == 'https://api.deepseek.com/v1'
-    assert row.endpoint('anthropic') == 'https://api.deepseek.com/anthropic'
+    assert row.endpoint('anthropic') == 'https://api.deepseek.com/anthropic/v1'
     assert row.protocols == frozenset({'openai', 'anthropic'})
     assert not any(name != 'deepseek' and r.host == row.host for name, r in catalogue().items())
 
@@ -60,7 +60,7 @@ def test_the_wire_is_picked_by_protocol(credential_store):
     client = connect('deepseek:deepseek-v4-flash', protocol='anthropic', post=anthropic)
     assert client.wire.name == 'anthropic_messages'
     client.respond(REQ)
-    assert anthropic.calls[0].url == 'https://api.deepseek.com/anthropic/messages'
+    assert anthropic.calls[0].url == 'https://api.deepseek.com/anthropic/v1/messages'
 
 
 def test_a_protocol_the_row_does_not_serve_is_refused_naming_the_ones_it_does():

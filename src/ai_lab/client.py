@@ -40,11 +40,19 @@ A TASK OWNS ITS KEYS (user rulings 2026-10-19). ``connect(spec, task='optimizati
 slots -- usernames ``api-key-<task>``, ``api-key-<task>-2``... under the same host
 (:func:`lab_commons.credentials.key_username`) -- in the same fall-over order, and only those: never another
 task's slot, never the default's. A task with no slot 1 is refused naming ``login <provider> --task <task>``.
+
+A TASK FALLS OVER ACROSS PROVIDERS (user ruling 2026-11-05). A row's ``fallback = [provider, ...]`` is the chain a
+TASK's call moves along once every slot of the row fails at the account level: the next provider is called with the
+SAME task's slots, the model of the same Claude-class role (:func:`fallback_model`), and the same protocol when it
+serves it. A per-call error never moves, and neither does a call without a task (the ``live`` tests are the
+provider's own and must see it fail). Each move is logged (provider, task, reason -- never a key) and the ledger
+row of the call it served names ``fallback_from``. Batches stay on their provider: a ticket is bound to its slot.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 import tomllib
@@ -121,6 +129,8 @@ class Provider:
     typesafe_path: str = ''
     #: ``{role: model}`` over :data:`ROLES` -- the model each Claude-class role resolves to.
     models: Mapping[str, str] = field(default_factory=dict)
+    #: The providers a task's call moves to, in order, once every slot of this one fails at the account level.
+    fallback: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         """Refuse an unknown wire or auth kind, a wire with no path, a url with a path, a malformed role map."""
@@ -232,7 +242,10 @@ def _rows(text: str, origin: str) -> dict[str, Provider]:
         for key in row:
             retired.refuse('field', key, f'provider {name!r} in {origin}')
     try:
-        return {name: Provider(name=name, **row) for name, row in table.items()}
+        return {
+            name: Provider(name=name, **{**row, 'fallback': tuple(row.get('fallback', ()))})
+            for name, row in table.items()
+        }
     except TypeError as error:
         msg = f'a provider row in {origin} has an unknown or missing field: {error}'
         raise Unsupported(msg) from None
@@ -249,7 +262,33 @@ def catalogue() -> dict[str, Provider]:
     user = user_providers_file()
     if user.is_file():
         table.update(_rows(user.read_text('utf-8'), str(user)))
+    for row in table.values():
+        if bad := [n for n in row.fallback if n not in table or n == row.name or not table[n].keyed]:
+            msg = f'provider {row.name!r}: fallback {bad[0]!r} is not another keyed provider; known: {sorted(table)}'
+            raise Unsupported(msg)
     return table
+
+
+#: A launcher's context marker on a role's model (``deepseek-v4-flash[1m]``); not part of the API's model id.
+_CONTEXT_MARKER = re.compile(r'\[[^\]]*\]$')
+
+
+def fallback_model(primary: Provider, model: str, fallback: Provider) -> str:
+    """*fallback*'s model for the Claude-class role *model* plays on *primary* (``base`` when it plays none)."""
+    role = next((r for r, m in primary.models.items() if m == model), 'base')
+    chosen = fallback.models.get(role) or fallback.models.get('base', '')
+    if not chosen:
+        msg = f'{fallback.name} declares no models, so it cannot stand in for {primary.name}:{model}'
+        raise Unsupported(msg)
+    return _CONTEXT_MARKER.sub('', chosen)
+
+
+_log = logging.getLogger(__name__)
+
+
+def _account_kind(error: Exception) -> str:
+    """*error*'s kind; a daily token cap counts as ``exhausted`` (that budget is used up)."""
+    return 'exhausted' if isinstance(error, DailyTokenCapReached) else error.kind
 
 
 @dataclass(frozen=True, slots=True)
@@ -308,6 +347,8 @@ class Client:
         self.max_tokens = max_tokens
         self._post = post
         self._get = get
+        #: The provider whose exhausted slots this client stands in for; ``None`` on a primary.
+        self.fallback_from: str | None = None
 
     @property
     def name(self) -> str:
@@ -320,6 +361,50 @@ class Client:
 
     def decide(self, request: DecisionRequest) -> Decision:
         """Answer every question: natively when the wire can, else through one derived schema."""
+        return self._along_chain(lambda client: client.decide_here(request))
+
+    def respond(self, request: ResponseRequest) -> Response:
+        """An object of the request's schema."""
+        return self._along_chain(lambda client: client.respond_here(request))
+
+    def _along_chain(self, call: Callable[[Client], object]) -> object:
+        """*call* on this client, then -- a task's call failing at the account level -- on each fallback provider."""
+        try:
+            return call(self)
+        except (ProviderError, DailyTokenCapReached) as error:
+            if self.task is None or not self.provider.fallback or _account_kind(error) not in ACCOUNT_KINDS:
+                raise
+            failure, missing = error, []
+        table = catalogue()
+        for name in self.provider.fallback:
+            row = table[name]
+            protocol = self.wire.protocol if self.wire.protocol in row.protocols else None
+            model = fallback_model(self.provider, self.model, row)
+            effort = self.effort if WIRES[row.wire_for(model, protocol)].effort else ''
+            standin = Client(
+                row, model, effort=effort, task=self.task, protocol=protocol, tag=self.tag,
+                max_tokens=self.max_tokens, post=self._post, get=self._get,
+            )  # fmt: skip
+            standin.fallback_from = self.provider.name
+            _log.warning(
+                'fallback: task %s moves from %s:%s to %s:%s (%s)',
+                self.task, self.provider.name, self.model, name, model, _account_kind(failure),
+            )  # fmt: skip
+            try:
+                return call(standin)
+            except Unsupported as absent:
+                missing.append(f'{name}: {absent}')
+            except (ProviderError, DailyTokenCapReached) as error:
+                if _account_kind(error) not in ACCOUNT_KINDS:
+                    raise
+                failure = error
+        if missing:
+            msg = f'{failure}; fallback unavailable: {"; ".join(missing)}'
+            raise ProviderError(msg, kind=_account_kind(failure)) from failure
+        raise failure
+
+    def decide_here(self, request: DecisionRequest) -> Decision:
+        """:meth:`decide` on this provider alone, never a fallback."""
         self._require_vision(has_image=request.has_image)
         start = time.perf_counter()
         if self.wire.decide is not None:
@@ -331,8 +416,8 @@ class Client:
         latency = time.perf_counter() - start
         return Decision(answers, basis, self.provider.name, self.model, latency, usage, slot)
 
-    def respond(self, request: ResponseRequest) -> Response:
-        """An object of the request's schema."""
+    def respond_here(self, request: ResponseRequest) -> Response:
+        """:meth:`respond` on this provider alone, never a fallback."""
         self._require_vision(has_image=request.has_image)
         start = time.perf_counter()
         value, usage, slot = self._respond_value(request)
@@ -398,7 +483,7 @@ class Client:
         """Send *call* within its provider's and *key*'s token budgets, and charge what its reply reports."""
         raw = self._post(self._bounded(call, key))
         if (usage := self._usage(raw)) is not None:
-            budget.charge(self.provider.name, key, usage, self.model, tag=self.tag)
+            budget.charge(self.provider.name, key, usage, self.model, tag=self.tag, fallback_from=self.fallback_from)
         return raw
 
     def _bounded(self, call: transport.HttpCall, key: str | None) -> transport.HttpCall:

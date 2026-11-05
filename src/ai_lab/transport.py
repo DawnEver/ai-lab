@@ -35,7 +35,8 @@ _PAYMENT = 402
 _AUTH = frozenset({401, 403})
 #: A body naming an invalid key under a generic status (Gemini answers a bad key with 400).
 _AUTH_MARKERS = ('API_KEY_INVALID',)
-_RATE_LIMIT = 429
+#: Statuses that, past their retries, are the account's capacity used up: rate limit and overload.
+_RATE_LIMIT = frozenset({429, 529})
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,7 +112,7 @@ def _exchange(
             last = f'HTTP {error.code} from {url}: {detail}'
             if (final := _final_kind(error.code, detail)) is not None:
                 raise ProviderError(last, kind=final) from None
-            last_kind = 'rate_limit' if error.code == _RATE_LIMIT else ''
+            last_kind = 'rate_limit' if error.code in _RATE_LIMIT else ''
         except (urllib.error.URLError, TimeoutError) as error:
             reason = error.reason if isinstance(error, urllib.error.URLError) else error
             timed_out = isinstance(reason, TimeoutError)

@@ -56,7 +56,7 @@ def test_a_row_carries_its_protocols_role_models_and_key_usernames_never_a_key(c
     doc = document()
     row = doc['providers']['deepseek']
     assert row['endpoints'] == {
-        'anthropic': 'https://api.deepseek.com/anthropic',
+        'anthropic': 'https://api.deepseek.com/anthropic/v1',
         'openai': 'https://api.deepseek.com/v1',
     }
     assert row['protocol'] == 'openai' and row['wire'] == 'openai_chat_json'

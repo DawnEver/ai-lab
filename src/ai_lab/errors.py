@@ -19,7 +19,7 @@ class ProviderError(Exception):
     """The provider was reached and failed, or returned something that is not the declared shape.
 
     ``kind`` is one of :data:`ERROR_KINDS`: an ACCOUNT-level failure (:data:`ACCOUNT_KINDS`) --
-    ``'exhausted'`` (no balance or quota), ``'auth'`` (a key refused) or ``'rate_limit'`` (429 past its
+    ``'exhausted'`` (no balance or quota), ``'auth'`` (a key refused) or ``'rate_limit'`` (429 or 529 past its
     retries) -- that another key of the same account may not share; ``'timeout'`` (no answer within the
     ceiling, past its retries); or ``''``, any other failure. Neither of the last two moves to another key.
     """

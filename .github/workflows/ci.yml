@@ -394,9 +394,10 @@
         },
         {
           "name": "Set up tests/live from its secrets",
-          "run": "printf '%s=%s\\n' ANTHROPIC_API_KEY \"$ANTHROPIC_API_KEY\" | { git config --global credential.helper 'cache --timeout=7200' && uv run --no-sync python -m ai_lab.auth login --from-file -; }",
+          "run": "printf '%s=%s\\n' AI_LAB_LIVE_ANTHROPIC_KEY \"$AI_LAB_LIVE_ANTHROPIC_KEY\" AI_LAB_LIVE_OPENAI_KEY \"$AI_LAB_LIVE_OPENAI_KEY\" | { sed -e 's/^AI_LAB_LIVE_ANTHROPIC_KEY=/ANTHROPIC_API_KEY=/' -e 's/^AI_LAB_LIVE_OPENAI_KEY=/OPENAI_API_KEY=/' | { git config --global credential.helper 'cache --timeout=7200' && uv run --no-sync python -m ai_lab.auth login --from-file -; }; }",
           "env": {
-            "ANTHROPIC_API_KEY": "${{ secrets.ANTHROPIC_API_KEY }}"
+            "AI_LAB_LIVE_ANTHROPIC_KEY": "${{ secrets.AI_LAB_LIVE_ANTHROPIC_KEY }}",
+            "AI_LAB_LIVE_OPENAI_KEY": "${{ secrets.AI_LAB_LIVE_OPENAI_KEY }}"
           }
         },
         {

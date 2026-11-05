@@ -1,14 +1,13 @@
-"""The OpenAI call: its own ``openai`` resource, declared unproduced -- no OpenAI key is a repository secret.
+"""The OpenAI call: part of ``live``, whose hosted row holds the OpenAI key from a repository secret.
 
-User decision 2026-10-30: it left ``live`` so the hosted live row never falsely fails on a missing key. It runs
-nowhere until a producer holds that key; it is kept, never deleted.
+User ruling 2026-11-05: every test completes on GitHub Actions alone, so the call that ran nowhere joined ``live``.
 """
 
 import pytest
 
 from ai_lab import Basis, connect
 
-pytestmark = pytest.mark.openai
+pytestmark = pytest.mark.live
 
 
 def test_openai_decisions_native(request_):

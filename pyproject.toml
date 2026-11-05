@@ -18,11 +18,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# The family's development kit: rules registry, rendered configs, shared test bodies, verify entry.
+# The family's development kit: rules registry, rendered configs, shared test bodies, verify entry, and the ONE
+# test kit (pytest, ruff, ...) -- no test tool is declared here on its own.
 dev = [
     "dev-lab[test] @ git+https://github.com/DawnEver/dev-lab.git",
-    "pytest",
-    "ruff",
 ]
 
 [tool.setuptools_scm]

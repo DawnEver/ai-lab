@@ -377,8 +377,8 @@ wheels = [
 
 [[package]]
 name = "dev-lab"
-version = "0.0.1.dev2252+g6a90eba57"
-source = { git = "https://github.com/DawnEver/dev-lab.git#6a90eba5766af4d14c8f1a479fad883b4be6a02d" }
+version = "0.0.1.dev2254+g0ad7c9b54"
+source = { git = "https://github.com/DawnEver/dev-lab.git#0ad7c9b542d99367af9fd45bf31c2ad903d3f426" }
 dependencies = [
     { name = "commitizen" },
     { name = "cryptography" },

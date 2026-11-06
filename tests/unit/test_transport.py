@@ -111,14 +111,6 @@ def test_an_exhausted_balance_in_a_200_body_is_not_retried(monkeypatch):
     assert len(calls) == 1
 
 
-class _Body(io.BytesIO):
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *a):
-        return False
-
-
 def test_get_returns_the_body_text_and_sends_no_body(monkeypatch):
     seen = []
 
@@ -149,3 +141,25 @@ def test_get_retries_like_post(monkeypatch):
 def test_get_refuses_a_non_http_url():
     with pytest.raises(Unsupported, match='not an http'):
         get('file:///etc/passwd', {})
+
+
+def test_a_200_whose_error_field_is_null_is_the_reply(monkeypatch):
+    """OpenAI Responses carries ``"error": null`` on EVERY completed reply; a null error is no error.
+
+    Reading the key's presence as a failure retried every terra call and raised
+    ``error body from .../v1/responses: None (after 3 attempts)`` (motronics T3 at c8eb389bf6).
+    """
+    reply = (
+        b'{"object": "response", "status": "completed", "error": null, "output": [{"type": "message",'
+        b' "content": [{"type": "output_text", "text": "{}"}]}], "usage": {"input_tokens": 3, "output_tokens": 1}}'
+    )
+    calls = []
+
+    def urlopen(request, timeout):
+        calls.append(1)
+        return _Body(reply)
+
+    monkeypatch.setattr('urllib.request.urlopen', urlopen)
+    body = post(HttpCall('https://x.test', {}), sleep=lambda s: None)
+    assert body['status'] == 'completed'
+    assert len(calls) == 1

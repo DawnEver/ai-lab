@@ -74,6 +74,7 @@ __all__ = [
     'key_scope',
     'ledger_file',
     'left_usd',
+    'priced',
     'rate',
     'room',
     'row_usd',
@@ -122,6 +123,20 @@ def rate(client: str, at: datetime | None = None) -> Quote | None:
     from ai_lab.prices import quote_for  # noqa: PLC0415 -- prices reads the catalogue, which imports this module
 
     return quote_for(client, at=at) or quote_for(client)
+
+
+def priced(client: str, at: datetime | None = None) -> Quote:
+    """``provider:model``'s :func:`rate`, or :class:`Unsupported` naming the ``prices.toml`` to declare it in.
+
+    The ONE refusal of an unpriced model: a capped call, a ledger row and a planner's projection all price here.
+    """
+    from ai_lab.prices import user_prices_file  # noqa: PLC0415 -- prices reads the catalogue, which imports this module
+
+    held = rate(client, at)
+    if held is None:
+        msg = f'{client} has no price: declare its rate in {user_prices_file()} (USD per million tokens)'
+        raise Unsupported(msg)
+    return held
 
 
 def _table() -> dict:

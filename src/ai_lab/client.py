@@ -380,11 +380,7 @@ class Client:
         """
         left = budget.room(self.provider.name, key)
         client = f'{self.provider.name}:{self.model}'
-        held = None if math.isinf(left) else budget.rate(client)
-        if not math.isinf(left) and held is None:
-            rates = config_root('ai_lab') / 'prices.toml'
-            msg = f'{client} has no price, so its spend cap cannot hold it: declare its rate in {rates}'
-            raise Unsupported(msg)
+        held = None if math.isinf(left) else budget.priced(client)
         if 'max_tokens' in call.body:
             wanted = self.max_tokens or call.body['max_tokens']
             if held is not None and held.price.output > 0:

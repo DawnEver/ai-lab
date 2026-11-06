@@ -86,7 +86,7 @@ __all__ = [
     'spent_usd',
     'standing',
     'state_dir',
-    'tasks',
+    'task_allotments',
     'usd_per',
 ]
 
@@ -216,15 +216,19 @@ def ledger_file() -> Path:
 
 
 def row_usd(row: dict, price: Price | None = None) -> float | None:
-    """One ledger row's US dollars at its call's time; ``None`` when it names no model or the model is unpriced."""
-    from ai_lab.prices import cost  # noqa: PLC0415 -- prices reads the catalogue, which imports this module
+    """One ledger row's US dollars at its call's time; ``None`` when it names no model or the model is unpriced.
+
+    A batch row (``"batch": true``) is priced at :data:`ai_lab.prices.BATCH_RATE` of the synchronous price.
+    """
+    from ai_lab.prices import BATCH_RATE, cost  # noqa: PLC0415 -- prices reads the catalogue, which imports this module
 
     if not row.get('model'):
         return None
     at = datetime.fromisoformat(row['at']) if row.get('at') else None
     held = (rate if price is None else price)(f'{row["provider"]}:{row["model"]}', at)
     usage = Usage(row.get('input', 0), row.get('output', 0), row.get('cached', 0))
-    return cost(usage, None if held is None else held.price)
+    usd = cost(usage, None if held is None else held.price)
+    return usd * BATCH_RATE if usd is not None and row.get('batch') else usd
 
 
 def _rows(provider: str, key: str | None, *, month: bool = True) -> list[dict]:
@@ -284,13 +288,30 @@ def spend_tag(tag: str | None = None) -> str | None:
     return '/'.join(t for t in (os.environ.get(TAG_ENV), tag) if t) or None
 
 
-def charge(provider: str, key: str | None, usage: Usage, model: str, *, tag: str | None = None) -> None:
-    """Append one call's *usage* of *model* on *provider* through *key* to today's ledger, tagged :func:`spend_tag`."""
+def charge(
+    provider: str,
+    key: str | None,
+    usage: Usage,
+    model: str,
+    *,
+    tag: str | None = None,
+    batch: bool = False,
+    fallback_from: str | None = None,
+) -> None:
+    """Append one call's *usage* of *model* on *provider* through *key* to today's ledger, tagged :func:`spend_tag`.
+
+    A *batch* call's row says so (``"batch": true``): the vendor bills it at :data:`ai_lab.prices.BATCH_RATE`. A call
+    a task's route moved to names the provider it stood in for (``"fallback_from"``).
+    """
     row = {
         'provider': provider, 'key': key, 'tokens': usage.input_tokens + usage.output_tokens, 'model': model,
         'input': usage.input_tokens, 'output': usage.output_tokens, 'cached': usage.cached_tokens,
         'at': _now(), 'tag': spend_tag(tag), 'scope': current(),
     }  # fmt: skip
+    if batch:
+        row['batch'] = True
+    if fallback_from:
+        row['fallback_from'] = fallback_from
     path = ledger_file()
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open('a', encoding='utf-8') as out:
@@ -443,7 +464,7 @@ def _append(row: dict) -> None:
         out.write(json.dumps(row) + '\n')
 
 
-def tasks() -> dict[str, Allotment]:
+def task_allotments() -> dict[str, Allotment]:
     """Every open task allotment by path: a path's newest ``open``, unless a later ``close`` released it."""
     found: dict[str, Allotment] = {}
     for row in _store():
@@ -471,7 +492,7 @@ def approvals() -> dict[str, Approval]:
 
 
 def _all() -> dict[str, Allotment]:
-    return {**tasks(), **standing()}
+    return {**task_allotments(), **standing()}
 
 
 def _scope_spent(provider: str, name: str, *, month: bool) -> float:

@@ -42,6 +42,16 @@ def _private_home(tmp_path, monkeypatch):
     monkeypatch.setenv('LAB_COMMONS_CONFIG', str(machine))
 
 
+@pytest.fixture(autouse=True)
+def _calls_at_once(monkeypatch):
+    """A command line's model calls are made AT ONCE in a test: its stand-in ``call`` is the synchronous path.
+
+    Batching is the shipped default (:data:`ai_lab.batch.BATCH_BY_DEFAULT`); a test of the batched path passes
+    ``--batch`` and a fake ``connect``, so no test ever reaches a vendor's batch endpoint.
+    """
+    monkeypatch.setattr('ai_lab.batch.BATCH_BY_DEFAULT', False)
+
+
 @pytest.fixture
 def credential_store(tmp_path, monkeypatch):
     """A throwaway git ``store`` helper and an empty user config root; the box's real store is never touched.

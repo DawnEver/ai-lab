@@ -1,4 +1,4 @@
-"""``python -m ai_lab.review.judge --range <a..b> --model <id> --rules <ids> --principles <f> --findings <f>``.
+"""``python -m ai_lab.review.judge (--range <a..b> | --bundle <dir>) --model <id> --rules <ids> --findings <f>``.
 
 RE-JUDGE (user ruling 2026-10-31): every review round judges each open finding again against the new head, and an
 author's claim that a finding is not a defect is adjudicated by an independent reviewer, never taken on trust.
@@ -23,25 +23,31 @@ THE JUDGE CANNOT BE TALKED INTO CLOSING A FINDING (independent pre-push review, 
 * A DELETED FILE is stated as deleted, so its absence is never read as a fix.
 
 Every failure fails CLOSED: the finding stays ``present``, with ``not judged: <why>``.
+
+THE CALLS ARE BATCHED BY DEFAULT (:mod:`ai_lab.batch`; ``--no-batch`` makes them at once): every finding's sample
+of one turn joins one batch, and a run whose ``--wait`` is spent exits :data:`~ai_lab.batch.PENDING_EXIT`, its
+``--batch-state`` naming the batch the next run resumes. A fence nonce is drawn from the runner's generator --
+seeded by the state when batched, so a replay rebuilds the very prompt it sent; the nonce is struck from every
+fenced text either way, so knowing it closes no fence.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import random
 import re
-import secrets
-import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from shutil import which
 from typing import Final
 
+from ai_lab import batch
 from ai_lab.call import answer
-from ai_lab.review.explore import TURN_BYTES, TURNS, change_map, numstat, serve
+from ai_lab.review.explore import TURN_BYTES, TURNS, change_map, serve
 from ai_lab.review.method import (
     METHOD_DIR,
+    REVIEW_TASK,
     Method,
     UnknownMethodVersion,
     configured_providers,
@@ -49,9 +55,10 @@ from ai_lab.review.method import (
     principle_list,
     rule_ids,
 )
-from ai_lab.review.run import REVIEW_TASK, explored
+from ai_lab.review.run import explored
+from ai_lab.review.source import BundleSource, GitSource, NotHeld, Source
 
-__all__ = ['ANCHOR_WINDOW', 'CLOSING', 'OUTCOMES', 'SCHEMA_VERSION', 'fence', 'invalid', 'judge_of', 'main', 'verified']
+__all__ = ['ANCHOR_WINDOW', 'CLOSING', 'OUTCOMES', 'SCHEMA_VERSION', 'fence', 'invalid', 'judge_of', 'verified']
 
 SCHEMA_VERSION: Final = 1
 _EXIT_REFUSED: Final = 2
@@ -131,29 +138,20 @@ def fence(label: str, text: str, nonce: str) -> str:
     return f'<<<{nonce} {label}>>>\n{body}\n<<<{nonce} END {label}>>>'
 
 
-def _git(repo: str, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run([which('git') or 'git', '-C', repo, *args], capture_output=True, text=True,
-                          encoding='utf-8', errors='replace', check=False)  # fmt: skip
-
-
-def _head(range_: str) -> str:
-    return range_.rsplit('..', 1)[-1].lstrip('.') or 'HEAD'
-
-
 def _norm(line: str) -> str:
     return ' '.join(line.split())
 
 
 def verified(
-    cites: object, *, repo: str, head: str, file: str, anchor: str, changed: frozenset[str] | set[str], outcome: str
+    cites: object, *, source: Source, file: str, anchor: str, changed: frozenset[str] | set[str], outcome: str
 ) -> list[str]:  # fmt: skip
-    """The *cites* (``path:line``) that prove *outcome* about a finding in *file* at *head*.
+    """The *cites* (``path:line``) that prove *outcome* about a finding in *file* at *source*'s head.
 
     A cite counts only when its line exists at the head AND it is in the finding's own *file* -- within
     :data:`ANCHOR_WINDOW` lines of the *anchor* -- or in a file the range *changed*. With the anchor gone from the
     head, the finding's own file must itself be changed: an unchanged file without the anchor proves nothing.
     A ``fixed`` cite must be in a file the range changed: a fix is a change. Any existing line elsewhere
-    (``README.md:1``) proves nothing.
+    (``README.md:1``) proves nothing. A file the source does not hold (:class:`NotHeld`) verifies no cite.
     """
     good, shown = [], {}
     for cite in cites if isinstance(cites, list) else []:
@@ -162,8 +160,11 @@ def verified(
             continue
         path, line = found['path'], int(found['line'])
         if path not in shown:
-            done = _git(repo, 'show', f'{head}:{path}')
-            shown[path] = done.stdout.splitlines() if done.returncode == 0 else None
+            try:
+                held = source.head_text(path)
+            except NotHeld:
+                held = None
+            shown[path] = None if held is None else held.splitlines()
         text = shown[path]
         if text is None or line > len(text) or (outcome == 'fixed' and path not in changed):
             continue
@@ -251,25 +252,32 @@ def _prompt(finding: Mapping, nonce: str, *, range_: str, mapped: str, held: str
     )  # fmt: skip
 
 
-def _held(finding: Mapping, nonce: str, *, range_: str, repo: str, rows: Sequence) -> str:
-    """The finding's own file as the head holds it -- or the statement that the head has no such file."""
+def _held(finding: Mapping, nonce: str, *, source: Source, rows: Sequence) -> str:
+    """The finding's own file as the head holds it -- or the statement that the head has no such file.
+
+    A source that cannot say (a review bundle holds only the changed files) is said to be unable, never absent.
+    """
     path = str(finding['file'])
-    if _git(repo, 'cat-file', '-e', f'{_head(range_)}:{path}').returncode != 0:
+    try:
+        absent = source.head_text(path) is None
+    except NotHeld as unheld:
+        return f'The file {path} cannot be shown: {unheld}. Ask `grep` or `show` for what you need.'
+    if absent:
         return f'The file {path} does NOT exist at the head (deleted, or never there): its absence is no fix.'
-    shown = serve({'show': [path]}, range_=range_, repo=repo, rows=rows, budget=HELD_BYTES)
+    shown = serve({'show': [path]}, source=source, rows=rows, budget=HELD_BYTES)
     return f'The file {path} as the head holds it (cut when long):\n' + fence('FILE', shown, nonce)
 
 
-def _sample(finding: Mapping, call: Callable, request: Mapping, *, args: argparse.Namespace, rows: Sequence,
-            mapped: str, method: Method) -> tuple[str, str, list[str]]:  # fmt: skip
+def _sample(finding: Mapping, call: Callable, request: Mapping, *, source: Source, rows: Sequence,
+            mapped: str, method: Method, rng: random.Random) -> tuple[str, str, list[str]]:  # fmt: skip
     """One independent judgement: its outcome, evidence and verified cites (a fresh nonce every time)."""
-    nonce = secrets.token_hex(12)
+    nonce = f'{rng.getrandbits(96):024x}'
 
     def explore(asked: Mapping) -> str:
-        return fence('SERVED', serve(asked, range_=args.range_, repo=args.repo, rows=rows), nonce)
+        return fence('SERVED', serve(asked, source=source, rows=rows), nonce)
 
-    held = _held(finding, nonce, range_=args.range_, repo=args.repo, rows=rows)
-    prompt = _prompt(finding, nonce, range_=args.range_, mapped=mapped, held=held, method=method)
+    held = _held(finding, nonce, source=source, rows=rows)
+    prompt = _prompt(finding, nonce, range_=source.label, mapped=mapped, held=held, method=method)
     reply = explored(call, request, [prompt], explore, TURNS)
     if not reply.get('ok'):
         return 'present', f'not judged: {reply.get("kind") or "call failed"}', []
@@ -278,7 +286,7 @@ def _sample(finding: Mapping, call: Callable, request: Mapping, *, args: argpars
     if outcome not in OUTCOMES:
         return 'present', f'not judged: no valid outcome ({outcome!r})', []
     changed = frozenset(path for _a, _d, path in rows)
-    cites = verified(result.get('cites'), repo=args.repo, head=_head(args.range_), file=str(finding['file']),
+    cites = verified(result.get('cites'), source=source, file=str(finding['file']),
                      anchor=str(finding['anchor']), changed=changed, outcome=outcome)  # fmt: skip
     return outcome, str(result.get('evidence') or ''), cites
 
@@ -297,10 +305,12 @@ def _judged(finding: Mapping, call: Callable, request: Mapping, **given: object)
     return {'id': fid, 'outcome': outcome, 'evidence': f'{evidence} [{", ".join(cites)}]'}
 
 
-def main(argv: Sequence[str] | None = None, *, call: Callable[[Mapping], Mapping] = answer) -> int:
-    """Judge every finding against the range's head and print the verdicts JSON; exit 2 on a refused invocation."""
+def _parser() -> argparse.ArgumentParser:
+    """The command line's flags, the batch runner's among them."""
     parser = argparse.ArgumentParser(prog='python -m ai_lab.review.judge', description=__doc__.split('\n', 1)[0])
-    parser.add_argument('--range', required=True, dest='range_', help='the git range whose head is judged')
+    given = parser.add_mutually_exclusive_group(required=True)
+    given.add_argument('--range', dest='range_', help='the git range whose head is judged')
+    given.add_argument('--bundle', help='a review bundle directory to judge instead: no git is started')
     parser.add_argument('--repo', default='.', help='the repository the range is in (default: the working directory)')
     parser.add_argument('--model', required=True, help='the model id for the provider the method names none for')
     parser.add_argument('--rules', help='the registry rule ids, comma-separated (required)')
@@ -308,35 +318,60 @@ def main(argv: Sequence[str] | None = None, *, call: Callable[[Mapping], Mapping
     parser.add_argument('--findings', required=True, help='a JSON file {"findings": [...]}: the open findings')
     parser.add_argument('--max-calls', type=int, default=MAX_CALLS, help='the run budget in calls')
     parser.add_argument('--max-bytes', type=int, default=MAX_BYTES, help='the run budget in context bytes sent')
-    args = parser.parse_args(argv)
+    batch.add_arguments(parser)
+    return parser
+
+
+def main(
+    argv: Sequence[str] | None = None, *, call: Callable[[Mapping], Mapping] = answer,
+    connect: Callable[..., object] = batch.connect,
+) -> int:  # fmt: skip
+    """Judge every finding against the range's head and print the verdicts JSON; exit 2 on a refused invocation."""
+    args = _parser().parse_args(argv)
     try:
         method = load_method(METHOD_DIR, principles=principle_list(args.principles), registry=rule_ids(args.rules))
         findings = _findings(args.findings)
-        rows = numstat(args.range_, args.repo)
+        source: Source = BundleSource(Path(args.bundle)) if args.bundle else GitSource(args.range_, args.repo)
+        rows = source.numstat()
+        runs = batch.from_arguments(args, answer=call, connect=connect)
     except (FileNotFoundError, UnknownMethodVersion, ValueError, TypeError) as refused:
         sys.stderr.write(f'refused: {refused}\n')
         return _EXIT_REFUSED
     mode = method.spec['run_modes']['headless']
     providers = configured_providers({}, 'headless') or mode['providers']
-    mapped = change_map(args.range_, rows)
-    metered = _Metered(call, calls=args.max_calls, size=args.max_bytes)
-    verdicts = []
+    mapped = change_map(source.label, rows)
     known = frozenset([*(p['id'] for p in method.principles), *method.registry])
-    for finding in findings:
-        fid, chosen = str(finding['id']), judge_of(finding, providers, mode, args.model)
-        if (why := invalid(finding, known)) is not None:
-            verdicts.append({'id': fid, 'outcome': 'present', 'evidence': f'not judged: invalid finding ({why})'})
-            continue
-        if chosen is None:
-            verdicts.append({'id': fid, 'outcome': 'present', 'evidence': 'not judged: no independent judge'})
-            continue
-        request = {'verb': 'respond', 'provider': chosen[0], 'model': chosen[1], 'task': REVIEW_TASK,
-                   'instructions': _INSTRUCTIONS, 'schema': _SCHEMA, 'tag': 'judge'}  # fmt: skip
-        try:
-            verdict = _judged(finding, metered, request, args=args, rows=rows, mapped=mapped, method=method)
-        except BudgetSpent:
-            verdict = {'id': fid, 'outcome': 'present', 'evidence': 'not judged: budget'}
-        verdicts.append({**verdict, 'judge': f'{chosen[0]}:{chosen[1]}'})
+
+    def verdicts_of(call: Callable[[Mapping], Mapping]) -> list[dict]:
+        metered = _Metered(call, calls=args.max_calls, size=args.max_bytes)
+        verdicts, waiting = [], False
+        for finding in findings:
+            fid, chosen = str(finding['id']), judge_of(finding, providers, mode, args.model)
+            if (why := invalid(finding, known)) is not None:
+                verdicts.append({'id': fid, 'outcome': 'present', 'evidence': f'not judged: invalid finding ({why})'})
+                continue
+            if chosen is None:
+                verdicts.append({'id': fid, 'outcome': 'present', 'evidence': 'not judged: no independent judge'})
+                continue
+            request = {'verb': 'respond', 'provider': chosen[0], 'model': chosen[1], 'task': REVIEW_TASK,
+                       'instructions': _INSTRUCTIONS, 'schema': _SCHEMA, 'tag': 'judge'}  # fmt: skip
+            try:
+                verdict = _judged(finding, metered, request, source=source, rows=rows, mapped=mapped, method=method,
+                                  rng=runs.rng(f'judge:{fid}'))  # fmt: skip
+            except BudgetSpent:
+                verdict = {'id': fid, 'outcome': 'present', 'evidence': 'not judged: budget'}
+            except batch.NotYet:
+                waiting = True
+                continue
+            verdicts.append({**verdict, 'judge': f'{chosen[0]}:{chosen[1]}'})
+        if waiting:
+            raise batch.NotYet
+        return verdicts
+
+    verdicts = runs.settle(verdicts_of)
+    if isinstance(verdicts, batch.Pending):
+        sys.stderr.write(f'pending: {verdicts.line()}\n')
+        return batch.PENDING_EXIT
     sys.stdout.write(json.dumps({'schema_version': SCHEMA_VERSION, 'verdicts': verdicts}, ensure_ascii=False) + '\n')
     return 0
 

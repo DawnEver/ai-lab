@@ -62,7 +62,7 @@ def budgets() -> dict[str, dict]:
     Per path: ``provider``, ``allotted_usd``, ``spent_usd``, ``standing``, and ``default_usd`` -- the declared
     default an approval replaced (``None``: the allotment is its default).
     """
-    held = {**budget.tasks(), **budget.standing()}
+    held = {**budget.task_allotments(), **budget.standing()}
     return {
         name: {
             'provider': a.provider,

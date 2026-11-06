@@ -41,7 +41,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import asdict
 from typing import Final
 
-from ai_lab.client import connect
+from ai_lab.answers import Response
+from ai_lab.client import Client, connect, tasks
 from ai_lab.errors import ERROR_KINDS, ProviderError, SpendCapReached, Unsupported
 from ai_lab.ledger import Ledger, Mode
 from ai_lab.spec import (
@@ -55,7 +56,10 @@ from ai_lab.spec import (
     has_content,
 )
 
-__all__ = ['CALL_SCHEMA_VERSION', 'REPLY_KINDS', 'Malformed', 'answer']
+__all__ = [
+    'CALL_SCHEMA_VERSION', 'REPLY_KINDS', 'Malformed', 'answer', 'client_of', 'client_spec', 'failure_reply', 'parsed',
+    'response_reply',
+]  # fmt: skip
 
 #: The version of the reply :func:`answer` writes and of the request it reads.
 CALL_SCHEMA_VERSION: Final = 2
@@ -169,38 +173,72 @@ def _reply(
     }
 
 
-def answer(request: Mapping, *, ledger: str | None = None, **options: object) -> dict:
-    """The reply to one *request*; :class:`Malformed` when it is not a request of this protocol."""
+def parsed(request: object) -> tuple[str, DecisionRequest | ResponseRequest]:
+    """The verb and the typed request *request* describes; :class:`Malformed` when it is not one of this protocol."""
     if not isinstance(request, Mapping):
         msg = f'a request is a JSON object, got {type(request).__name__}'
         raise Malformed(msg)
-    verb, typed = _request(request)
+    return _request(request)
+
+
+def client_spec(request: Mapping) -> tuple[str, dict]:
+    """``(spec, options)``: what :func:`~ai_lab.client.connect` takes to build the client a *request* names."""
     spec = f'{request["provider"]}:{request["model"]}' + (f'@{request["effort"]}' if request.get('effort') else '')
+    return spec, {'task': request.get('task'), 'tag': request.get('tag'), 'max_tokens': request.get('max_tokens')}
+
+
+def client_of(request: Mapping, **options: object) -> Client:
+    """The client a (well-formed) *request* names; :class:`Unsupported` naming what is missing.
+
+    An unrouted task (:func:`ai_lab.client.tasks`) is :class:`Malformed`: no key can be under it.
+    """
+    spec, named = client_spec(request)
+    if named['task'] is not None and named['task'] not in (routed := tasks()):
+        msg = f'{named["task"]!r} is not a routed task; the tasks are {sorted(routed)}'
+        raise Malformed(msg)
     try:
-        client = connect(
-            spec, task=request.get('task'), tag=request.get('tag'), max_tokens=request.get('max_tokens'), **options
-        )
-    except Unsupported as missing:
-        return _reply(ok=False, kind='unsupported', error=str(missing))
-    except ValueError as bad:  # an undeclared task: the request named something no key can be under
+        return connect(spec, **named, **options)
+    except Unsupported:
+        raise
+    except ValueError as bad:
         raise Malformed(str(bad)) from None
+
+
+def response_reply(got: Response) -> dict:
+    """The ``ok`` reply carrying a respond's *got*."""
+    return _reply(ok=True, result=got.value, usage=got.usage, key_slot=got.key_slot)
+
+
+def failure_reply(failed: Exception) -> dict:
+    """The classified reply of a call that failed with *failed* (never a key in it)."""
+    if isinstance(failed, Unsupported):
+        return _reply(ok=False, kind='unsupported', error=str(failed))
+    if isinstance(failed, SpendCapReached):  # temporary: the month's cap is spent, the account is not broken
+        return _reply(ok=False, kind='exhausted', error=f'{failed} (spend cap of {failed.scope})')
+    if isinstance(failed, ProviderError):
+        return _reply(ok=False, kind=failed.kind, error=str(failed))
+    raise TypeError(failed)
+
+
+def answer(request: Mapping, *, ledger: str | None = None, **options: object) -> dict:
+    """The reply to one *request*; :class:`Malformed` when it is not a request of this protocol."""
+    verb, typed = parsed(request)
+    try:
+        client = client_of(request, **options)
+    except Unsupported as missing:
+        return failure_reply(missing)
     if ledger is not None:
         client = Ledger(ledger, Mode.RECORD).wrap(client)
     try:
         if verb == 'respond':
-            got = client.respond(typed)
-            return _reply(ok=True, result=got.value, usage=got.usage, key_slot=got.key_slot)
+            return response_reply(client.respond(typed))
         got = client.decide(typed)
         answers = {name: {'kind': type(a).__name__, **asdict(a)} for name, a in got.answers.items()}
         return _reply(
             ok=True, result={'basis': got.basis.value, 'answers': answers}, usage=got.usage, key_slot=got.key_slot
         )
-    except Unsupported as missing:
-        return _reply(ok=False, kind='unsupported', error=str(missing))
-    except ProviderError as failed:
-        return _reply(ok=False, kind=failed.kind, error=str(failed))
-    except SpendCapReached as spent:  # temporary: the month's cap is spent, the account is not broken
-        return _reply(ok=False, kind='exhausted', error=f'{spent} (spend cap of {spent.scope})')
+    except (Unsupported, ProviderError, SpendCapReached) as failed:
+        return failure_reply(failed)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

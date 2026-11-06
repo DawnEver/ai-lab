@@ -6,7 +6,7 @@ from datetime import UTC, date, datetime
 import pytest
 
 from ai_lab import ResponseRequest, Text, budget, connect, spend
-from ai_lab.prices import Price, Quote
+from ai_lab.prices import BATCH_RATE, Price, Quote
 
 _REQUEST = ResponseRequest('i', (Text('t'),), {'type': 'object', 'properties': {}})
 _ONE_PER_MILLION = Quote(Price(1.0, 2.0, 0.5), 'test', agreed=True, sources={})
@@ -114,3 +114,10 @@ def test_the_report_reads_each_allotment_spent_against_allotted_from_the_budget_
     held = {'provider': 'anthropic', 'default_usd': None}
     assert got['review'] == {**held, 'allotted_usd': 20.0, 'spent_usd': 0.0, 'standing': True}
     assert got['campaign:T3'] == {**held, 'allotted_usd': 5.0, 'spent_usd': 1.0, 'standing': False}
+
+
+def test_a_batch_row_is_priced_at_the_batch_rate(tmp_path):
+    _write(tmp_path, '2026-10-05', {**_row('r#1', 1_000_000, 1_000_000), 'batch': True}, _row('r#2', 1_000_000))
+    got = spend.report(today=date(2026, 10, 6), directory=tmp_path, price=_price)
+    assert got['month_by_tag'] == pytest.approx({'r#1': 3.0 * BATCH_RATE, 'r#2': 1.0})
+    assert BATCH_RATE == 0.5

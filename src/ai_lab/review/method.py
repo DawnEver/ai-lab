@@ -13,15 +13,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
+from ai_lab.client import route
+
 __all__ = [
-    'DEFAULT_CONFIG',
     'METHOD_DIR',
     'METHOD_SCHEMA_VERSIONS',
     'NO_PRINCIPLES',
     'NO_RULES',
+    'REVIEW_TASK',
     'Method',
     'UnknownMethodVersion',
     'configured_providers',
+    'default_config',
     'load_method',
     'principle_list',
     'rule_ids',
@@ -30,14 +33,24 @@ __all__ = [
 #: The packaged method directory (package data, shipped in the wheel).
 METHOD_DIR: Final = Path(__file__).with_name('method_data')
 
-#: The shipped default configuration (user ruling 2026-10-28: every review calls only anthropic by default). A
-#: project config (``.claude/sharp-review.json``) or an explicit request overrides it; the method keeps every mode.
-DEFAULT_CONFIG: Final = json.loads((METHOD_DIR / 'default-config.json').read_text(encoding='utf-8'))
+#: The task a reviewer's call runs as: its keys, and its route (``routes.toml``) from provider to provider.
+REVIEW_TASK: Final = 'pr-review'
 
 
-def configured_providers(config: Mapping, run_mode: str, defaults: Mapping = DEFAULT_CONFIG) -> list[str] | None:
-    """The providers *config* names for *run_mode*, else the shipped *defaults*' ; ``None`` when neither does."""
-    for source in (config, defaults):
+def default_config() -> dict:
+    """The default configuration: every run mode reviews on the head of :data:`REVIEW_TASK`'s route.
+
+    The route is the one place a review's provider is declared (user ruling 2026-11-05); ``providers`` stays a
+    round-robin over reviewers, and each reviewer's call falls over along the same route. A project config
+    (``.claude/sharp-review.json``) or an explicit request overrides it; the method keeps every mode.
+    """
+    head = route(REVIEW_TASK).chain[0][0]
+    return {'providers': {'interactive': [head], 'headless': [head]}}
+
+
+def configured_providers(config: Mapping, run_mode: str, defaults: Mapping | None = None) -> list[str] | None:
+    """The providers *config* names for *run_mode*, else *defaults*' (:func:`default_config`); ``None`` when neither."""
+    for source in (config, default_config() if defaults is None else defaults):
         named = (source.get('providers') or {}).get(run_mode)
         if named:
             return list(named)

@@ -25,7 +25,8 @@ from ai_lab.review.explore import (
     size,
     tier,
 )
-from ai_lab.review.tiers import ledger_path, report
+from ai_lab.review.source import GitSource
+from ai_lab.review.tiers import ledger_path, summary
 from ai_lab.review.tiers import main as tiers_main
 from tests.review_principles import PRINCIPLES_FILE
 
@@ -98,7 +99,9 @@ def test_a_medium_prompt_carries_the_map_and_never_the_diff(tmp_path, capsys):
     assert '+2 -0' in prompt
     assert 'src/' in prompt
     assert {r['status'] for r in doc['reviewers']} == {'ok'}
-    assert SENTINEL in serve({'diff': ['src/a.py']}, range_=range_, repo=str(repo), rows=numstat(range_, str(repo)))
+    assert SENTINEL in serve(
+        {'diff': ['src/a.py']}, source=GitSource(range_, str(repo)), rows=numstat(range_, str(repo))
+    )
 
 
 def test_the_reviewer_reads_what_it_asks_for_and_then_answers(tmp_path, capsys):
@@ -169,12 +172,12 @@ def test_an_answer_past_the_turn_budget_is_cut_to_what_remains_and_says_so(tmp_p
     big = 'line = 1\n' * 2_000
     repo, range_ = _repo(tmp_path, {'src/big.py': big, 'src/small.py': 'x = 1\n'})
     rows = numstat(range_, str(repo))
-    out = serve({'show': ['src/big.py', 'src/small.py']}, range_=range_, repo=str(repo), rows=rows, budget=5_000)
+    out = serve({'show': ['src/big.py', 'src/small.py']}, source=GitSource(range_, str(repo)), rows=rows, budget=5_000)
     assert 'line = 1' in out, 'the head of the big file is read'
     assert len(out) <= 5_400
     assert 'cut' in out and 'src/big.py' in out
     assert 'src/small.py' in out, 'what did not fit is named so it can be asked for again'
-    whole = serve({'show': ['src/big.py']}, range_=range_, repo=str(repo), rows=rows, budget=10**6)
+    whole = serve({'show': ['src/big.py']}, source=GitSource(range_, str(repo)), rows=rows, budget=10**6)
     assert whole.count('line = 1') == 2_000
 
 
@@ -221,17 +224,17 @@ def test_every_tier_records_one_ledger_row_and_the_report_reads_it(tmp_path, cap
         repo, range_ = _repo(tmp_path / name, files)
         doc = _review(repo, range_, Scripted({'findings': [FINDING]}), capsys)
         assert {r['status'] for r in doc['reviewers']} == {'ok'}, f'{name} is reviewed'
-        rows = [json.loads(line) for line in ledger_path(str(repo)).read_text(encoding='utf-8').splitlines()]
+        rows = [json.loads(line) for line in ledger_path(repo.name).read_text(encoding='utf-8').splitlines()]
         assert len(rows) == at + 1, 'one row per review, appended'
         row = rows[-1]
         assert row['tier'] == name
         assert (row['files'], row['commits'], row['turns'], row['findings']['LOW']) == (len(files), 1, 1, 1)
         assert row['sha'] == _git(repo, 'rev-parse', 'HEAD')
         assert {'lines', 'diff_bytes', 'read_bytes', 'seconds', 'usage', 'repo'} <= set(row)
-    text = report(rows)
+    text = summary(rows)
     assert '| huge | 1 | 0 | 0 | 1 |' in text and '| small | 1 | 0 | 0 | 1 |' in text
     assert '## By diff size' in text
-    assert tiers_main(['report', str(ledger_path(str(repo)))]) == 0
+    assert tiers_main(['report', str(ledger_path(repo.name))]) == 0
     assert '# Review tier ledger: 3 review(s)' in capsys.readouterr().out
 
 
@@ -250,7 +253,9 @@ def test_every_tier_bound_is_measured_in_utf8_bytes() -> None:
 def test_a_served_cut_counts_bytes_and_never_splits_a_character(tmp_path: Path) -> None:
     files = {'src/a.py': '# ' + 'é' * 400 + '\n'}
     repo, range_ = _repo(tmp_path, files)
-    out = serve({'show': ['src/a.py']}, range_=range_, repo=str(repo), rows=numstat(range_, str(repo)), budget=101)
+    out = serve(
+        {'show': ['src/a.py']}, source=GitSource(range_, str(repo)), rows=numstat(range_, str(repo)), budget=101
+    )
     shown, _, said = out.partition('\n### cut:')
     assert size(shown) <= 101
     assert '\ufffd' not in shown, 'a character is never split'

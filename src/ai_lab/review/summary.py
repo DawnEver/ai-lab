@@ -24,6 +24,7 @@ from collections.abc import Callable, Mapping
 from typing import Final
 
 __all__ = [
+    'MEMORY_CHARS',
     'MEMORY_ROOT',
     'SOURCE_TOKENS',
     'SUMMARY_TOKENS',
@@ -41,7 +42,7 @@ _RECORD: Final = '\x1e'
 _FIELD: Final = '\x00'
 _AUDIT: Final = re.compile(r'^Merge-Audit:\s*(.+)$')
 _RESOLUTION: Final = re.compile(r'^(\S+): (\S+) -- (.+)$')
-_MEMORY_CHARS: Final = 4000
+MEMORY_CHARS: Final = 4000
 
 #: The output tokens a summary needs before its sources: the object's frame and a few open items.
 SUMMARY_TOKENS: Final = 2048
@@ -112,7 +113,7 @@ def git_intent(range_: str, repo: str) -> dict:
     head = re.split(r'\.\.\.?', range_)[-1] or 'HEAD'
     names = _git(repo, 'diff', '--name-only', '--diff-filter=AM', '--end-of-options', range_, '--', MEMORY_ROOT)
     intent['memory'] = [
-        {'path': path, 'text': _git(repo, 'show', f'{head}:{path}')[:_MEMORY_CHARS]}
+        {'path': path, 'text': _git(repo, 'show', f'{head}:{path}')[:MEMORY_CHARS]}
         for path in names.splitlines() if path.strip()
     ]  # fmt: skip
     return intent

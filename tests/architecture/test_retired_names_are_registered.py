@@ -45,11 +45,10 @@ def _row_using(retired: Retired) -> str:
     return f'[mine]\n{_ROW}{retired.spelling} = "x"\n'
 
 
-@pytest.mark.parametrize(
-    'retired',
-    [r for r in RETIRED if r.kind not in {'usage', 'table', 'constant'}],
-    ids=lambda r: f'{r.kind}:{r.spelling}',
-)
+_DRIVEN = [r for r in RETIRED if r.kind not in {'usage', 'table', 'name'}]
+
+
+@pytest.mark.parametrize('retired', _DRIVEN, ids=lambda r: f'{r.kind}:{r.spelling}')
 def test_a_user_row_using_a_retired_spelling_is_refused_naming_the_replacement(retired, tmp_path, monkeypatch):
     _user_rows(tmp_path, monkeypatch, _row_using(retired))
     with pytest.raises(Unsupported, match=re.escape(f'use {retired.replacement!r}')):

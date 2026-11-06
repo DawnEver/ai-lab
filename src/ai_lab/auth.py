@@ -16,8 +16,8 @@ SLOTS ARE FALLBACK KEYS OF ONE ACCOUNT. ``login <provider> --slot N`` stores use
 (:mod:`ai_lab.client`). ``status`` counts each provider's slots up to the first gap.
 
 A TASK OWNS ITS KEYS. ``login <provider> --task <task> [-s N]`` stores username ``api-key-<task>[-N]``
-under the same host (:func:`lab_commons.credentials.key_username`, the one rule; the tasks are declared in
-``API_KEY_TASKS``): the slots ``connect(spec, task=...)`` walks, and nothing else does. ``-s``, ``--slot``
+under the same host (:func:`lab_commons.credentials.key_username`, the one rule; the tasks are the routed ones,
+:func:`ai_lab.client.tasks`): the slots ``connect(spec, task=...)`` walks, and nothing else does. ``-s``, ``--slot``
 and ``--seat`` are one argument. ``status`` lists, per provider, each task's stored slot count.
 
 EVERY TASK GETS ITS OWN KEY (user ruling 2026-10-19). ``login`` refuses a key that another credential of
@@ -36,6 +36,18 @@ ONE KEY FILE FORMAT, ONE PARSER, ONE WRITER. A line is ``NAME[:<task>][:<slot>] 
 that task's slot 1. A part the line omits comes from ``--task``/``--slot``, so a plain ``NAME value``
 line is the default slot 1. :func:`parse_key_file` reads it and :func:`format_key_file` writes it.
 
+A TASK'S KEYS ARRIVE AS ONE BUNDLE (user ruling 2026-11-05). ``login --task <task> --bundle -`` reads a TOML
+bundle from stdin (or a path)::
+
+    [keys]
+    anthropic = ["sk-...", "sk-..."]   # order = slot order
+    deepseek = ["sk-..."]
+
+and REPLACES that task's slots for each provider it lists: slot N is the Nth key, and a slot past the last is
+erased. A provider not in the catalogue, keyless, or not in the task's ``chain`` (``routes.toml``) is refused by
+name before anything is stored. It is the one interface a host's secret store (dev-lab's
+``AI_LAB_KEYS_<TASK>``) is handed to.
+
 MIGRATION IS ONE COMMAND (user ruling 2026-10-29). ``export`` writes every stored key -- every keyed
 host, the default and every task, every slot -- to stdout as a key file whose lines name their task and
 slot, and ``login --from-file -`` imports it whole, each key under its same username::
@@ -52,15 +64,17 @@ import argparse
 import getpass
 import re
 import sys
+import tomllib
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
-from lab_commons.credentials import API_KEY_TASKS, NoCredential, api_keys, key_username, store_credential
+from lab_commons.credentials import NoCredential, api_keys, erase_credential, key_username, store_credential
 
 from ai_lab.budget import fingerprint
-from ai_lab.client import Provider, catalogue, stored_slots
+from ai_lab.client import Provider, catalogue, route, stored_slots, tasks
+from ai_lab.errors import Unsupported
 
-__all__ = ['format_key_file', 'main', 'parse_key_file']
+__all__ = ['format_key_file', 'parse_bundle', 'parse_key_file']
 
 #: ``[export ]NAME[:<task>][:<slot>]<= or whitespace>value``; a task is a part that is not all digits.
 _LINE = re.compile(r'^(?:export\s+)?([^=\s:]+)(?::([^=\s:]*[^=\s:\d][^=\s:]*))?(?::(\d+))?\s*(?:=|\s)\s*(.*)$')
@@ -107,7 +121,7 @@ def _keyed() -> dict[str, Provider]:
 def _held_slots(host: str) -> dict[tuple[str | None, int], str]:
     """``{(task, slot): key}`` for every key *host* holds: the default's slots, then each task's."""
     held = {}
-    for task in (None, *sorted(API_KEY_TASKS)):
+    for task in (None, *sorted(tasks())):
         try:
             keys = api_keys(host, task=task)
         except NoCredential:
@@ -184,13 +198,21 @@ def _read_pairs(source: str | None, provider: Provider | None, which: str) -> li
     return [(provider.key_name, None, None, secret)]
 
 
+def _username(task: str | None, slot: int) -> str:
+    """``key_username(task, slot)`` of a ROUTED task (:func:`ai_lab.client.tasks`); ``ValueError`` naming them."""
+    if task is not None and task not in (routed := tasks()):
+        msg = f'{task!r} is not a routed task; the tasks are {sorted(routed)} (routes.toml)'
+        raise ValueError(msg)
+    return key_username(task, slot)
+
+
 def _addressed(lines: Iterable[KeyLine], task: str | None, slot: int) -> list[tuple[str, str, str, str]] | None:
     """``(NAME, username, label, key)`` per line, an omitted task/slot taken from *task*/*slot*; ``None``: refused."""
     pairs = []
     for key_name, line_task, line_slot, secret in lines:
         this_task, this_slot = line_task or task, line_slot or slot
         try:
-            username = key_username(this_task, this_slot)
+            username = _username(this_task, this_slot)
         except ValueError as refused:
             sys.stderr.write(f'{key_name}: {refused}\n')
             return None
@@ -208,7 +230,7 @@ def _login(name: str | None, source: str | None, slot: int, task: str | None) ->
     takes precedence. Every line's username is checked before anything is stored.
     """
     try:
-        key_username(task, slot)
+        _username(task, slot)
     except ValueError as refused:
         sys.stderr.write(f'{refused}\n')
         return 1
@@ -244,15 +266,83 @@ def _login(name: str | None, source: str | None, slot: int, task: str | None) ->
     return 0 if stored else 1
 
 
+def parse_bundle(text: str) -> dict[str, list[str]]:
+    """``{provider: [key, ...]}`` of a ``[keys]`` bundle in slot order; ``ValueError`` naming a defect, never a key."""
+    try:
+        doc = tomllib.loads(text.lstrip('\ufeff'))
+    except tomllib.TOMLDecodeError as bad:
+        msg = f'the bundle is not TOML: {bad}'
+        raise ValueError(msg) from None
+    if set(doc) != {'keys'} or not isinstance(doc['keys'], dict):
+        msg = f'a bundle holds one [keys] table; got {sorted(doc)}'
+        raise ValueError(msg)
+    for provider, keys in doc['keys'].items():
+        if not isinstance(keys, list) or not keys or not all(isinstance(k, str) and k.strip() for k in keys):
+            msg = f'{provider}: a list of one or more non-empty keys, in slot order'
+            raise ValueError(msg)
+        if len(set(keys)) != len(keys):
+            msg = f'{provider}: one key is given twice; every slot gets its own key'
+            raise ValueError(msg)
+    return {provider: [k.strip() for k in keys] for provider, keys in doc['keys'].items()}
+
+
+def _bundle_refusal(task: str, chain: set[str], bundle: dict[str, list[str]]) -> str:
+    """Why *bundle* may not replace *task*'s slots, naming the provider or credential; ``''`` when it may."""
+    table = catalogue()
+    for provider in bundle:
+        if provider not in table:
+            return f'unknown provider {provider!r}; known: {sorted(table)}'
+        if not table[provider].keyed:
+            return f'{provider} needs no key'
+        if provider not in chain:
+            return f"{provider} is not in task {task!r}'s chain {sorted(chain)} (routes.toml)"
+    hosts = [table[provider].host for provider in bundle]
+    if len(set(hosts)) != len(hosts):
+        return f'two providers of the bundle share a host ({hosts})'
+    for provider, keys in bundle.items():
+        host = table[provider].host
+        held = {key_username(t, slot): key for (t, slot), key in _held_slots(host).items() if t != task}
+        if clash := sorted(name for name, key in held.items() if key in keys):
+            return f'{host} already holds a key of the bundle as {", ".join(map(repr, clash))}; every task gets its own'
+    return ''
+
+
+def _login_bundle(task: str, source: str) -> int:
+    """Replace *task*'s slots of each provider the bundle at *source* lists; every check passes before any write."""
+    try:
+        chain = {name for name, _ in route(task).chain}
+        bundle = parse_bundle(sys.stdin.read() if source == '-' else Path(source).read_text(encoding='utf-8'))
+    except (Unsupported, ValueError) as refused:
+        sys.stderr.write(f'refused: {refused}\n')
+        return 1
+    if why := _bundle_refusal(task, chain, bundle):
+        sys.stderr.write(f'refused: {why}; nothing stored\n')
+        return 1
+    table = catalogue()
+    for provider, keys in bundle.items():
+        host = table[provider].host
+        old = stored_slots(host, task)
+        try:
+            for slot in range(old, len(keys), -1):
+                erase_credential(host, key_username(task, slot))
+            for slot, key in enumerate(keys, start=1):
+                store_credential(host, key_username(task, slot), key)
+        except NoCredential as failed:
+            sys.stderr.write(f'{failed}\n')
+            return 1
+        sys.stdout.write(f'{provider}: task {task} holds {len(keys)} key slot(s) on {host} (was {old})\n')
+    return 0
+
+
 def _status_lines(rows: Iterable[Provider]) -> list[str]:
     lines = []
     for row in rows:
         if not row.keyed:
             lines.append(f'{row.name:20} {row.auth:13} {"-":45} - -')
             continue
-        held = {task: stored_slots(row.host, task) for task in sorted(API_KEY_TASKS)}
-        tasks = ','.join(f'{task}:{count}' for task, count in held.items() if count) or '-'
-        lines.append(f'{row.name:20} {row.auth:13} {row.host:45} {stored_slots(row.host)} {tasks}')
+        held = {task: stored_slots(row.host, task) for task in sorted(tasks())}
+        owned = ','.join(f'{task}:{count}' for task, count in held.items() if count) or '-'
+        lines.append(f'{row.name:20} {row.auth:13} {row.host:45} {stored_slots(row.host)} {owned}')
     return lines
 
 
@@ -291,7 +381,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         '-s', '--slot', '--seat', dest='slot', type=int, default=1,
         help='the key slot to store: 1 = api-key[-<task>], N = api-key[-<task>]-N, tried in order',
     )  # fmt: skip
-    login.add_argument('--task', help=f'store a key one task owns (api-key-<task>[-N]): {sorted(API_KEY_TASKS)}')
+    login.add_argument('--task', help="store a key one task owns (api-key-<task>[-N]); the tasks are routes.toml's")
+    login.add_argument(
+        '--bundle', metavar='PATH',
+        help='with --task: a TOML [keys] provider = ["key", ...] bundle ("-" reads stdin) replacing its slots',
+    )  # fmt: skip
     verbs.add_parser(
         'status', help='each provider: auth kind, its key slots, and each task:slots it holds (never a key)'
     )
@@ -303,8 +397,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         rows = list(catalogue().values())
         sys.stdout.write('\n'.join(_status_lines(rows) + _shared_lines(rows)) + '\n')
         return 0
+    if args.bundle is not None:
+        if args.task is None or args.provider is not None or args.from_file is not None or args.slot != 1:
+            login.error('--bundle takes --task alone: the bundle names each provider and its slot order')
+        return _login_bundle(args.task, args.bundle)
     if args.provider is None and args.from_file is None:
-        login.error('give a provider, --from-file, or both')
+        login.error('give a provider, --from-file, --bundle, or both')
     return _login(args.provider, args.from_file, args.slot, args.task)
 
 

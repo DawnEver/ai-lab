@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from ai_lab.review.judge import ANCHOR_WINDOW, judge_of, main, verified
+from ai_lab.review.source import GitSource
 from tests.review_principles import PRINCIPLES_FILE
 from tests.unit.test_review_explore import _repo
 
@@ -219,10 +220,10 @@ def test_the_findings_file_is_read_at_the_head_even_when_the_range_never_touched
 def test_a_cite_is_verified_by_code_against_the_head_the_change_and_the_anchor(tmp_path: Path) -> None:
     """Only a line that exists, in the finding's file (near its anchor) or a file the range changed, counts."""
     repo, range_ = _repo(tmp_path, {'src/a.py': 'compute = 1\n' + 'pad = 0\n' * 100, 'src/b.py': 'b = 1\n'})
-    head, changed = range_.rsplit('..', 1)[1], {'src/a.py', 'src/b.py'}
+    source, changed = GitSource(range_, str(repo)), {'src/a.py', 'src/b.py'}
 
     def ok(cites: list, outcome: str = 'false-positive', file: str = 'src/a.py') -> list:
-        return verified(cites, repo=str(repo), head=head, file=file, anchor='compute', changed=changed,
+        return verified(cites, source=source, file=file, anchor='compute', changed=changed,
                         outcome=outcome)  # fmt: skip
 
     assert ok(['src/a.py:2']) == ['src/a.py:2'], 'near the anchor'
@@ -239,10 +240,10 @@ def test_with_the_anchor_gone_a_cite_in_the_findings_file_counts_only_when_the_r
 ) -> None:
     """PLANTED CONTROL: the same cite counts once the range changed the file."""
     repo, range_ = _repo(tmp_path, {'src/a.py': 'other = 1\n' * 60})
-    head = range_.rsplit('..', 1)[1]
+    source = GitSource(range_, str(repo))
 
     def ok(changed: set) -> list:
-        return verified(['src/a.py:50'], repo=str(repo), head=head, file='src/a.py', anchor='compute',
+        return verified(['src/a.py:50'], source=source, file='src/a.py', anchor='compute',
                         changed=changed, outcome='false-positive')  # fmt: skip
 
     assert ok(set()) == [], 'anchor gone, file unchanged: no line in it proves anything'

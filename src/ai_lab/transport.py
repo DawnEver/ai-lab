@@ -1,7 +1,8 @@
-"""How bytes reach a model: an HTTPS POST with a ceiling and a classified failure. Nothing vendor-specific.
+"""How bytes reach a model: an HTTPS POST (or GET) with a ceiling and a classified failure. Nothing vendor-specific.
 
 A wire builds a :class:`HttpCall` and parses what comes back; this module only executes. Secrets travel
-in ``headers``, which never appear in a repr. Every wait has a ceiling (:data:`HTTP_CEILING_S`).
+in ``headers``, which never appear in a repr. Every wait has a ceiling (:data:`HTTP_CEILING_S`). :func:`get`
+reads a resource -- a batch's state, its results -- as text, retried and classified exactly as :func:`post`.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ from dataclasses import dataclass, field
 
 from ai_lab.errors import ProviderError, Unsupported
 
-__all__ = ['HTTP_CEILING_S', 'HttpCall', 'post']
+__all__ = ['HTTP_CEILING_S', 'HttpCall', 'get', 'post']
 
 #: The longest one HTTP attempt may take, in seconds.
 HTTP_CEILING_S = 120.0
@@ -34,7 +35,8 @@ _PAYMENT = 402
 _AUTH = frozenset({401, 403})
 #: A body naming an invalid key under a generic status (Gemini answers a bad key with 400).
 _AUTH_MARKERS = ('API_KEY_INVALID',)
-_RATE_LIMIT = 429
+#: Statuses that, past their retries, are the account's capacity used up: rate limit and overload.
+_RATE_LIMIT = frozenset({429, 529})
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,39 +57,69 @@ def _final_kind(status: int, detail: str) -> str | None:
     return None if status in _RETRYABLE else ''
 
 
+def _checked(url: str) -> None:
+    if not url.startswith(('https://', 'http://')):
+        msg = f'{url!r} is not an http(s) URL; a provider endpoint is a web address'
+        raise Unsupported(msg)
+
+
 def post(call: HttpCall, *, timeout_s: float = HTTP_CEILING_S, attempts: int = 3, sleep: Callable = time.sleep) -> dict:
     """POST JSON, retrying a retryable status or a network failure ``attempts`` times with backoff."""
-    if not call.url.startswith(('https://', 'http://')):
-        msg = f'{call.url!r} is not an http(s) URL; a provider endpoint is a web address'
-        raise Unsupported(msg)
+    _checked(call.url)
     data = json.dumps(call.body).encode('utf-8')
-    last, last_kind = '', ''
+
+    def parsed(text: str) -> tuple[bool, object]:
+        body = json.loads(text)
+        # A 200 carrying only an error (DeepSeek's overloaded queue) is a failed call, judged as a status;
+        # OpenAI Responses sends ``"error": null`` on every completed reply, and a null error is none.
+        if not (isinstance(body, dict) and body.get('error') is not None and 'choices' not in body):
+            return True, body
+        last = f'error body from {call.url}: {str(body["error"])[:500]}'
+        if any(marker in last for marker in _EXHAUSTED):
+            raise ProviderError(last, kind='exhausted')
+        return False, last
+
+    return _exchange(call.url, 'POST', data, call.headers, parsed, timeout_s=timeout_s, attempts=attempts, sleep=sleep)
+
+
+def get(
+    url: str, headers: Mapping[str, str], *, timeout_s: float = HTTP_CEILING_S, attempts: int = 3,
+    sleep: Callable = time.sleep,
+) -> str:  # fmt: skip
+    """GET *url*'s body as text, retried and classified like :func:`post`."""
+    _checked(url)
+    return _exchange(url, 'GET', None, headers, lambda text: (True, text),
+                     timeout_s=timeout_s, attempts=attempts, sleep=sleep)  # fmt: skip
+
+
+def _exchange(
+    url: str, method: str, data: bytes | None, headers: Mapping[str, str], parsed: Callable[[str], tuple[bool, object]],
+    *, timeout_s: float, attempts: int, sleep: Callable,
+) -> object:  # fmt: skip
+    """One request, retried: *parsed* turns a 2xx body into ``(True, value)`` or ``(False, why)`` (retried)."""
+    last, last_kind, last_status = '', '', None
     for attempt in range(attempts):
-        request = urllib.request.Request(  # noqa: S310 -- the scheme is checked above
-            call.url, data=data, method='POST', headers={'Content-Type': 'application/json', **call.headers}
+        request = urllib.request.Request(  # noqa: S310 -- the scheme is checked by the caller
+            url, data=data, method=method, headers={'Content-Type': 'application/json', **headers}
         )
         try:
-            with urllib.request.urlopen(request, timeout=timeout_s) as reply:  # noqa: S310 -- checked above
-                body = json.loads(reply.read().decode('utf-8'))
-            # A 200 carrying only an error (DeepSeek's overloaded queue) is a failed call, judged as a status;
-            # OpenAI Responses sends ``"error": null`` on every completed reply, and a null error is none.
-            if not (isinstance(body, dict) and body.get('error') is not None and 'choices' not in body):
-                return body
-            last = f'error body from {call.url}: {str(body["error"])[:500]}'
-            if any(marker in last for marker in _EXHAUSTED):
-                raise ProviderError(last, kind='exhausted')
+            with urllib.request.urlopen(request, timeout=timeout_s) as reply:  # noqa: S310 -- checked
+                ok, value = parsed(reply.read().decode('utf-8'))
+            if ok:
+                return value
+            last = str(value)
         except urllib.error.HTTPError as error:
             detail = error.read().decode('utf-8', 'replace')[:500]
-            last = f'HTTP {error.code} from {call.url}: {detail}'
+            last = f'HTTP {error.code} from {url}: {detail}'
             if (final := _final_kind(error.code, detail)) is not None:
-                raise ProviderError(last, kind=final) from None
-            last_kind = 'rate_limit' if error.code == _RATE_LIMIT else ''
+                raise ProviderError(last, kind=final, status=error.code) from None
+            last_kind, last_status = ('rate_limit' if error.code in _RATE_LIMIT else ''), error.code
         except (urllib.error.URLError, TimeoutError) as error:
             reason = error.reason if isinstance(error, urllib.error.URLError) else error
             timed_out = isinstance(reason, TimeoutError)
-            last = f'{call.url} {"timed out" if timed_out else "unreachable"}: {error}'
-            last_kind = 'timeout' if timed_out else ''
+            last = f'{url} {"timed out" if timed_out else "unreachable"}: {error}'
+            last_kind, last_status = ('timeout' if timed_out else ''), None
         if attempt + 1 < attempts:
             sleep(2.0**attempt)
     msg = f'{last} (after {attempts} attempts)'
-    raise ProviderError(msg, kind=last_kind)
+    raise ProviderError(msg, kind=last_kind, status=last_status)

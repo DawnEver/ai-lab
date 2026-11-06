@@ -63,7 +63,6 @@ def test_the_report_prices_each_call_and_sums_the_month_and_each_tag(tmp_path):
     _write(tmp_path, '2026-10-05', _row('r#1', 1_000_000, 1_000_000), _row('r#2', 2_000_000))
     _write(tmp_path, '2026-10-06', _row(None, 1_000_000), _row('r#2', 1, model='unpriced-model'))
     got = spend.report(today=date(2026, 10, 6), directory=tmp_path, price=_price)
-    assert got['budget_usd'] == spend.FAMILY_MONTHLY_USD == 1000.0
     assert got['month'] == '2026-10'
     assert got['spent_usd'] == pytest.approx(3.0 + 2.0 + 1.0)
     assert got['month_by_tag'] == pytest.approx({'r#1': 3.0, 'r#2': 2.0})
@@ -98,3 +97,19 @@ def test_the_cli_prints_the_report_as_json(tmp_path, monkeypatch, capsys):
     got = json.loads(capsys.readouterr().out)
     assert got['schema'] == spend.SPEND_SCHEMA
     assert got['month_by_tag'] == {'r#1': 1.0}
+
+
+def test_the_report_reads_each_allotment_spent_against_allotted_from_the_budget_levels(keys, tmp_path, monkeypatch):
+    machine = tmp_path / 'levels.toml'
+    machine.write_text(
+        '[ai_lab.spend_cap]\nanthropic = { amount = 50, currency = "USD" }\n'
+        '[ai_lab.standing]\nreview = { provider = "anthropic", amount = 20, currency = "USD" }\n',
+        encoding='utf-8',
+    )
+    monkeypatch.setenv('LAB_COMMONS_CONFIG', str(machine))
+    monkeypatch.setattr(budget, 'rate', lambda client, at=None: _price(client, at))
+    with budget.allot('campaign:T3', usd=5, provider='anthropic'):
+        connect('anthropic:claude-x', post=_reply(1_000_000, 0)).respond(_REQUEST)
+    got = spend.report()['budgets']
+    assert got['review'] == {'provider': 'anthropic', 'allotted_usd': 20.0, 'spent_usd': 0.0, 'standing': True}
+    assert got['campaign:T3'] == {'provider': 'anthropic', 'allotted_usd': 5.0, 'spent_usd': 1.0, 'standing': False}

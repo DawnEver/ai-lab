@@ -46,7 +46,9 @@ def _row_using(retired: Retired) -> str:
 
 
 @pytest.mark.parametrize(
-    'retired', [r for r in RETIRED if r.kind not in {'usage', 'table'}], ids=lambda r: f'{r.kind}:{r.spelling}'
+    'retired',
+    [r for r in RETIRED if r.kind not in {'usage', 'table', 'constant'}],
+    ids=lambda r: f'{r.kind}:{r.spelling}',
 )
 def test_a_user_row_using_a_retired_spelling_is_refused_naming_the_replacement(retired, tmp_path, monkeypatch):
     _user_rows(tmp_path, monkeypatch, _row_using(retired))

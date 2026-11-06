@@ -79,7 +79,7 @@ def report(*, today: date | None = None, directory: Path | None = None, price: P
     """The month's spend, per tag, the per-tag history to fit caps from, and every allotment (:func:`budgets`)."""
     today = datetime.now(UTC).date() if today is None else today
     directory = budget.state_dir() if directory is None else directory
-    month_start = today.replace(day=1)
+    month_start = budget.month_start(today)
     rows = _rows(directory, min(month_start, today - timedelta(days=LOOKBACK_DAYS - 1)))
     window = [day for day, _ in rows if day > today - timedelta(days=LOOKBACK_DAYS)]
     spent, unpriced = 0.0, 0
@@ -101,6 +101,7 @@ def report(*, today: date | None = None, directory: Path | None = None, price: P
     first = min(window, default=today)
     return {
         'schema': SPEND_SCHEMA, 'budgets': budgets(), 'month': month_start.strftime('%Y-%m'),
+        'month_opens': month_start.isoformat(),
         'spent_usd': spent, 'unpriced_calls': unpriced, 'month_by_tag': dict(month_by_tag),
         'window': {'days': (today - first).days + 1, 'by_tag': dict(window_by_tag)},
     }  # fmt: skip

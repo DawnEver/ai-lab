@@ -23,7 +23,11 @@ spent raises :class:`~ai_lab.errors.SpendCapReached` and is never sent, and its 
 the tightest scope has left at the model's output rate (a call under way may finish past the cap by its input).
 A capped call whose model has no price is refused: an unpriced call cannot be held to a money cap.
 
-THE PERIOD is the calendar month (UTC): providers bill and budget monthly, and so does :mod:`ai_lab.spend`.
+THE PERIOD is the month (UTC): providers bill and budget monthly, and so does :mod:`ai_lab.spend`. It opens on
+the 1st unless the machine file names another day (user ruling 2026-11-03, kept 2026-11-06), :func:`month_start`::
+
+    [ai_lab.spend]
+    reset_day = 1                                           # the day (1-28, UTC) every month opens on
 
 The ledger is one JSON line per call ``{"provider", "key", "tokens", "model", "input", "output", "cached",
 "at", "tag"}`` (``tag``: what the call is charged to, :data:`TAG_ENV` with the call's own tag appended
@@ -45,7 +49,7 @@ import os
 import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Self
 
@@ -77,8 +81,10 @@ __all__ = [
     'key_scope',
     'ledger_file',
     'left_usd',
+    'month_start',
     'priced',
     'rate',
+    'reset_day',
     'revoke',
     'room',
     'row_usd',
@@ -95,6 +101,12 @@ APP: Final = 'ai_lab'
 TAG_ENV: Final = 'AI_LAB_SPEND_TAG'
 TABLE: Final = 'spend_cap'
 RATES: Final = 'usd_per'
+#: The machine-file table naming the day a month opens on (:func:`reset_day`).
+PERIOD: Final = 'spend'
+#: The day a month opens on when the machine file names none: the 1st (user ruling 2026-11-03).
+DEFAULT_RESET_DAY: Final = 1
+#: The last day every month has, so a reset day past it would skip a month.
+_LAST_COMMON_DAY: Final = 28
 #: The currency every price is quoted in.
 USD: Final = 'USD'
 
@@ -172,6 +184,38 @@ def _caps() -> dict[str, Cap]:
     return caps
 
 
+def reset_day() -> int:
+    """The day of the month (1-28, UTC) a month opens on: ``[ai_lab.spend] reset_day``, else the 1st.
+
+    The table's one key; a malformed day, or a key the table does not hold, is refused by name. Its former
+    ``monthly_usd`` and ``reserve_usd`` are refused naming where each lives now: a provider's month is
+    ``[ai_lab.spend_cap]``, and a reserve is what no ``[ai_lab.standing]`` allotment holds of it.
+    """
+    table = _table().get(PERIOD, {})
+    if not isinstance(table, dict):
+        msg = f'[{APP}.{PERIOD}] is a table, got {table!r}'
+        raise ValueError(msg)  # noqa: TRY004 -- a malformed machine file is a value error, not a type error
+    moved = {'monthly_usd': f'[{APP}.{TABLE}]', 'reserve_usd': f'[{APP}.{TABLE}] minus [{APP}.standing]'}
+    if unknown := sorted(set(table) - {'reset_day'}):
+        where = '; '.join(f'{k} is now {moved[k]}' for k in unknown if k in moved)
+        msg = f'[{APP}.{PERIOD}] has unknown key(s) {unknown}; its one key is reset_day'
+        msg += f' ({where})' if where else ''
+        raise ValueError(msg)
+    day = table.get('reset_day', DEFAULT_RESET_DAY)
+    if not isinstance(day, int) or isinstance(day, bool) or not 1 <= day <= _LAST_COMMON_DAY:
+        msg = f'[{APP}.{PERIOD}] reset_day must be a whole day of the month 1-{_LAST_COMMON_DAY}, got {day!r}'
+        raise ValueError(msg)
+    return day
+
+
+def month_start(today: date, day: int | None = None) -> date:
+    """The day the month holding *today* opened: its reset *day* (default :func:`reset_day`), else the previous one's."""
+    day = reset_day() if day is None else day
+    if today.day >= day:
+        return today.replace(day=day)
+    return (today.replace(day=1) - timedelta(days=1)).replace(day=day)
+
+
 def usd_per(currency: str) -> float:
     """US dollars per unit of *currency*: 1 for USD, else ``[ai_lab.usd_per]``; an undeclared one is refused."""
     if currency == USD:
@@ -233,7 +277,7 @@ def row_usd(row: dict, price: Price | None = None) -> float | None:
 
 def _rows(provider: str, key: str | None, *, month: bool = True) -> list[dict]:
     """*provider*'s ledger rows (through *key*, when given): this month's, else every day's."""
-    start = datetime.now(UTC).date().replace(day=1) if month else date.min
+    start = month_start(datetime.now(UTC).date()) if month else date.min
     rows = []
     for path in sorted(state_dir().glob('tokens-*.jsonl')):
         try:

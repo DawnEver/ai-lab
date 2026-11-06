@@ -69,7 +69,7 @@ from lab_commons.paths import config_root
 
 from ai_lab import budget, emulate, retired, transport
 from ai_lab.answers import Basis, Decision, Response
-from ai_lab.errors import ACCOUNT_KINDS, BatchLapsed, SpendCapReached, ProviderError, Unsupported
+from ai_lab.errors import ACCOUNT_KINDS, BatchLapsed, ProviderError, SpendCapReached, Unsupported
 from ai_lab.spec import DecisionRequest, ResponseRequest
 from ai_lab.usage import Usage
 from ai_lab.wire import WIRES
@@ -613,18 +613,14 @@ class Client:
         return raw
 
     def _bounded(self, call: transport.HttpCall, key: str | None) -> transport.HttpCall:
-        """*call* with its output clamped to what the tightest level has left and the client's effort applied.
+        """*call* with its output clamped to what the tightest level has left, and the client's effort applied.
 
         Its ``max_tokens`` is what the tightest level has left at the model's output rate; a capped call whose
         model has no price is refused, since nothing could hold it to the cap.
         """
         left = budget.room(self.provider.name, key)
         client = f'{self.provider.name}:{self.model}'
-        held = None if math.isinf(left) else budget.rate(client)
-        if not math.isinf(left) and held is None:
-            rates = config_root('ai_lab') / 'prices.toml'
-            msg = f'{client} has no price, so its spend cap cannot hold it: declare its rate in {rates}'
-            raise Unsupported(msg)
+        held = None if math.isinf(left) else budget.priced(client)
         if 'max_tokens' in call.body:
             wanted = self.max_tokens or call.body['max_tokens']
             if held is not None and held.price.output > 0:

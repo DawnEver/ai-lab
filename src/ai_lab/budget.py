@@ -77,6 +77,7 @@ __all__ = [
     'key_scope',
     'ledger_file',
     'left_usd',
+    'priced',
     'rate',
     'revoke',
     'room',
@@ -85,7 +86,7 @@ __all__ = [
     'spent_usd',
     'standing',
     'state_dir',
-    'tasks',
+    'task_allotments',
     'usd_per',
 ]
 
@@ -126,6 +127,20 @@ def rate(client: str, at: datetime | None = None) -> Quote | None:
     from ai_lab.prices import quote_for  # noqa: PLC0415 -- prices reads the catalogue, which imports this module
 
     return quote_for(client, at=at) or quote_for(client)
+
+
+def priced(client: str, at: datetime | None = None) -> Quote:
+    """``provider:model``'s :func:`rate`, or :class:`Unsupported` naming the ``prices.toml`` to declare it in.
+
+    The ONE refusal of an unpriced model: a capped call, a ledger row and a planner's projection all price here.
+    """
+    from ai_lab.prices import user_prices_file  # noqa: PLC0415 -- prices reads the catalogue, which imports this module
+
+    held = rate(client, at)
+    if held is None:
+        msg = f'{client} has no price: declare its rate in {user_prices_file()} (USD per million tokens)'
+        raise Unsupported(msg)
+    return held
 
 
 def _table() -> dict:
@@ -201,7 +216,10 @@ def ledger_file() -> Path:
 
 
 def row_usd(row: dict, price: Price | None = None) -> float | None:
-    """One ledger row's US dollars at its call's time (a batch row at the batch rate); ``None`` when unpriced."""
+    """One ledger row's US dollars at its call's time; ``None`` when it names no model or the model is unpriced.
+
+    A batch row (``"batch": true``) is priced at :data:`ai_lab.prices.BATCH_RATE` of the synchronous price.
+    """
     from ai_lab.prices import BATCH_RATE, cost  # noqa: PLC0415 -- prices imports the catalogue, a cycle
 
     if not row.get('model'):
@@ -446,7 +464,7 @@ def _append(row: dict) -> None:
         out.write(json.dumps(row) + '\n')
 
 
-def tasks() -> dict[str, Allotment]:
+def task_allotments() -> dict[str, Allotment]:
     """Every open task allotment by path: a path's newest ``open``, unless a later ``close`` released it."""
     found: dict[str, Allotment] = {}
     for row in _store():
@@ -474,7 +492,7 @@ def approvals() -> dict[str, Approval]:
 
 
 def _all() -> dict[str, Allotment]:
-    return {**tasks(), **standing()}
+    return {**task_allotments(), **standing()}
 
 
 def _scope_spent(provider: str, name: str, *, month: bool) -> float:

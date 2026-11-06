@@ -48,7 +48,7 @@ from typing import Final, TypeVar
 from ai_lab.call import answer as _answer
 from ai_lab.call import client_spec, failure_reply, parsed, response_reply
 from ai_lab.client import Ticket, connect
-from ai_lab.errors import BatchLapsed, SpendCapReached, ProviderError, Unsupported
+from ai_lab.errors import BatchLapsed, ProviderError, SpendCapReached, Unsupported
 
 __all__ = [
     'BATCH_BY_DEFAULT', 'EXPIRY_GRACE', 'ON_EXPIRY', 'PENDING_EXIT', 'POLL_FIRST_S', 'POLL_MAX_S', 'WAIT_S',

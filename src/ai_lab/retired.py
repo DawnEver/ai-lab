@@ -97,6 +97,11 @@ RETIRED: Final = (
         'allotment carved out of its provider cap, and the spend report reads every level from ai_lab.budget',
         '2026-11-06',
     ),
+    Retired(
+        'name', 'DailyTokenCapReached', 'SpendCapReached',
+        'a cap is money per provider and per allotment level, so the error a spent one raises names spend, not tokens',
+        '2026-11-06',
+    ),
 )  # fmt: skip
 
 _BY_NAME: Final = {(r.kind, r.spelling): r for r in RETIRED}

@@ -6,6 +6,8 @@ a listed class; one TOML bundle per task replaces that task's slots. Every secre
 
 import io
 import json
+import os
+from pathlib import Path
 
 import pytest
 from lab_commons.credentials import api_keys
@@ -63,6 +65,9 @@ def routed(credential_store):
     (root / 'providers.toml').write_text(_ROWS, encoding='utf-8')
     credential_store('alpha.test', 'sk-alpha-work', 'api-key-work')
     credential_store('beta.test', 'sk-beta-work', 'api-key-work')
+    machine = Path(os.environ['LAB_COMMONS_CONFIG'])  # the user rows are paid: declare them uncapped too
+    caps = ''.join(f'{n} = {{ amount = inf, currency = "USD" }}\n' for n in ('alpha', 'beta'))
+    machine.write_text(machine.read_text('utf-8') + caps, encoding='utf-8')
 
     def write(text):
         user_routes_file().write_text(text, encoding='utf-8')

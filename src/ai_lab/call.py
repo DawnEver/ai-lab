@@ -43,7 +43,7 @@ from typing import Final
 
 from ai_lab.answers import Response
 from ai_lab.client import Client, connect, tasks
-from ai_lab.errors import ERROR_KINDS, SpendCapReached, ProviderError, Unsupported
+from ai_lab.errors import ERROR_KINDS, ProviderError, SpendCapReached, Unsupported
 from ai_lab.ledger import Ledger, Mode
 from ai_lab.spec import (
     DecisionRequest,

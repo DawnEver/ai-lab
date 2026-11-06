@@ -129,6 +129,14 @@ def test_a_currency_with_no_declared_rate_refuses(machine):
         budget.left_usd('deepseek')
 
 
+def test_a_projection_prices_through_the_one_rate_and_an_unpriced_model_is_refused_naming_prices_toml(monkeypatch):
+    monkeypatch.setattr(budget, 'rate', lambda client, at=None: _RATE)
+    assert budget.priced('deepseek:m').price == _RATE.price
+    monkeypatch.setattr(budget, 'rate', lambda client, at=None: None)
+    with pytest.raises(Unsupported, match=r'deepseek:m has no price: declare its rate .*prices\.toml'):
+        budget.priced('deepseek:m')
+
+
 def test_a_capped_call_whose_model_has_no_price_refuses(keys, machine, monkeypatch):
     machine(_caps(anthropic=_usd(1)))
     monkeypatch.setattr(budget, 'rate', lambda client, at=None: None)

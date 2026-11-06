@@ -1,8 +1,9 @@
 """The family's model spend in US dollars: the token ledger priced at each call's time (user ruling 2026-10-31).
 
-ONE BUDGET, DECLARED ONCE. :data:`FAMILY_MONTHLY_USD` is every model call of the family in one calendar month (UTC),
-declared here because spend is MEASURED here, where calls are made; what one PR may spend of it is a policy of
-its runner (dev-lab's review budget), which reads this report and never restates the number.
+EVERY BUDGET IS DECLARED ONCE, in :mod:`ai_lab.budget`: a provider's month (``[ai_lab.spend_cap]``), a standing
+allotment carved out of it (``[ai_lab.standing]``: ``review``, a CI job) and each open task allotment. The report's
+``budgets`` restates none of them: it reads each one's allotted and spent from there. What one PR may spend of
+``review`` is its runner's policy (dev-lab's review budget), opened as a child allotment ``review>owner/repo#n``.
 
 ONE LEDGER. The source is :mod:`ai_lab.budget`'s token ledger (one row per call: tokens, model, time, tag); dollars
 are derived from it by :func:`ai_lab.budget.row_usd` at the call's time -- the same pricing a provider's
@@ -30,17 +31,15 @@ from typing import Final
 from ai_lab import budget
 from ai_lab.prices import Quote
 
-__all__ = ['FAMILY_MONTHLY_USD', 'LOOKBACK_DAYS', 'SPEND_SCHEMA', 'report']
-
-#: The family's model budget per calendar month (UTC), every call of every repo: user ruling 2026-10-31.
-FAMILY_MONTHLY_USD: Final = 1000.0
+__all__ = ['LOOKBACK_DAYS', 'SPEND_SCHEMA', 'budgets', 'report']
 
 #: How far back the per-tag history a cap is FITTED from reaches: three months, enough PRs to read a quantile
 #: from and recent enough that the family's habits still hold.
 LOOKBACK_DAYS: Final = 90
 
-#: The report's version: a reader refuses one it does not know. Printed, never stored.
-SPEND_SCHEMA: Final = 1
+#: The report's version: a reader refuses one it does not know. Printed, never stored. 2: ``budgets`` per level
+#: replaced the one family budget.
+SPEND_SCHEMA: Final = 2
 
 Price = Callable[[str, datetime | None], Quote | None]
 
@@ -57,8 +56,17 @@ def _rows(directory: Path, since: date) -> list[tuple[date, dict]]:
     return found
 
 
+def budgets() -> dict[str, dict]:
+    """Every standing and open task allotment by path: its provider, ``allotted_usd``, ``spent_usd``, ``standing``."""
+    held = {**budget.tasks(), **budget.standing()}
+    return {
+        name: {'provider': a.provider, 'allotted_usd': a.usd, 'spent_usd': a.spent(), 'standing': a.standing}
+        for name, a in sorted(held.items())
+    }
+
+
 def report(*, today: date | None = None, directory: Path | None = None, price: Price | None = None) -> dict:
-    """The month's spend against :data:`FAMILY_MONTHLY_USD`, per tag, and the per-tag history to fit caps from."""
+    """The month's spend, per tag, the per-tag history to fit caps from, and every allotment (:func:`budgets`)."""
     today = datetime.now(UTC).date() if today is None else today
     directory = budget.state_dir() if directory is None else directory
     month_start = today.replace(day=1)
@@ -82,7 +90,7 @@ def report(*, today: date | None = None, directory: Path | None = None, price: P
             window_by_tag[tag] += usd
     first = min(window, default=today)
     return {
-        'schema': SPEND_SCHEMA, 'budget_usd': FAMILY_MONTHLY_USD, 'month': month_start.strftime('%Y-%m'),
+        'schema': SPEND_SCHEMA, 'budgets': budgets(), 'month': month_start.strftime('%Y-%m'),
         'spent_usd': spent, 'unpriced_calls': unpriced, 'month_by_tag': dict(month_by_tag),
         'window': {'days': (today - first).days + 1, 'by_tag': dict(window_by_tag)},
     }  # fmt: skip
@@ -97,9 +105,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.json:
         sys.stdout.write(json.dumps(got, indent=1) + '\n')
         return 0
-    head = f'{got["month"]}: {got["spent_usd"]:.2f} of {got["budget_usd"]:.2f} USD ({got["unpriced_calls"]} unpriced)'
+    head = f'{got["month"]}: {got["spent_usd"]:.2f} USD ({got["unpriced_calls"]} unpriced)'
     tags = sorted(got['month_by_tag'].items(), key=lambda kv: -kv[1])
-    sys.stdout.write('\n'.join([head, *(f'  {usd:9.2f}  {tag}' for tag, usd in tags)]) + '\n')
+    held = [f'  {b["spent_usd"]:9.2f} / {b["allotted_usd"]:9.2f}  {name}' for name, b in got['budgets'].items()]
+    sys.stdout.write('\n'.join([head, *(f'  {usd:9.2f}  {tag}' for tag, usd in tags), *held]) + '\n')
     return 0
 
 

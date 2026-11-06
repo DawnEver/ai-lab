@@ -221,7 +221,19 @@ deepseek = { amount = 100, currency = "CNY" }
 
 [ai_lab.usd_per]
 CNY = 0.14
+
+[ai_lab.standing]   # recurring per-month allotments carved out of a provider's cap
+review = { provider = "anthropic", amount = 300, currency = "USD" }
 ```
+
+Below the provider's month the levels nest (details: `ai_lab.budget`): a STANDING allotment above, or
+a TASK allotment a caller opens (`with budget.allot('campaign:T3', usd=10, provider='openai') as t:`),
+then children by path (`t.allot('item:4', 0.5)`, `t.split([...])`, `campaign:T3>item:4`). What standing
+and open allotments still hold is not free to anyone else; an opening that does not fit is refused at
+open, a call is refused naming the first level with no room, and `max_tokens` derives from the
+tightest. Every ledger row records its `scope`; `python -m ai_lab.budget allot NAME [--usd N]` opens or
+reopens one from any process (`AI_LAB_SCOPE` carries it to a child), and `python -m ai_lab.spend`
+reports each level's spent against allotted.
 
 - `python -m ai_lab.providers [--json]` -- the resolved catalogue (see above).
 - `python -m ai_lab.call [--ledger PATH]` -- one call as JSON on stdin/stdout (see above).

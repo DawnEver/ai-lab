@@ -590,7 +590,7 @@ class Client:
             try:
                 return act(key, budget.fingerprint(key)), slot
             except SpendCapReached as spent:
-                if spent.scope == self.provider.name:
+                if not spent.scope.startswith(f'{self.provider.name}/'):  # a provider or allotment level: no key helps
                     raise
                 failures.append(f'slot {slot}: {spent.scope} spend cap')
                 last = spent
@@ -606,19 +606,19 @@ class Client:
         raise ProviderError(msg, kind=last.kind, status=last.status) from last
 
     def _dispatch(self, call: transport.HttpCall, key: str | None) -> object:
-        """Send *call* within its provider's and *key*'s spend caps, and charge what its reply reports."""
+        """Send *call* within every enclosing level (:func:`ai_lab.budget.room`), and charge what its reply reports."""
         raw = self._post(self._bounded(call, key))
         if (usage := self._usage(raw)) is not None:
             budget.charge(self.provider.name, key, usage, self.model, tag=self.tag, fallback_from=self.fallback_from)
         return raw
 
     def _bounded(self, call: transport.HttpCall, key: str | None) -> transport.HttpCall:
-        """*call* with its output clamped to what the tightest spend cap has left and the client's effort applied.
+        """*call* with its output clamped to what the tightest level has left and the client's effort applied.
 
-        Its ``max_tokens`` is what the tightest cap has left at the model's output rate; a capped call whose
+        Its ``max_tokens`` is what the tightest level has left at the model's output rate; a capped call whose
         model has no price is refused, since nothing could hold it to the cap.
         """
-        left = budget.left_usd(self.provider.name, key)
+        left = budget.room(self.provider.name, key)
         client = f'{self.provider.name}:{self.model}'
         held = None if math.isinf(left) else budget.rate(client)
         if not math.isinf(left) and held is None:

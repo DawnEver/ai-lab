@@ -45,7 +45,7 @@ def _row_using(retired: Retired) -> str:
     return f'[mine]\n{_ROW}{retired.spelling} = "x"\n'
 
 
-_DRIVEN = [r for r in RETIRED if r.kind not in {'usage', 'name', 'table'}]
+_DRIVEN = [r for r in RETIRED if r.kind not in {'usage', 'name', 'table', 'constant'}]
 
 
 @pytest.mark.parametrize('retired', _DRIVEN, ids=lambda r: f'{r.kind}:{r.spelling}')

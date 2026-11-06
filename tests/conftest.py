@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from lab_commons.credentials import store_credential
 
-from ai_lab import Choice, DecisionRequest, Fields, Image, Level, Option, Predicate, Score, Text, auth
+from ai_lab import Choice, DecisionRequest, Fields, Image, Level, Option, Predicate, Score, Text, auth, catalogue
 from ai_lab.review.method import METHOD_DIR
 
 PNG = b'\x89PNG\r\n\x1a\nfake'
@@ -30,8 +30,16 @@ def image_request(questions):
 
 @pytest.fixture(autouse=True)
 def _private_home(tmp_path, monkeypatch):
-    """Every test's ``AI_LAB_HOME`` (and so its token ledger) is its own; the box's real state is never touched."""
+    """Every test's ``AI_LAB_HOME`` (and so its token ledger) is its own; the box's real state is never touched.
+
+    Its machine file is its own too: every catalogue provider is DECLARED uncapped, so a test that is not
+    about spend caps prices nothing and reads no box's real ``[ai_lab.spend_cap]``.
+    """
     monkeypatch.setenv('AI_LAB_HOME', str(tmp_path / 'home'))
+    machine = tmp_path / 'machine.toml'
+    rows = ''.join(f'"{name}" = {{ amount = inf, currency = "USD" }}\n' for name in catalogue())
+    machine.write_text(f'[ai_lab.spend_cap]\n{rows}', encoding='utf-8')
+    monkeypatch.setenv('LAB_COMMONS_CONFIG', str(machine))
 
 
 @pytest.fixture(autouse=True)

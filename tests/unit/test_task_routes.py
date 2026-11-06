@@ -12,7 +12,7 @@ from lab_commons.credentials import api_keys
 
 from ai_lab import ProviderError, ResponseRequest, Text, Unsupported, auth, budget, connect
 from ai_lab.client import ERROR_CLASSES, FALL_OVER_ON, error_class, routes, tasks, user_routes_file
-from ai_lab.errors import DailyTokenCapReached
+from ai_lab.errors import SpendCapReached
 from ai_lab.review.method import REVIEW_TASK, configured_providers, default_config
 from tests.unit.test_one_account import _post
 
@@ -84,7 +84,7 @@ def _ledger():
         (ProviderError('x', kind='auth', status=401), 'auth'),
         (ProviderError('x', kind='auth', status=403), 'auth'),
         (ProviderError('x', kind='exhausted', status=402), 'quota'),
-        (DailyTokenCapReached('x', scope='alpha'), 'quota'),
+        (SpendCapReached('x', scope='alpha'), 'quota'),
         (ProviderError('x', kind='rate_limit', status=429), 'rate_limit'),
         (ProviderError('x', kind='rate_limit', status=529), 'rate_limit'),
         (ProviderError('x', status=503), 'server'),

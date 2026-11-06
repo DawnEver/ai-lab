@@ -91,7 +91,7 @@ def test_a_row_is_priced_at_its_own_time(tmp_path):
 
 
 def test_the_cli_prints_the_report_as_json(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(spend, '_default_price', _price)
+    monkeypatch.setattr(budget, 'rate', _price)
     monkeypatch.setattr(budget, 'state_dir', lambda: tmp_path)
     _write(tmp_path, datetime.now(UTC).date().isoformat(), _row('r#1', 1_000_000, at=datetime.now(UTC).isoformat()))
     assert spend.main(['--json']) == 0

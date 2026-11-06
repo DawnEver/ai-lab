@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 import time
 import tomllib
@@ -68,7 +69,7 @@ from lab_commons.paths import config_root
 
 from ai_lab import budget, emulate, retired, transport
 from ai_lab.answers import Basis, Decision, Response
-from ai_lab.errors import ACCOUNT_KINDS, BatchLapsed, DailyTokenCapReached, ProviderError, Unsupported
+from ai_lab.errors import ACCOUNT_KINDS, BatchLapsed, SpendCapReached, ProviderError, Unsupported
 from ai_lab.spec import DecisionRequest, ResponseRequest
 from ai_lab.usage import Usage
 from ai_lab.wire import WIRES
@@ -113,7 +114,7 @@ PROTOCOLS = frozenset({'openai', 'anthropic', 'gemini', 'typesafe'})
 ROLES = frozenset({'base', 'fable', 'opus', 'sonnet', 'haiku', 'subagent', 'codex'})
 
 #: The classes of failure a route may fall over on -- a closed set, each derived from a failure by
-#: :func:`error_class`: ``quota`` (402, a used-up balance, a daily token cap), ``auth`` (401/403, a refused key),
+#: :func:`error_class`: ``quota`` (402, a used-up balance, a reached spend cap), ``auth`` (401/403, a refused key),
 #: ``rate_limit`` (429/529 past their retries) and ``server`` (any other 5xx).
 ERROR_CLASSES = frozenset({'quota', 'auth', 'rate_limit', 'server'})
 
@@ -126,7 +127,7 @@ _SERVER_STATUSES = range(500, 600)
 
 def error_class(error: BaseException) -> str | None:
     """*error*'s class in :data:`ERROR_CLASSES`; ``None`` for a failure no route falls over on."""
-    if isinstance(error, DailyTokenCapReached):
+    if isinstance(error, SpendCapReached):
         return 'quota'
     if not isinstance(error, ProviderError):
         return None
@@ -490,7 +491,7 @@ class Client:
         """*call* on this client, then -- on a failure whose class the task falls over on -- on each next provider."""
         try:
             return call(self)
-        except (ProviderError, DailyTokenCapReached) as error:
+        except (ProviderError, SpendCapReached) as error:
             if not self.chain or error_class(error) not in self.fall_over_on:
                 raise
             failure, missing = error, []
@@ -505,14 +506,14 @@ class Client:
                 return call(standin)
             except Unsupported as absent:
                 missing.append(f'{name}: {absent}')
-            except (ProviderError, DailyTokenCapReached) as error:
+            except (ProviderError, SpendCapReached) as error:
                 if error_class(error) not in self.fall_over_on:
                     raise
                 failure = error
         if missing:
             msg = f'{failure}; fallback unavailable: {"; ".join(missing)}'
-            if isinstance(failure, DailyTokenCapReached):
-                raise DailyTokenCapReached(msg, scope=failure.scope) from failure
+            if isinstance(failure, SpendCapReached):
+                raise SpendCapReached(msg, scope=failure.scope) from failure
             raise ProviderError(msg, kind=failure.kind, status=failure.status) from failure
         raise failure
 
@@ -588,10 +589,10 @@ class Client:
                 break
             try:
                 return act(key, budget.fingerprint(key)), slot
-            except DailyTokenCapReached as spent:
+            except SpendCapReached as spent:
                 if spent.scope == self.provider.name:
                     raise
-                failures.append(f'slot {slot}: {spent.scope} daily token cap')
+                failures.append(f'slot {slot}: {spent.scope} spend cap')
                 last = spent
                 continue
             except ProviderError as error:
@@ -600,23 +601,35 @@ class Client:
                 failures.append(f'slot {slot}: {error.kind}')
                 last = error
         msg = f'{self.provider.name}: every {whose}key slot for {host} failed ({", ".join(failures)}); last: {last}'
-        if isinstance(last, DailyTokenCapReached):
-            raise DailyTokenCapReached(msg, scope=last.scope) from last
+        if isinstance(last, SpendCapReached):
+            raise SpendCapReached(msg, scope=last.scope) from last
         raise ProviderError(msg, kind=last.kind, status=last.status) from last
 
     def _dispatch(self, call: transport.HttpCall, key: str | None) -> object:
-        """Send *call* within its provider's and *key*'s token budgets, and charge what its reply reports."""
+        """Send *call* within its provider's and *key*'s spend caps, and charge what its reply reports."""
         raw = self._post(self._bounded(call, key))
         if (usage := self._usage(raw)) is not None:
             budget.charge(self.provider.name, key, usage, self.model, tag=self.tag, fallback_from=self.fallback_from)
         return raw
 
     def _bounded(self, call: transport.HttpCall, key: str | None) -> transport.HttpCall:
-        """*call* with its output clamped to the token budgets left and the client's effort applied."""
-        left = budget.remaining(self.provider.name, key)
+        """*call* with its output clamped to what the tightest spend cap has left and the client's effort applied.
+
+        Its ``max_tokens`` is what the tightest cap has left at the model's output rate; a capped call whose
+        model has no price is refused, since nothing could hold it to the cap.
+        """
+        left = budget.left_usd(self.provider.name, key)
+        client = f'{self.provider.name}:{self.model}'
+        held = None if math.isinf(left) else budget.rate(client)
+        if not math.isinf(left) and held is None:
+            rates = config_root('ai_lab') / 'prices.toml'
+            msg = f'{client} has no price, so its spend cap cannot hold it: declare its rate in {rates}'
+            raise Unsupported(msg)
         if 'max_tokens' in call.body:
             wanted = self.max_tokens or call.body['max_tokens']
-            call = replace(call, body={**call.body, 'max_tokens': min(wanted, left)})
+            if held is not None and held.price.output > 0:
+                wanted = min(wanted, max(1, math.floor(left / held.price.output * 1_000_000)))
+            call = replace(call, body={**call.body, 'max_tokens': wanted})
         if self.effort:
             call = self.wire.effort(call, self.effort)
         return call

@@ -118,5 +118,6 @@ def test_the_report_reads_each_allotment_spent_against_allotted_from_the_budget_
     with budget.allot('campaign:T3', usd=5, provider='anthropic'):
         connect('anthropic:claude-x', post=_reply(1_000_000, 0)).respond(_REQUEST)
     got = spend.report()['budgets']
-    assert got['review'] == {'provider': 'anthropic', 'allotted_usd': 20.0, 'spent_usd': 0.0, 'standing': True}
-    assert got['campaign:T3'] == {'provider': 'anthropic', 'allotted_usd': 5.0, 'spent_usd': 1.0, 'standing': False}
+    held = {'provider': 'anthropic', 'default_usd': None}
+    assert got['review'] == {**held, 'allotted_usd': 20.0, 'spent_usd': 0.0, 'standing': True}
+    assert got['campaign:T3'] == {**held, 'allotted_usd': 5.0, 'spent_usd': 1.0, 'standing': False}

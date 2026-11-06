@@ -64,8 +64,11 @@ __all__ = [
     'SEP',
     'TAG_ENV',
     'Allotment',
+    'Approval',
     'Cap',
     'allot',
+    'approvals',
+    'approve',
     'cap',
     'charge',
     'close',
@@ -76,6 +79,7 @@ __all__ = [
     'left_usd',
     'priced',
     'rate',
+    'revoke',
     'room',
     'row_usd',
     'spend_tag',
@@ -313,6 +317,12 @@ def charge(provider: str, key: str | None, usage: Usage, model: str, *, tag: str
 # charged in (:data:`SCOPE_ENV`, which a child process inherits), priced like every other row, never stored. A
 # scope reopened by name in another process (an HPC item) reads the same amount and spent -- on the host whose
 # ledger holds the calls (the ledger is machine-local, like the cap).
+#
+# A TASK'S AMOUNT IS A DEFAULT (user ruling 2026-11-06): what a caller passes to ``allot`` is the budget its task
+# DECLARES; a person may APPROVE one task, by its exact name, for a different amount (:func:`approve`: who, when,
+# why, in the same ``allotments.jsonl``), and ``allot`` then opens it at the approved amount, recording the
+# default beside it. An approval that does not fit where the task would open is refused at approve, naming the
+# level; :func:`revoke` restores the default.
 
 #: The environment variable naming the scope a call is charged in: the cross-process contract.
 SCOPE_ENV: Final = 'AI_LAB_SCOPE'
@@ -329,6 +339,8 @@ class Allotment:
     provider: str
     usd: float
     standing: bool = False
+    #: The caller's declared default when an approval replaced it; ``None``: the allotment IS the default.
+    default_usd: float | None = None
 
     @property
     def parent(self) -> str | None:
@@ -375,6 +387,24 @@ class Allotment:
 _stack: list[str | None] = []
 
 
+@dataclass(frozen=True, slots=True)
+class Approval:
+    """*by* approved the task *name* on *provider* for *amount* of *currency* at *at*, because *reason*."""
+
+    name: str
+    provider: str
+    amount: float
+    currency: str
+    by: str
+    reason: str
+    at: str
+
+    @property
+    def usd(self) -> float:
+        """The approved amount in US dollars, at the currently declared rate."""
+        return self.amount * usd_per(self.currency)
+
+
 def _allotments_file() -> Path:
     return state_dir() / 'allotments.jsonl'
 
@@ -401,17 +431,42 @@ def standing() -> dict[str, Allotment]:
     return found
 
 
+def _store() -> list[dict]:
+    path = _allotments_file()
+    return [json.loads(line) for line in path.read_text('utf-8').splitlines() if line.strip()] if path.exists() else []
+
+
+def _append(row: dict) -> None:
+    path = _allotments_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open('a', encoding='utf-8') as out:
+        out.write(json.dumps(row) + '\n')
+
+
 def tasks() -> dict[str, Allotment]:
     """Every open task allotment by path: a path's newest ``open``, unless a later ``close`` released it."""
-    path = _allotments_file()
-    rows = [json.loads(line) for line in path.read_text('utf-8').splitlines() if line.strip()] if path.exists() else []
     found: dict[str, Allotment] = {}
-    for row in rows:
+    for row in _store():
+        if row['op'] in {'approve', 'revoke'}:
+            continue
         if row['op'] == 'open':
-            found[row['name']] = Allotment(row['name'], row['provider'], row['usd'])
+            found[row['name']] = Allotment(row['name'], row['provider'], row['usd'], default_usd=row.get('default'))
         else:
             for name in [n for n in found if n == row['name'] or n.startswith(row['name'] + SEP)]:
                 del found[name]
+    return found
+
+
+def approvals() -> dict[str, Approval]:
+    """Every approval in force by task name: a name's newest ``approve``, unless a later ``revoke`` withdrew it."""
+    found: dict[str, Approval] = {}
+    for row in _store():
+        if row['op'] == 'approve':
+            found[row['name']] = Approval(
+                row['name'], row['provider'], row['amount'], row['currency'], row['by'], row['reason'], row['at']
+            )
+        elif row['op'] == 'revoke':
+            found.pop(row['name'], None)
     return found
 
 
@@ -467,6 +522,21 @@ def allot(name: str, *, usd: float | None = None, provider: str | None = None) -
     if name in standing():
         msg = f'{name} is a [{APP}.{STANDING}] allotment, declared in {config_path()}; it is never opened as a task'
         raise Unsupported(msg)
+    provider, free, level = _fit(name, provider, known)
+    approved = approvals().get(name)
+    default = None
+    if approved is not None and approved.provider == provider:
+        default, usd = float(usd), approved.usd
+    opened = Allotment(name, provider, float(usd), default_usd=default)
+    spent = opened.spent()
+    if usd - spent > free + 1e-12 * max(1.0, usd):  # relative: an exact split fits
+        raise _refused(level, f'cannot hold {name} at {usd:.4f} USD ({spent:.4f} spent): {free:.4f} USD is free')
+    _append({'op': 'open', 'name': name, 'provider': provider, 'usd': float(usd), 'default': default, 'at': _now()})
+    return opened
+
+
+def _fit(name: str, provider: str | None, known: dict[str, Allotment]) -> tuple[str, float, str]:
+    """Where *name* opens: its provider, the USD free for it there, and the level that bounds it."""
     parent_name = name.rpartition(SEP)[0] or None
     if parent_name is not None:
         if parent_name not in known:
@@ -482,24 +552,42 @@ def allot(name: str, *, usd: float | None = None, provider: str | None = None) -
             msg = f'{name} opens a task at level 2: name the provider it draws on'
             raise Unsupported(msg)
         free, level = _free_on(provider, but=name), provider
-    opened = Allotment(name, provider, float(usd))
-    spent = opened.spent()
-    if usd - spent > free + 1e-12 * max(1.0, usd):  # relative: an exact split fits
-        raise _refused(level, f'cannot hold {name} at {usd:.4f} USD ({spent:.4f} spent): {free:.4f} USD is free')
-    path = _allotments_file()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open('a', encoding='utf-8') as out:
-        out.write(json.dumps({'op': 'open', 'name': name, 'provider': provider, 'usd': float(usd), 'at': _now()}))
-        out.write('\n')
-    return opened
+    return provider, free, level
+
+
+def approve(task: str, amount: float, currency: str = USD, *, provider: str, by: str, reason: str) -> Approval:
+    """Approve the task *task* on *provider* for *amount* of *currency* in place of its declared default.
+
+    Refused with :class:`SpendCapReached` naming the level when the amount does not fit where *task* opens (its
+    parent, else the provider month beside every standing and other open task allotment); a standing name and
+    an approval without a reason are refused.
+    """
+    if task in standing():
+        msg = f'{task} is a [{APP}.{STANDING}] allotment, declared in {config_path()}; it is never approved as a task'
+        raise Unsupported(msg)
+    if not reason.strip():
+        msg = f'approving {task} needs a reason'
+        raise Unsupported(msg)
+    approval = Approval(task, provider, float(amount), currency, by, reason, _now())
+    _, free, level = _fit(task, provider, _all())
+    usd, spent = approval.usd, Allotment(task, provider, approval.usd).spent()
+    if usd - spent > free + 1e-12 * max(1.0, usd):
+        raise _refused(level, f'cannot approve {task} at {usd:.4f} USD ({spent:.4f} spent): {free:.4f} USD is free')
+    _append({
+        'op': 'approve', 'name': task, 'provider': provider, 'amount': approval.amount, 'currency': currency,
+        'by': by, 'reason': reason, 'at': approval.at,
+    })  # fmt: skip
+    return approval
+
+
+def revoke(task: str) -> None:
+    """Withdraw *task*'s approval: its next ``allot`` opens at the caller's default again."""
+    _append({'op': 'revoke', 'name': task, 'at': _now()})
 
 
 def close(name: str) -> None:
     """Release the task allotment *name* and every child of it: what it held returns to its parent."""
-    path = _allotments_file()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open('a', encoding='utf-8') as out:
-        out.write(json.dumps({'op': 'close', 'name': name, 'at': _now()}) + '\n')
+    _append({'op': 'close', 'name': name, 'at': _now()})
 
 
 def current() -> str | None:
@@ -545,6 +633,9 @@ def _now() -> str:
 def main(argv: Sequence[str] | None = None) -> int:
     """``allot NAME [--usd N] [--provider P]`` prints the allotment as JSON; ``close NAME`` releases it.
 
+    ``approve NAME --amount A [--currency C] --provider P --reason R [--by WHO]``, ``revoke NAME`` and
+    ``approvals`` (JSON) manage the approvals that replace a task's declared default.
+
     The door for a caller that imports no ai-lab (dev-lab's review opens ``review>owner/repo#n`` here, then runs
     its commands with :data:`SCOPE_ENV`). A refusal exits 3 with its message and the level on stderr.
     """
@@ -555,11 +646,37 @@ def main(argv: Sequence[str] | None = None) -> int:
     opened.add_argument('--usd', type=float)
     opened.add_argument('--provider')
     verbs.add_parser('close').add_argument('name')
+    granted = verbs.add_parser('approve', help='approve one task for an amount in place of its declared default')
+    granted.add_argument('name')
+    granted.add_argument('--amount', type=float, required=True)
+    granted.add_argument('--currency', default=USD)
+    granted.add_argument('--provider', required=True)
+    granted.add_argument('--by', default=os.environ.get('USERNAME') or os.environ.get('USER') or 'unknown')
+    granted.add_argument('--reason', required=True)
+    verbs.add_parser('revoke').add_argument('name')
+    verbs.add_parser('approvals')
     args = parser.parse_args(argv)
     if args.verb == 'close':
         close(args.name)
         return 0
+    if args.verb == 'revoke':
+        revoke(args.name)
+        return 0
+    if args.verb == 'approvals':
+        listed = {
+            n: {'provider': a.provider, 'amount': a.amount, 'currency': a.currency, 'usd': a.usd, 'by': a.by,
+                'reason': a.reason, 'at': a.at}
+            for n, a in approvals().items()
+        }  # fmt: skip
+        sys.stdout.write(json.dumps(listed) + '\n')
+        return 0
     try:
+        if args.verb == 'approve':
+            done = approve(
+                args.name, args.amount, args.currency, provider=args.provider, by=args.by, reason=args.reason
+            )
+            sys.stdout.write(json.dumps({'name': done.name, 'provider': done.provider, 'usd': done.usd}) + '\n')
+            return 0
         held = allot(args.name, usd=args.usd, provider=args.provider)
     except (SpendCapReached, Unsupported) as refused:
         sys.stderr.write(f'{refused}\n')

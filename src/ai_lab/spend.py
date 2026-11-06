@@ -57,10 +57,20 @@ def _rows(directory: Path, since: date) -> list[tuple[date, dict]]:
 
 
 def budgets() -> dict[str, dict]:
-    """Every standing and open task allotment by path: its provider, ``allotted_usd``, ``spent_usd``, ``standing``."""
+    """Every standing and open task allotment by path, with what it was allotted and has spent.
+
+    Per path: ``provider``, ``allotted_usd``, ``spent_usd``, ``standing``, and ``default_usd`` -- the declared
+    default an approval replaced (``None``: the allotment is its default).
+    """
     held = {**budget.tasks(), **budget.standing()}
     return {
-        name: {'provider': a.provider, 'allotted_usd': a.usd, 'spent_usd': a.spent(), 'standing': a.standing}
+        name: {
+            'provider': a.provider,
+            'allotted_usd': a.usd,
+            'spent_usd': a.spent(),
+            'standing': a.standing,
+            'default_usd': a.default_usd,
+        }
         for name, a in sorted(held.items())
     }
 
@@ -107,7 +117,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     head = f'{got["month"]}: {got["spent_usd"]:.2f} USD ({got["unpriced_calls"]} unpriced)'
     tags = sorted(got['month_by_tag'].items(), key=lambda kv: -kv[1])
-    held = [f'  {b["spent_usd"]:9.2f} / {b["allotted_usd"]:9.2f}  {name}' for name, b in got['budgets'].items()]
+    held = [
+        f'  {b["spent_usd"]:9.2f} / {b["allotted_usd"]:9.2f}  {name}'
+        + ('' if b['default_usd'] is None else f'  (approved; default {b["default_usd"]:.2f})')
+        for name, b in got['budgets'].items()
+    ]
     sys.stdout.write('\n'.join([head, *(f'  {usd:9.2f}  {tag}' for tag, usd in tags), *held]) + '\n')
     return 0
 

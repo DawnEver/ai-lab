@@ -5,7 +5,8 @@ declared here because spend is MEASURED here, where calls are made; what one PR 
 its runner (dev-lab's review budget), which reads this report and never restates the number.
 
 ONE LEDGER. The source is :mod:`ai_lab.budget`'s token ledger (one row per call: tokens, model, time, tag); dollars
-are derived from it by :func:`ai_lab.prices.quote_for` at the call's time and never stored, so a corrected price
+are derived from it by :func:`ai_lab.budget.row_usd` at the call's time -- the same pricing a provider's
+``[ai_lab.spend_cap]`` is enforced with -- and never stored, so a corrected price
 re-prices history. A row this reader cannot price (a legacy row with no model, a model no catalog knows) is
 counted in ``unpriced_calls``, never as free.
 
@@ -27,8 +28,7 @@ from pathlib import Path
 from typing import Final
 
 from ai_lab import budget
-from ai_lab.prices import Quote, cost, quote_for
-from ai_lab.usage import Usage
+from ai_lab.prices import Quote
 
 __all__ = ['FAMILY_MONTHLY_USD', 'LOOKBACK_DAYS', 'SPEND_SCHEMA', 'report']
 
@@ -45,11 +45,6 @@ SPEND_SCHEMA: Final = 1
 Price = Callable[[str, datetime | None], Quote | None]
 
 
-def _default_price(client: str, at: datetime | None) -> Quote | None:
-    """The rate at *at*; the current one (catalogs read once) when no snapshot that old holds the model."""
-    return quote_for(client, at=at) or quote_for(client)
-
-
 def _rows(directory: Path, since: date) -> list[tuple[date, dict]]:
     found = []
     for path in sorted(directory.glob('tokens-*.jsonl')):
@@ -62,20 +57,10 @@ def _rows(directory: Path, since: date) -> list[tuple[date, dict]]:
     return found
 
 
-def _usd(row: dict, price: Price) -> float | None:
-    if not row.get('model'):
-        return None
-    at = datetime.fromisoformat(row['at']) if row.get('at') else None
-    usage = Usage(row.get('input', 0), row.get('output', 0), row.get('cached', 0))
-    quote = price(f'{row["provider"]}:{row["model"]}', at)
-    return cost(usage, None if quote is None else quote.price)
-
-
 def report(*, today: date | None = None, directory: Path | None = None, price: Price | None = None) -> dict:
     """The month's spend against :data:`FAMILY_MONTHLY_USD`, per tag, and the per-tag history to fit caps from."""
     today = datetime.now(UTC).date() if today is None else today
     directory = budget.state_dir() if directory is None else directory
-    price = _default_price if price is None else price
     month_start = today.replace(day=1)
     rows = _rows(directory, min(month_start, today - timedelta(days=LOOKBACK_DAYS - 1)))
     window = [day for day, _ in rows if day > today - timedelta(days=LOOKBACK_DAYS)]
@@ -83,7 +68,7 @@ def report(*, today: date | None = None, directory: Path | None = None, price: P
     month_by_tag: dict[str, float] = defaultdict(float)
     window_by_tag: dict[str, float] = defaultdict(float)
     for day, row in rows:
-        usd = _usd(row, price)
+        usd = budget.row_usd(row, price)
         in_month = day >= month_start
         if usd is None:
             unpriced += in_month
@@ -108,7 +93,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog='python -m ai_lab.spend', description=__doc__.splitlines()[0])
     parser.add_argument('--json', action='store_true', help='print the report as JSON')
     args = parser.parse_args(argv)
-    got = report(price=_default_price)
+    got = report()
     if args.json:
         sys.stdout.write(json.dumps(got, indent=1) + '\n')
         return 0

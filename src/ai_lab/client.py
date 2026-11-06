@@ -44,6 +44,7 @@ task's slot, never the default's. A task with no slot 1 is refused naming ``logi
 
 from __future__ import annotations
 
+import math
 import time
 import tomllib
 from collections.abc import Callable, Mapping
@@ -56,7 +57,7 @@ from lab_commons.paths import config_root
 
 from ai_lab import budget, emulate, retired, transport
 from ai_lab.answers import Basis, Decision, Response
-from ai_lab.errors import ACCOUNT_KINDS, DailyTokenCapReached, ProviderError, Unsupported
+from ai_lab.errors import ACCOUNT_KINDS, ProviderError, SpendCapReached, Unsupported
 from ai_lab.spec import DecisionRequest, ResponseRequest
 from ai_lab.usage import Usage
 from ai_lab.wire import WIRES
@@ -355,10 +356,10 @@ class Client:
                 break
             try:
                 return self._dispatch(build(key), budget.fingerprint(key)), slot
-            except DailyTokenCapReached as spent:
+            except SpendCapReached as spent:
                 if spent.scope == self.provider.name:
                     raise
-                failures.append(f'slot {slot}: {spent.scope} daily token cap')
+                failures.append(f'slot {slot}: {spent.scope} spend cap')
                 last = spent
                 continue
             except ProviderError as error:
@@ -367,16 +368,28 @@ class Client:
                 failures.append(f'slot {slot}: {error.kind}')
                 last = error
         msg = f'{self.provider.name}: every {whose}key slot for {host} failed ({", ".join(failures)}); last: {last}'
-        if isinstance(last, DailyTokenCapReached):
-            raise DailyTokenCapReached(msg, scope=last.scope) from last
+        if isinstance(last, SpendCapReached):
+            raise SpendCapReached(msg, scope=last.scope) from last
         raise ProviderError(msg, kind=last.kind) from last
 
     def _dispatch(self, call: transport.HttpCall, key: str | None) -> object:
-        """Send *call* within its provider's and *key*'s token budgets, and charge what its reply reports."""
-        left = budget.remaining(self.provider.name, key)
+        """Send *call* within its provider's and *key*'s spend caps, and charge what its reply reports.
+
+        Its ``max_tokens`` is what the tightest cap has left at the model's output rate; a capped call whose
+        model has no price is refused, since nothing could hold it to the cap.
+        """
+        left = budget.left_usd(self.provider.name, key)
+        client = f'{self.provider.name}:{self.model}'
+        held = None if math.isinf(left) else budget.rate(client)
+        if not math.isinf(left) and held is None:
+            rates = config_root('ai_lab') / 'prices.toml'
+            msg = f'{client} has no price, so its spend cap cannot hold it: declare its rate in {rates}'
+            raise Unsupported(msg)
         if 'max_tokens' in call.body:
             wanted = self.max_tokens or call.body['max_tokens']
-            call = replace(call, body={**call.body, 'max_tokens': min(wanted, left)})
+            if held is not None and held.price.output > 0:
+                wanted = min(wanted, max(1, math.floor(left / held.price.output * 1_000_000)))
+            call = replace(call, body={**call.body, 'max_tokens': wanted})
         if self.effort:
             call = self.wire.effort(call, self.effort)
         raw = self._post(call)

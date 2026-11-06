@@ -206,6 +206,23 @@ cached_input = 0.01
 output = 0.50
 ```
 
+Spend is capped in MONEY per provider per calendar month (UTC), declared once in the per-machine
+file (`~/.config/lab-commons/config.toml`); every caller derives from it (`ai_lab.budget.cap`,
+`ai_lab.budget.left_usd`) and never restates it. A paid provider with no row is refused at its first
+call -- there is no code default -- and `amount = inf` declares it uncapped. A call that would start
+with a scope spent is refused (`kind = "exhausted"`), and its `max_tokens` is clamped to what is left at
+the model's output rate (details: `ai_lab.budget`):
+
+```toml
+[ai_lab.spend_cap]
+openai = { amount = 50, currency = "USD" }
+deepseek = { amount = 100, currency = "CNY" }
+"anthropic/<key fingerprint>" = { amount = 10, currency = "USD" }   # one key of a provider
+
+[ai_lab.usd_per]
+CNY = 0.14
+```
+
 - `python -m ai_lab.providers [--json]` -- the resolved catalogue (see above).
 - `python -m ai_lab.call [--ledger PATH]` -- one call as JSON on stdin/stdout (see above).
 - `python -m ai_lab.prices CLIENT [...]` -- each catalog's quote, the consensus, agreement.

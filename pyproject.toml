@@ -78,11 +78,10 @@ collect = 'tests'
 output = "output/logs"
 # User ruling 2026-11-05: every test completes on GitHub Actions alone. `live` (every real-model call, Anthropic and
 # OpenAI) is one hosted linux row on a non-PR event -- the nightly schedule, whose run gates `integrate promote`, and a
-# manual dispatch -- never per PR (dev_lab.dev.jobparts.hosted_jobs). Its setup step alone holds the ONE repo secret,
-# the `live` task's key bundle (user ruling 2026-11-05: AI_LAB_KEYS_<TASK>), and hands it on stdin to the one key
-# door, `ai_lab.auth login --task live --bundle -`; the code never reads an environment key. dev-lab renders how the
-# secret reaches stdin (and a fresh runner's credential helper).
-hosted = { live = { secrets = ["AI_LAB_KEYS_LIVE"], setup = "python -m ai_lab.auth login --task live --bundle -" } }
+# manual dispatch -- never per PR (dev_lab.dev.jobparts.hosted_jobs). It names the key tasks it needs (user ruling
+# 2026-11-05: AI_LAB_KEYS_<TASK>); dev-lab renders how each bundle reaches the one key door,
+# `ai_lab.auth login --task <task> --bundle -`; the code never reads an environment key.
+hosted = { live = { tasks = ["live"] } }
 
 [tool.lab_commons.tests]
 produce = ["-m", "dev_lab.dev.verify", "--part", "{part}"]
@@ -110,5 +109,4 @@ NETWORK-VERB = "<venv python> -m dev_lab.dev.netverb -- <git push|fetch|pull|clo
 ENV-MUTATION-THROUGH-THE-DOOR = "<any family venv python> -m dev_lab.dev.dep --bootstrap <this checkout> --extra dev  (run from this checkout)"
 
 [tool.uv.sources]
-# Held at 6f6b042a (#116): the review door runs from the base, which must take --keys-env before the render passes it; relock 2 floats it again.
-dev-lab = { git = "https://github.com/DawnEver/dev-lab.git", rev = "6f6b042a558fd11a4ea17a0fc6f364b3ab4bb4d3" }
+dev-lab = { git = "https://github.com/DawnEver/dev-lab.git", branch = "integrate/main" }

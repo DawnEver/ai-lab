@@ -12,16 +12,12 @@ dependencies = [
 [package.optional-dependencies]
 dev = [
     { name = "dev-lab", extra = ["test"] },
-    { name = "pytest" },
-    { name = "ruff" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "dev-lab", extras = ["test"], marker = "extra == 'dev'", git = "https://github.com/DawnEver/dev-lab.git?branch=integrate%2Fmain" },
     { name = "lab-commons", extras = ["paths"], git = "https://github.com/DawnEver/lab-commons.git" },
-    { name = "pytest", marker = "extra == 'dev'" },
-    { name = "ruff", marker = "extra == 'dev'" },
 ]
 provides-extras = ["dev"]
 
@@ -304,8 +300,8 @@ wheels = [
 
 [[package]]
 name = "dev-lab"
-version = "0.0.1.dev2462+g35d368f9c"
-source = { git = "https://github.com/DawnEver/dev-lab.git?branch=integrate%2Fmain#35d368f9c74990c725932c1ebedc76a30f284eed" }
+version = "0.0.1.dev2467+g5aab8293d"
+source = { git = "https://github.com/DawnEver/dev-lab.git?branch=integrate%2Fmain#5aab8293d6342cf8a6df11e7c5b459cdbc53197a" }
 dependencies = [
     { name = "cryptography" },
     { name = "lab-commons", extra = ["io", "paths", "structured", "units"] },

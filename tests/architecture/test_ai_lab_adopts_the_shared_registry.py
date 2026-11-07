@@ -115,7 +115,6 @@ _ABSENT: Final = frozenset({
     'REGISTRY-OWNS-THE-DECISION', 'PRODUCTION-ENTRY-POINT',
     # Docs and memory: no rules pages, injected docs or memory tree in this repo.
     'DOCS-SPLIT', 'MEMORY-SHAPE', 'INJECTED-DOC-WIDTH-CEILING',
-    'NO-CJK-IN-TRACKED-SOURCE',
     # Code placement and scratch: one src/ and one tests/ tree, no scratch.
     'CODE-IN-CODE-ROOTS', 'SCRATCH-IS-NEVER-COMMITTED', 'STRAY-FILE-REFUSED', 'SPLIT-BY-CONCEPT',
     'TRACKED-CITES-NO-EPHEMERAL',
@@ -135,7 +134,8 @@ _ABSENT: Final = frozenset({
 #: Raised to 44 on 2026-10-23: the dev-lab split brought three rules with no mechanism here yet
 #: (STRAY-FILE-REFUSED, SPLIT-BY-CONCEPT, TRACKED-CITES-NO-EPHEMERAL).
 #: Lowered to 39 on 2026-10-26: the agent guard took AGENT-GUARD and the four rules it refuses.
-_ABSENT_CEILING: Final = 39
+#: Lowered to 38 on 2026-11-07: NO-CJK-IN-TRACKED-SOURCE is always on (dev_lab.dev.famtests.alwayson).
+_ABSENT_CEILING: Final = 38
 
 
 def test_every_rule_is_enforced_or_declared_absent() -> None:

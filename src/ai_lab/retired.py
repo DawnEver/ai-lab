@@ -18,7 +18,7 @@ __all__ = ['KINDS', 'RETIRED', 'Retired', 'refuse']
 
 #: What a retired spelling named.
 #: ``name`` is a spelling nothing reads any more, so nothing refuses it: it is scanned, never driven.
-KINDS: Final = frozenset({'provider', 'wire', 'field', 'auth', 'usage', 'name'})
+KINDS: Final = frozenset({'provider', 'wire', 'field', 'auth', 'usage', 'name', 'table', 'constant'})
 
 #: Why the two subscription doors left (user ruling 2026-10-20): ai-lab is the pay-per-token API layer.
 _API_ONLY = (
@@ -85,6 +85,22 @@ RETIRED: Final = (
     Retired(
         'name', 'AI_LAB_LIVE_OPENAI_KEY', 'AI_LAB_KEYS_LIVE',
         "one secret per task: the live task's key bundle (ai_lab.auth login --task live --bundle -)", '2026-11-05',
+    ),
+    Retired(
+        'table', 'daily_token_cap', 'spend_cap',
+        'a cap is MONEY per provider (amount + currency), priced per call; a token count was a second fact, '
+        'and its code default silently capped a 50 USD account at ~2 USD (2026-11-06)', '2026-11-06',
+    ),
+    Retired(
+        'constant', 'FAMILY_MONTHLY_USD', '[ai_lab.standing] review',
+        'one family number beside the provider caps was a second budget fact; the review draws on a standing '
+        'allotment carved out of its provider cap, and the spend report reads every level from ai_lab.budget',
+        '2026-11-06',
+    ),
+    Retired(
+        'name', 'DailyTokenCapReached', 'SpendCapReached',
+        'a cap is money per provider and per allotment level, so the error a spent one raises names spend, not tokens',
+        '2026-11-06',
     ),
 )  # fmt: skip
 

@@ -19,7 +19,7 @@ and the reply, always one JSON object::
 
 ``result`` is the schema object (respond) or ``{"basis", "answers": {name: answer}}`` (decide). A
 provider failure is CLASSIFIED, not crashed: ``ok`` is false, ``kind`` is :attr:`ProviderError.kind`
-(``""`` for an unclassified one), ``exhausted`` for a reached :class:`DailyTokenCapReached` (its scope in
+(``""`` for an unclassified one), ``exhausted`` for a reached :class:`SpendCapReached` (its scope in
 ``error``) or ``unsupported`` for :class:`Unsupported`, ``error`` names it --
 never a key -- and the exit status is 0. Only a MALFORMED request (not JSON, an unknown or missing
 field, a wrong type, an undeclared task, an EMPTY CONTEXT) exits non-zero (2), with the reason on stderr
@@ -43,7 +43,7 @@ from typing import Final
 
 from ai_lab.answers import Response
 from ai_lab.client import Client, connect, tasks
-from ai_lab.errors import ERROR_KINDS, DailyTokenCapReached, ProviderError, Unsupported
+from ai_lab.errors import ERROR_KINDS, ProviderError, SpendCapReached, Unsupported
 from ai_lab.ledger import Ledger, Mode
 from ai_lab.spec import (
     DecisionRequest,
@@ -213,8 +213,8 @@ def failure_reply(failed: Exception) -> dict:
     """The classified reply of a call that failed with *failed* (never a key in it)."""
     if isinstance(failed, Unsupported):
         return _reply(ok=False, kind='unsupported', error=str(failed))
-    if isinstance(failed, DailyTokenCapReached):  # temporary: today's tokens are spent, the account is not broken
-        return _reply(ok=False, kind='exhausted', error=f'{failed} (daily token cap of {failed.scope})')
+    if isinstance(failed, SpendCapReached):  # temporary: the month's cap is spent, the account is not broken
+        return _reply(ok=False, kind='exhausted', error=f'{failed} (spend cap of {failed.scope})')
     if isinstance(failed, ProviderError):
         return _reply(ok=False, kind=failed.kind, error=str(failed))
     raise TypeError(failed)
@@ -237,7 +237,7 @@ def answer(request: Mapping, *, ledger: str | None = None, **options: object) ->
         return _reply(
             ok=True, result={'basis': got.basis.value, 'answers': answers}, usage=got.usage, key_slot=got.key_slot
         )
-    except (Unsupported, ProviderError, DailyTokenCapReached) as failed:
+    except (Unsupported, ProviderError, SpendCapReached) as failed:
         return failure_reply(failed)
 
 

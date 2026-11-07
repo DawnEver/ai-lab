@@ -70,8 +70,9 @@ def post(call: HttpCall, *, timeout_s: float = HTTP_CEILING_S, attempts: int = 3
 
     def parsed(text: str) -> tuple[bool, object]:
         body = json.loads(text)
-        # A 200 carrying only an error (DeepSeek's overloaded queue) is a failed call, judged as a status.
-        if not (isinstance(body, dict) and 'error' in body and 'choices' not in body):
+        # A 200 carrying only an error (DeepSeek's overloaded queue) is a failed call, judged as a status;
+        # OpenAI Responses sends ``"error": null`` on every completed reply, and a null error is none.
+        if not (isinstance(body, dict) and body.get('error') is not None and 'choices' not in body):
             return True, body
         last = f'error body from {call.url}: {str(body["error"])[:500]}'
         if any(marker in last for marker in _EXHAUSTED):

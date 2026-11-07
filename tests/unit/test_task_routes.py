@@ -6,13 +6,15 @@ a listed class; one TOML bundle per task replaces that task's slots. Every secre
 
 import io
 import json
+import os
+from pathlib import Path
 
 import pytest
 from lab_commons.credentials import api_keys
 
 from ai_lab import ProviderError, ResponseRequest, Text, Unsupported, auth, budget, connect
 from ai_lab.client import ERROR_CLASSES, FALL_OVER_ON, error_class, routes, tasks, user_routes_file
-from ai_lab.errors import DailyTokenCapReached
+from ai_lab.errors import SpendCapReached
 from ai_lab.review.method import REVIEW_TASK, configured_providers, default_config
 from tests.unit.test_one_account import _post
 
@@ -63,6 +65,9 @@ def routed(credential_store):
     (root / 'providers.toml').write_text(_ROWS, encoding='utf-8')
     credential_store('alpha.test', 'sk-alpha-work', 'api-key-work')
     credential_store('beta.test', 'sk-beta-work', 'api-key-work')
+    machine = Path(os.environ['LAB_COMMONS_CONFIG'])  # the user rows are paid: declare them uncapped too
+    caps = ''.join(f'{n} = {{ amount = inf, currency = "USD" }}\n' for n in ('alpha', 'beta'))
+    machine.write_text(machine.read_text('utf-8') + caps, encoding='utf-8')
 
     def write(text):
         user_routes_file().write_text(text, encoding='utf-8')
@@ -84,7 +89,7 @@ def _ledger():
         (ProviderError('x', kind='auth', status=401), 'auth'),
         (ProviderError('x', kind='auth', status=403), 'auth'),
         (ProviderError('x', kind='exhausted', status=402), 'quota'),
-        (DailyTokenCapReached('x', scope='alpha'), 'quota'),
+        (SpendCapReached('x', scope='alpha'), 'quota'),
         (ProviderError('x', kind='rate_limit', status=429), 'rate_limit'),
         (ProviderError('x', kind='rate_limit', status=529), 'rate_limit'),
         (ProviderError('x', status=503), 'server'),

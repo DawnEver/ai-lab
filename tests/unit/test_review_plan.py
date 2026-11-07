@@ -160,7 +160,7 @@ def test_the_module_refuses_a_malformed_request_with_exit_2(monkeypatch, capsys,
 # has a declared ceiling, the current size plus a small margin, that may only go down.
 
 #: Characters of the largest rendered prompt with an empty diff and manifest.
-PROMPT_BUDGET_CHARS = 6600  # raised 2026-10-31: the huge tier states its structural brief (largest 6528)
+PROMPT_BUDGET_CHARS = 6700  # raised 2026-11-07: the 1106 relock's registry (75 ids) is cited in full (largest 6615)
 #: How far the ceiling may sit above the largest prompt before it must be lowered.
 MARGIN_CHARS = 100
 EMPTY = {'range': '', 'excludedSummary': '', 'diff': '', 'manifest': ''}

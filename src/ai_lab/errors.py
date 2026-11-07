@@ -1,7 +1,7 @@
 """The four ways a call cannot produce what was asked, each naming its remedy."""
 
 __all__ = [
-    'ACCOUNT_KINDS', 'ERROR_KINDS', 'BatchLapsed', 'DailyTokenCapReached', 'ProviderError', 'ReplayMiss',
+    'ACCOUNT_KINDS', 'ERROR_KINDS', 'BatchLapsed', 'ProviderError', 'ReplayMiss', 'SpendCapReached',
     'Unsupported',
 ]  # fmt: skip
 
@@ -51,8 +51,8 @@ class ReplayMiss(Exception):
     """A replay ledger holds no entry for this exact request. Re-record it with mode='record'."""
 
 
-class DailyTokenCapReached(Exception):
-    """A provider's or a key's tokens today reached its ``[ai_lab.daily_token_cap]``; no call starts there."""
+class SpendCapReached(Exception):
+    """A provider's or a key's spend this month reached its ``[ai_lab.spend_cap]``; no call starts there."""
 
     def __init__(self, message: str, *, scope: str) -> None:
         """Carry ``scope``, the provider or key whose cap was reached."""

@@ -209,7 +209,7 @@ def reset_day() -> int:
 
 
 def month_start(today: date, day: int | None = None) -> date:
-    """The day the month holding *today* opened: its reset *day* (default :func:`reset_day`), else the previous one's."""
+    """The day the month holding *today* opened: its reset *day* (default :func:`reset_day`), else the prior one's."""
     day = reset_day() if day is None else day
     if today.day >= day:
         return today.replace(day=day)

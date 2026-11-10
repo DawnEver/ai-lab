@@ -81,7 +81,12 @@ _MECHANISMS: Final = {
     # lands on a merged PR).
     'DRAFT-UNTIL-READY': (TestPath('pyproject.toml'),),
     'FORGE-DOORS-ARE-CONSENT': (TestPath('pyproject.toml'),),
-    'NO-PUSH-ONTO-A-LANDED-PR': (TestPath('pyproject.toml'),),
+    # Adopted 2026-11-10 (dev-lab #320, as numerics-lab): the rendered `continue.yml` push job, which replaces the
+    # retired NO-PUSH-ONTO-A-LANDED-PR, and the base pre-push row `closed-push`.
+    'LANDED-BRANCH-CONTINUES': (TestPath('.github/workflows/continue.yml'),),
+    'NO-PUSH-ONTO-A-CLOSED-PR': (TestPath('pyproject.toml'),),
+    # Adopted 2026-11-07 with dev-lab #304: the base pre-push row `pr-current` this pyproject's hooks table runs.
+    'PR-HEAD-IS-CURRENT': (TestPath('pyproject.toml'),),
     # Adopted 2026-10-24 with dev-lab 1d74f38: the October summary is the first month this tree holds.
     'MONTHLY-PLANS-CARRIED': (TestPath('tests/architecture/test_every_month_carries_its_plans.py'),),
     # Adopted 2026-10-26 with dev-lab c9eaa7f: the agent guard ships in every family repo; the rendered
@@ -115,7 +120,6 @@ _ABSENT: Final = frozenset({
     'REGISTRY-OWNS-THE-DECISION', 'PRODUCTION-ENTRY-POINT',
     # Docs and memory: no rules pages, injected docs or memory tree in this repo.
     'DOCS-SPLIT', 'MEMORY-SHAPE', 'INJECTED-DOC-WIDTH-CEILING',
-    'NO-CJK-IN-TRACKED-SOURCE',
     # Code placement and scratch: one src/ and one tests/ tree, no scratch.
     'CODE-IN-CODE-ROOTS', 'SCRATCH-IS-NEVER-COMMITTED', 'STRAY-FILE-REFUSED', 'SPLIT-BY-CONCEPT',
     'TRACKED-CITES-NO-EPHEMERAL',
@@ -135,7 +139,8 @@ _ABSENT: Final = frozenset({
 #: Raised to 44 on 2026-10-23: the dev-lab split brought three rules with no mechanism here yet
 #: (STRAY-FILE-REFUSED, SPLIT-BY-CONCEPT, TRACKED-CITES-NO-EPHEMERAL).
 #: Lowered to 39 on 2026-10-26: the agent guard took AGENT-GUARD and the four rules it refuses.
-_ABSENT_CEILING: Final = 39
+#: Lowered to 38 on 2026-11-07: NO-CJK-IN-TRACKED-SOURCE is always on (dev_lab.dev.famtests.alwayson).
+_ABSENT_CEILING: Final = 38
 
 
 def test_every_rule_is_enforced_or_declared_absent() -> None:

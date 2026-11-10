@@ -81,7 +81,10 @@ _MECHANISMS: Final = {
     # lands on a merged PR).
     'DRAFT-UNTIL-READY': (TestPath('pyproject.toml'),),
     'FORGE-DOORS-ARE-CONSENT': (TestPath('pyproject.toml'),),
-    'NO-PUSH-ONTO-A-LANDED-PR': (TestPath('pyproject.toml'),),
+    # Adopted 2026-11-10 (dev-lab #320, as numerics-lab): the rendered `continue.yml` push job, which replaces the
+    # retired NO-PUSH-ONTO-A-LANDED-PR, and the base pre-push row `closed-push`.
+    'LANDED-BRANCH-CONTINUES': (TestPath('.github/workflows/continue.yml'),),
+    'NO-PUSH-ONTO-A-CLOSED-PR': (TestPath('pyproject.toml'),),
     # Adopted 2026-11-07 with dev-lab #304: the base pre-push row `pr-current` this pyproject's hooks table runs.
     'PR-HEAD-IS-CURRENT': (TestPath('pyproject.toml'),),
     # Adopted 2026-10-24 with dev-lab 1d74f38: the October summary is the first month this tree holds.

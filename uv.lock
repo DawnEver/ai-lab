@@ -300,8 +300,8 @@ wheels = [
 
 [[package]]
 name = "dev-lab"
-version = "0.0.1.dev2721+gd59129b90"
-source = { git = "https://github.com/DawnEver/dev-lab.git?branch=integrate%2Fmain#d59129b90d34d92d3499c193fd7962be6785b34c" }
+version = "0.0.1.dev2733+g1cefc560c"
+source = { git = "https://github.com/DawnEver/dev-lab.git?branch=integrate%2Fmain#1cefc560c077ed5d0108b767dbbaec6967c30b31" }
 dependencies = [
     { name = "cryptography" },
     { name = "lab-commons", extra = ["io", "paths", "structured", "units"] },
@@ -459,8 +459,8 @@ wheels = [
 
 [[package]]
 name = "lab-commons"
-version = "0.3.1.dev1400+gd869c6ca3"
-source = { git = "https://github.com/DawnEver/lab-commons.git#d869c6ca34ecceeda43eb08c73c2ba4365e7e3c8" }
+version = "0.3.1.dev1421+g32cdb00cd"
+source = { git = "https://github.com/DawnEver/lab-commons.git#32cdb00cd188777e9fa52c6858e43675872543e6" }
 
 [package.optional-dependencies]
 io = [

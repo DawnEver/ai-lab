@@ -65,7 +65,6 @@ ignore = ["COM812", "D203", "D213", "D400", "D401", "N818", "PLR0913", "Q000", "
 [tool.dev_lab.branchset]
 trunk = 'main'
 sessions = ['integrate/main']
-ephemeral = ['pr/*']
 prune_merged = true
 
 [tool.lab_commons.hpc]

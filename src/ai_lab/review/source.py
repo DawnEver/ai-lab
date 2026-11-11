@@ -10,7 +10,7 @@ A review (:mod:`ai_lab.review.__main__`) and a judge (:mod:`ai_lab.review.judge`
 
 A bundle holds the CHANGED files only. A read past them -- ``show`` of an unchanged file, ``grep`` -- answers from
 what it holds and says so, and :meth:`BundleSource.head_text` raises :class:`NotHeld` rather than call an unheld
-file absent. A ``binary`` file carries blob ids only: it is a changed path whose content is not held. A bundle
+file absent. A ``binary`` file (the judge's ``binary`` verdict) is not written: a changed path whose content is not held. A bundle
 carries no commits: its log is empty, and the summary's intent is the memory it adds plus ``--pr-body``.
 """
 
@@ -29,8 +29,9 @@ from ai_lab.review.summary import MEMORY_CHARS, MEMORY_ROOT, git_intent
 
 __all__ = ['BUNDLE_VERSION', 'BundleSource', 'GitSource', 'NotHeld', 'Source']
 
-#: The review bundle format this module reads (dev-lab ``reviewbundle.VERSION``).
-BUNDLE_VERSION: Final = 1
+#: The review bundle format this module reads: dev-lab ``reviewbundle.VERSION``, the materialized ``bundle.json``
+#: with each file row carrying the judge's ``binary`` verdict (dev-lab ``reviewbundle._reviewer_doc``).
+BUNDLE_VERSION: Final = 2
 
 _NO_MATCH: Final = '(nothing: no match)'
 

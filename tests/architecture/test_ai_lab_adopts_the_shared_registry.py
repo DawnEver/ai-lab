@@ -96,7 +96,7 @@ _MECHANISMS: Final = {
          'INJECTED-TEXT-IS-PROGRESSIVE',
          # Gained 2026-10-29 with dev-lab 5abf8c4d: RECURSIVE-DELETE is a shipped deny rule, and the guard's
          # WIRING installs the `dev_lab.dev.pushwatch` PostToolUse advisory the live test pins.
-         'RECURSIVE-DELETE', 'PUSHED-HEAD-IS-WATCHED',
+         'RECURSIVE-DELETE', 'PUSHED-HEAD-IS-WATCHED', 'SESSION-HEARS-ITS-PRS',
          # Gained 2026-11-07 with dev-lab 8c4ab734: the guard refuses a write outside the checkout.
          'WRITES-STAY-IN-THE-TREE'),
         (TestPath('tests/architecture/test_the_agent_guard_is_live.py'),),

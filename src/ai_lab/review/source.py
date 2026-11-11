@@ -10,8 +10,8 @@ A review (:mod:`ai_lab.review.__main__`) and a judge (:mod:`ai_lab.review.judge`
 
 A bundle holds the CHANGED files only. A read past them -- ``show`` of an unchanged file, ``grep`` -- answers from
 what it holds and says so, and :meth:`BundleSource.head_text` raises :class:`NotHeld` rather than call an unheld
-file absent. A ``binary`` file (the judge's ``binary`` verdict) is not written: a changed path whose content is not held. A bundle
-carries no commits: its log is empty, and the summary's intent is the memory it adds plus ``--pr-body``.
+file absent. A ``binary`` file (the judge's ``binary`` verdict) is not written: a changed path whose content is not
+held. A bundle carries no commits: its log is empty, and the summary's intent is the memory it adds plus ``--pr-body``.
 """
 
 from __future__ import annotations

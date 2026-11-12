@@ -16,7 +16,7 @@ from ai_lab.answers import (
     ScoreAnswer,
 )
 from ai_lab.client import Client, Provider, catalogue, connect
-from ai_lab.errors import ProviderError, ReplayMiss, SpendCapReached, Unsupported
+from ai_lab.errors import CallCapReached, ProviderError, ReplayMiss, SpendCapReached, Unsupported
 from ai_lab.ledger import Ledger, Mode, Recorded
 from ai_lab.protocols import Decider, Responder
 from ai_lab.rules import Rules
@@ -36,6 +36,7 @@ from ai_lab.spec import (
 __all__ = [
     'Answer',
     'Basis',
+    'CallCapReached',
     'Choice',
     'ChoiceAnswer',
     'Client',

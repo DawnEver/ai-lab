@@ -168,6 +168,8 @@ class Provider:
     typesafe_path: str = ''
     #: ``{role: model}`` over :data:`ROLES` -- the model each Claude-class role resolves to.
     models: Mapping[str, str] = field(default_factory=dict)
+    #: Calls the account may make per UTC day (the vendor's requests-per-day quota); ``0`` declares none.
+    daily_calls: int = 0
 
     def __post_init__(self) -> None:
         """Refuse an unknown wire or auth kind, a wire with no path, a url with a path, a malformed role map."""
@@ -193,6 +195,9 @@ class Provider:
             raise Unsupported(msg)
         if self.models and 'base' not in self.models:
             msg = f"{where}: a models map needs 'base', the default of every other role"
+            raise Unsupported(msg)
+        if not isinstance(self.daily_calls, int) or isinstance(self.daily_calls, bool) or self.daily_calls < 0:
+            msg = f'{where}: daily_calls must be a non-negative integer (0: no quota), got {self.daily_calls!r}'
             raise Unsupported(msg)
 
     @property
@@ -607,6 +612,7 @@ class Client:
 
     def _dispatch(self, call: transport.HttpCall, key: str | None) -> object:
         """Send *call* within every enclosing level (:func:`ai_lab.budget.room`), and charge what its reply reports."""
+        budget.require_call(self.provider.name, self.provider.daily_calls)
         raw = self._post(self._bounded(call, key))
         if (usage := self._usage(raw)) is not None:
             budget.charge(self.provider.name, key, usage, self.model, tag=self.tag, fallback_from=self.fallback_from)

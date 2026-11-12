@@ -8,6 +8,7 @@
 # unmetered), and its AUTH KIND (ai_lab.client.AUTH_KINDS): "api" (a keyed account, billed per token)
 # or "local" (a keyless server you run). ai-lab is the pay-per-token API layer only; retired spellings
 # are refused by name (ai_lab.retired). Which verbs a row has is read off the wire's code, never here.
+# A row may declare "daily_calls" = N, the account's requests-per-day quota, refused past it (0: none).
 # A row may declare "model_wires" = {model = wire}: a model of the SAME account that one wire of
 # its vendor serves instead of the row's default (OpenAI's /decisions endpoint serves gpt-6-luna).
 # One provider is ONE ACCOUNT KIND OF ONE VENDOR; a second door into an account is a model_wires entry,
@@ -50,6 +51,10 @@ key_name = "GEMINI_API_KEY"
 vision = true
 vendor = "google"
 auth = "api"
+model_wires = { "gemini-decision-1" = "gemini_decisions" }
+# The free tier's gemini-decision-1 quota (aistudio.google.com/docs/rate-limits, read 2026-11-12: 200 RPM,
+# 10,000 RPD); a paid tier raises it in the user's providers.toml.
+daily_calls = 10000
 
 [openrouter]
 wire = "openai_chat"

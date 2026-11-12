@@ -13,6 +13,7 @@ from types import MappingProxyType
 from ai_lab.wire import (
     anthropic_messages,
     gemini,
+    gemini_decisions,
     openai_chat,
     openai_chat_json,
     openai_decisions,
@@ -29,6 +30,7 @@ WIRES: Mapping[str, Wire] = MappingProxyType(
         for module in (
             anthropic_messages,
             gemini,
+            gemini_decisions,
             openai_chat,
             openai_chat_json,
             openai_decisions,

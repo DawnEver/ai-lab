@@ -14,6 +14,7 @@ __all__ = [
     'Usage',
     'anthropic_usage',
     'chat_usage',
+    'decisions_usage',
     'gemini_usage',
     'responses_usage',
 ]
@@ -90,3 +91,11 @@ def gemini_usage(raw: object) -> Usage | None:
         _int(block, 'cachedContentTokenCount'),
         thoughts,
     )
+
+
+def decisions_usage(raw: object) -> Usage | None:
+    """Google Decisions: ``usage.total_input_tokens``; it generates no output tokens."""
+    block = raw.get('usage') if isinstance(raw, Mapping) else None
+    if not isinstance(block, Mapping):
+        return None
+    return Usage(_int(block, 'total_input_tokens'), _int(block, 'total_output_tokens'), 0)

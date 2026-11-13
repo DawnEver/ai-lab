@@ -45,7 +45,7 @@ _MECHANISMS: Final = {
     # spelling found in any other tracked file reds (a planted leftover must be found).
     'RETIRED-NAMES-REGISTERED': (TestPath('tests/architecture/test_retired_names_are_registered.py'),),
     # Adopted 2026-10-20 with the ledger's first schema change (schema 2 dropped usage.cost_usd).
-    'FORMATS-UPGRADE-ON-READ': (TestPath('tests/unit/test_ledger_and_rules.py'),),
+    'FORMATS-MIGRATE-ONCE': (TestPath('tests/unit/test_ledger_and_rules.py'),),
     # integrate/main and main are declared in pyproject.toml; the base table's `session-branch` pre-push
     # row refuses the three push-side violations, and the one writer is git's own (guarded from force by it).
     **dict.fromkeys(

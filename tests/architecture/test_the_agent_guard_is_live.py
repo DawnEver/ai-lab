@@ -23,6 +23,7 @@ _SHIPPED: Final = frozenset(
         'BARE-INTERPRETER',
         'BARE-PYTHON',
         'BARE-TEST-INVOCATION',
+        'COMMIT-HOOKS-RUN',  # gained 2026-11-13 with dev-lab 61560e40
         'CONSENT-CODE-FROM-THE-USER',
         'FORGE-WRITE-VIA-CLI',
         'FORGE-WRITE-VIA-GH-API',

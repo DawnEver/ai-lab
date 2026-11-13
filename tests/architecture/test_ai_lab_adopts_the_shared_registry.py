@@ -45,7 +45,7 @@ _MECHANISMS: Final = {
     # spelling found in any other tracked file reds (a planted leftover must be found).
     'RETIRED-NAMES-REGISTERED': (TestPath('tests/architecture/test_retired_names_are_registered.py'),),
     # Adopted 2026-10-20 with the ledger's first schema change (schema 2 dropped usage.cost_usd).
-    'FORMATS-UPGRADE-ON-READ': (TestPath('tests/unit/test_ledger_and_rules.py'),),
+    'FORMATS-MIGRATE-ONCE': (TestPath('tests/unit/test_ledger_and_rules.py'),),
     # integrate/main and main are declared in pyproject.toml; the base table's `session-branch` pre-push
     # row refuses the three push-side violations, and the one writer is git's own (guarded from force by it).
     **dict.fromkeys(
@@ -87,6 +87,10 @@ _MECHANISMS: Final = {
     'NO-PUSH-ONTO-A-CLOSED-PR': (TestPath('pyproject.toml'),),
     # Adopted 2026-11-07 with dev-lab #304: the base pre-push row `pr-current` this pyproject's hooks table runs.
     'PR-HEAD-IS-CURRENT': (TestPath('pyproject.toml'),),
+    # Adopted 2026-11-13 with dev-lab 61560e40: the base pre-push row `milestone-base` (dev_lab.dev.milestonebase)
+    # this pyproject's hooks table runs refuses both.
+    'BASE-HOLDS-THE-MILESTONE': (TestPath('pyproject.toml'),),
+    'VERSION-TAG-NEEDS-APPROVAL': (TestPath('pyproject.toml'),),
     # Adopted 2026-10-24 with dev-lab 1d74f38: the October summary is the first month this tree holds.
     'MONTHLY-PLANS-CARRIED': (TestPath('tests/architecture/test_every_month_carries_its_plans.py'),),
     # Adopted 2026-10-26 with dev-lab c9eaa7f: the agent guard ships in every family repo; the rendered
@@ -98,7 +102,10 @@ _MECHANISMS: Final = {
          # WIRING installs the `dev_lab.dev.pushwatch` PostToolUse advisory the live test pins.
          'RECURSIVE-DELETE', 'PUSHED-HEAD-IS-WATCHED', 'SESSION-HEARS-ITS-PRS',
          # Gained 2026-11-07 with dev-lab 8c4ab734: the guard refuses a write outside the checkout.
-         'WRITES-STAY-IN-THE-TREE'),
+         'WRITES-STAY-IN-THE-TREE',
+         # Gained 2026-11-13 with dev-lab 61560e40: the guard's WIRING installs the `dev_lab.dev.walls`
+         # PostToolUse and Stop hooks the live test pins.
+         'WALLS-ARE-RECORDED'),
         (TestPath('tests/architecture/test_the_agent_guard_is_live.py'),),
     ),
 }  # fmt: skip

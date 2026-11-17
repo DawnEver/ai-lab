@@ -105,7 +105,11 @@ _MECHANISMS: Final = {
          'WRITES-STAY-IN-THE-TREE',
          # Gained 2026-11-13 with dev-lab 61560e40: the guard's WIRING installs the `dev_lab.dev.walls`
          # PostToolUse and Stop hooks the live test pins.
-         'WALLS-ARE-RECORDED'),
+         'WALLS-ARE-RECORDED',
+         # Gained 2026-11-17 with dev-lab b9875921: the per-module rows above became one `dev_lab.dev.hookdispatch`
+         # row per event, and the deny engine took the journal door (TRACKED-CITES-NO-EPHEMERAL) and the
+         # subagent refusal of heavy runs (HEAVY-IS-THE-MAIN-SESSIONS), each a shipped rule the live test pins.
+         'TRACKED-CITES-NO-EPHEMERAL', 'HEAVY-IS-THE-MAIN-SESSIONS'),
         (TestPath('tests/architecture/test_the_agent_guard_is_live.py'),),
     ),
 }  # fmt: skip
@@ -129,7 +133,6 @@ _ABSENT: Final = frozenset({
     'DOCS-SPLIT', 'MEMORY-SHAPE', 'INJECTED-DOC-WIDTH-CEILING',
     # Code placement and scratch: one src/ and one tests/ tree, no scratch.
     'CODE-IN-CODE-ROOTS', 'SCRATCH-IS-NEVER-COMMITTED', 'STRAY-FILE-REFUSED', 'SPLIT-BY-CONCEPT',
-    'TRACKED-CITES-NO-EPHEMERAL',
     # Meta-rules about guards: the guards above are the family's shared bodies, which carry them.
     'DECLARATION-LIES', 'PLANTED-CONTROL', 'FLOOR-ON-EVERY-SCAN', 'ESCAPE-HATCH-CEILING', 'RATCHET-TWO-SIDES',
     'NAMED-SETS-NOT-COUNTS', 'XFAIL-NOT-SKIP', 'MODULE-SIZE-ALARM',
@@ -147,7 +150,8 @@ _ABSENT: Final = frozenset({
 #: (STRAY-FILE-REFUSED, SPLIT-BY-CONCEPT, TRACKED-CITES-NO-EPHEMERAL).
 #: Lowered to 39 on 2026-10-26: the agent guard took AGENT-GUARD and the four rules it refuses.
 #: Lowered to 38 on 2026-11-07: NO-CJK-IN-TRACKED-SOURCE is always on (dev_lab.dev.famtests.alwayson).
-_ABSENT_CEILING: Final = 38
+#: Lowered to 37 on 2026-11-17: TRACKED-CITES-NO-EPHEMERAL became a shipped deny rule of the agent guard.
+_ABSENT_CEILING: Final = 37
 
 
 def test_every_rule_is_enforced_or_declared_absent() -> None:

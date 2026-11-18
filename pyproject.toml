@@ -76,11 +76,11 @@ collect = 'tests'
 [tool.dev_lab.parts]
 output = "output/logs"
 # User ruling 2026-11-05: every test completes on GitHub Actions alone. `live` (every real-model call, Anthropic and
-# OpenAI) is one hosted linux row on a non-PR event -- the nightly schedule, whose run gates `integrate promote`, and a
-# manual dispatch -- never per PR (dev_lab.dev.jobparts.hosted_jobs). It names the key tasks it needs (user ruling
+# OpenAI) is one hosted linux row run ONLY on a manual dispatch -- never nightly, never per PR, never on the promote gate
+# (user ruling D66, 2026-11-18; dev_lab.dev.jobparts.hosted_jobs). It names the key tasks it needs (user ruling
 # 2026-11-05: AI_LAB_KEYS_<TASK>); dev-lab renders how each bundle reaches the one key door,
 # `ai_lab.auth login --task <task> --bundle -`; the code never reads an environment key.
-hosted = { live = { tasks = ["live"] } }
+hosted = { live = { tasks = ["live"], manual = true } }  # real provider calls run only on a manual dispatch (D66)
 
 [tool.lab_commons.tests]
 produce = ["-m", "dev_lab.dev.verify", "--part", "{part}"]

@@ -50,9 +50,13 @@ _MECHANISMS: Final = {
     # row refuses the three push-side violations, and the one writer is git's own (guarded from force by it).
     **dict.fromkeys(
         ('ONE-WRITER-PER-SESSION-BRANCH', 'PUBLISH-IS-THE-LOCAL-REF', 'SESSION-HISTORY-ONLY-GROWS',
-         'INTEGRATION-IS-MERGES-ONLY', 'ORIGIN-HOLDS-ONLY-DECLARED-BRANCHES'),
+         'INTEGRATION-IS-MERGES-ONLY', 'ORIGIN-HOLDS-ONLY-DECLARED-BRANCHES',
+         'PUSHED-HEAD-CARRIES-ITS-TASK'),
         (TestPath('pyproject.toml'), TestPath('tests/architecture/test_session_branch_pushes_are_guarded.py')),
     ),
+    # The rendered agent wiring refuses a hook row over the five-second budget (WireRefused) unless detached;
+    # the live-guard test fails when the installed wiring differs from that render.
+    'HOOK-UNDER-FIVE-SECONDS': (TestPath('tests/architecture/test_the_agent_guard_is_live.py'),),
     # Adopted 2026-10-19, as optimi-lab: `[tool.dev_lab.integrator]` declares integrate/main and main.
     # `forge sync` merges integrate/main only and `forge integration` retargets a PR opened against main
     # (both read that table); main moves only by `integrate promote`, whose admission is the kit's with no

@@ -9,7 +9,7 @@ ONE LEDGER. The source is :mod:`ai_lab.budget`'s token ledger (one row per call:
 are derived from it by :func:`ai_lab.budget.row_usd` at the call's time -- the same pricing a provider's
 ``[ai_lab.spend_cap]`` is enforced with -- and never stored, so a corrected price
 re-prices history. A row this reader cannot price (a legacy row with no model, a model no catalog knows) is
-counted in ``unpriced_calls``, never as free.
+counted in ``unpriced_calls``, never as free; a torn ledger line is counted in ``bad_lines``, never a failed report.
 
 The ledger is machine-local (:func:`ai_lab.budget.state_dir`), so a family served by several hosts reads each
 host's share only: a report is THIS host's month, and an ephemeral runner's is its own run.
@@ -44,16 +44,18 @@ SPEND_SCHEMA: Final = 2
 Price = Callable[[str, datetime | None], Quote | None]
 
 
-def _rows(directory: Path, since: date) -> list[tuple[date, dict]]:
-    found = []
+def _rows(directory: Path, since: date) -> tuple[list[tuple[date, dict]], int]:
+    found, bad = [], 0
     for path in sorted(directory.glob('tokens-*.jsonl')):
         try:
             day = date.fromisoformat(path.stem.removeprefix('tokens-'))
         except ValueError:
             continue
         if day >= since:
-            found += [(day, json.loads(line)) for line in path.read_text('utf-8').splitlines() if line.strip()]
-    return found
+            rows, torn = budget.ledger_lines(path)
+            found += [(day, row) for row in rows]
+            bad += torn
+    return found, bad
 
 
 def budgets() -> dict[str, dict]:
@@ -80,7 +82,7 @@ def report(*, today: date | None = None, directory: Path | None = None, price: P
     today = datetime.now(UTC).date() if today is None else today
     directory = budget.state_dir() if directory is None else directory
     month_start = budget.month_start(today)
-    rows = _rows(directory, min(month_start, today - timedelta(days=LOOKBACK_DAYS - 1)))
+    rows, bad = _rows(directory, min(month_start, today - timedelta(days=LOOKBACK_DAYS - 1)))
     window = [day for day, _ in rows if day > today - timedelta(days=LOOKBACK_DAYS)]
     spent, unpriced = 0.0, 0
     month_by_tag: dict[str, float] = defaultdict(float)
@@ -102,7 +104,7 @@ def report(*, today: date | None = None, directory: Path | None = None, price: P
     return {
         'schema': SPEND_SCHEMA, 'budgets': budgets(), 'month': month_start.strftime('%Y-%m'),
         'month_opens': month_start.isoformat(),
-        'spent_usd': spent, 'unpriced_calls': unpriced, 'month_by_tag': dict(month_by_tag),
+        'spent_usd': spent, 'unpriced_calls': unpriced, 'bad_lines': bad, 'month_by_tag': dict(month_by_tag),
         'window': {'days': (today - first).days + 1, 'by_tag': dict(window_by_tag)},
     }  # fmt: skip
 

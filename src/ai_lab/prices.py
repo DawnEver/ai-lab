@@ -224,6 +224,9 @@ def quote(
         return Quote(price, 'prices.toml', agreed=True, sources={'prices.toml': price})
     if not vendor:
         return None
+    if at is not None and at.utcoffset() is None:
+        msg = f'the call time {at.isoformat()} carries no timezone: a ledger row states its UTC offset (#11)'
+        raise ValueError(msg)
     directory = snapshot_dir() if directory is None else directory
     key = f'{vendor}/{model}'
     now = datetime.now(UTC)
@@ -236,14 +239,15 @@ def quote(
             payload = {'fetched_at': now.isoformat(), 'quotes': {key: fetched}}
             (directory / f'{_stamp(now)}.json').write_text(json.dumps(payload, indent=1), 'utf-8')
             held.append((now, fetched))
+    after = ''
     if not held:
         later = [(t, s['quotes'][key]) for t, s in _snapshots(directory) if key in s.get('quotes', {})]
         if not later:
             return None
-        held = later[:1]
+        held, after = later[:1], ' (later than the call: no snapshot that old holds it)'
     sources = {name: Price(**p) for name, p in held[-1][1].items()}
     price, agreed = _consensus(sources)
-    return Quote(price, f'catalogs@{_stamp(held[-1][0])}', agreed, sources)
+    return Quote(price, f'catalogs@{_stamp(held[-1][0])}{after}', agreed, sources)
 
 
 def _user_prices() -> dict[str, Mapping[str, float]]:

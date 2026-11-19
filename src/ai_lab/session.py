@@ -1,16 +1,16 @@
-"""``python -m ai_lab.session <claude|codex> [args]``: mint the session id, run the agent CLI with ``LAB_SESSION`` set.
+"""``python -m ai_lab.session <claude|codex|agy> [args]``: mint the session id, run the agent CLI with ``LAB_SESSION``.
 
 The ONE launcher every launch path calls (PLAN-a-short-robust-toolchain P4). ``LAB_SESSION`` is one id per agent
-session, inherited by every child (a subagent, a takeover, a codex run) and stamped as ``Lab-Session`` at
+session, inherited by every child (a subagent, a takeover, a codex or agy run) and stamped as ``Lab-Session`` at
 commit-msg by dev-lab. The id is, in order:
 
 1. inherited -- ``LAB_SESSION``, or the runtime's own (``CLAUDE_CODE_SESSION_ID``, ``CODEX_SESSION_ID``,
-   ``CODEX_THREAD_ID``): a launch inside a session belongs to it;
+   ``CODEX_THREAD_ID``, ``ANTIGRAVITY_CONVERSATION_ID``): a launch inside a session belongs to it;
 2. the vendor's conversation id named in the args (``--resume <id>``, ``-r <id>``, ``--session-id <id>``;
-   ``codex resume <id>``), so a resumed conversation keeps its id;
+   ``codex resume <id>``; ``agy --conversation <id>``), so a resumed conversation keeps its id;
 3. a fresh UUID. A fresh Claude conversation is pinned to it with ``--session-id`` so a later ``--resume <id>``
    finds the same id; one that cannot be pinned (``--continue``, a bare ``--resume`` picker, a ``claude
-   <command>``) or a fresh Codex launch only carries it.
+   <command>``) or a fresh Codex or Antigravity launch only carries it.
 """
 
 from __future__ import annotations
@@ -30,10 +30,10 @@ __all__ = ['AGENTS', 'ENV', 'launch', 'session_id']
 ENV: Final = 'LAB_SESSION'
 
 #: The agent CLIs this launcher runs.
-AGENTS: Final = ('claude', 'codex')
+AGENTS: Final = ('claude', 'codex', 'agy')
 
 #: The runtimes' own session ids, read after :data:`ENV`.
-_NATIVE: Final = ('CLAUDE_CODE_SESSION_ID', 'CODEX_SESSION_ID', 'CODEX_THREAD_ID')
+_NATIVE: Final = ('CLAUDE_CODE_SESSION_ID', 'CODEX_SESSION_ID', 'CODEX_THREAD_ID', 'ANTIGRAVITY_CONVERSATION_ID')
 
 #: ``claude <command>`` runs no conversation, so it is never pinned (``claude --help``, 2026-10-21).
 _CLAUDE_COMMANDS: Final = frozenset({
@@ -58,6 +58,8 @@ def _vendor(agent: str, args: Sequence[str]) -> str | None:
     """The conversation id *args* name for *agent*, or ``None``."""
     if agent == 'codex':
         return args[1] if len(args) > 1 and args[0] == 'resume' and not args[1].startswith('-') else None
+    if agent == 'agy':
+        return _value(args, ['--conversation'])
     return _value(args, ['--session-id']) or _value(args, ['--resume', '-r'])
 
 

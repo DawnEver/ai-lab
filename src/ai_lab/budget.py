@@ -48,7 +48,7 @@ import math
 import os
 import sys
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Self
@@ -135,10 +135,17 @@ def key_scope(provider: str, key: str) -> str:
 
 
 def rate(client: str, at: datetime | None = None) -> Quote | None:
-    """``provider:model``'s rate at *at* (the current one when no snapshot that old holds it); ``None``: unpriced."""
+    """``provider:model``'s rate at *at*; ``None``: unpriced.
+
+    With no snapshot holding it at all, today's rate is used and its origin says so (#11 item 4).
+    """
     from ai_lab.prices import quote_for  # noqa: PLC0415 -- prices reads the catalogue, which imports this module
 
-    return quote_for(client, at=at) or quote_for(client)
+    held = quote_for(client, at=at)
+    if held is not None or at is None:
+        return held
+    today = quote_for(client)
+    return None if today is None else replace(today, origin=f"{today.origin} (today's rate: none held at the call)")
 
 
 def priced(client: str, at: datetime | None = None) -> Quote:

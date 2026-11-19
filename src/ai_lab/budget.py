@@ -266,13 +266,26 @@ def row_usd(row: dict, price: Price | None = None) -> float | None:
     """
     from ai_lab.prices import BATCH_RATE, cost  # noqa: PLC0415 -- prices imports the catalogue, a cycle
 
-    if not row.get('model'):
+    if not row.get('model') or row.get('unmetered'):
         return None
     at = datetime.fromisoformat(row['at']) if row.get('at') else None
     held = (rate if price is None else price)(f'{row["provider"]}:{row["model"]}', at)
     usage = Usage(row.get('input', 0), row.get('output', 0), row.get('cached', 0))
     usd = cost(usage, None if held is None else held.price)
     return usd * BATCH_RATE if usd is not None and row.get('batch') else usd
+
+
+def ledger_lines(path: Path) -> tuple[list[dict], int]:
+    """*path*'s whole JSON rows and how many lines were torn: :func:`charge` appends unlocked, so a line may be."""
+    rows, bad = [], 0
+    for line in path.read_text('utf-8').splitlines():
+        if not line.strip():
+            continue
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            bad += 1
+    return rows, bad
 
 
 def _rows(provider: str, key: str | None, *, month: bool = True) -> list[dict]:
@@ -285,11 +298,13 @@ def _rows(provider: str, key: str | None, *, month: bool = True) -> list[dict]:
         except ValueError:
             continue
         if day >= start:
-            rows += [json.loads(line) for line in path.read_text('utf-8').splitlines() if line.strip()]
+            rows += ledger_lines(path)[0]
     return [r for r in rows if r['provider'] == provider and (key is None or r['key'] == key)]
 
 
 def _priced(row: dict) -> float:
+    if row.get('unmetered'):  # no tokens to price: the cap holds nothing for it; the spend report counts it unpriced
+        return 0.0
     usd = row_usd(row)
     if usd is None:
         msg = f'{row["provider"]}:{row.get("model")} at {row.get("at")} has no price; declare it in ai_lab prices.toml'
@@ -335,7 +350,7 @@ def spend_tag(tag: str | None = None) -> str | None:
 def charge(
     provider: str,
     key: str | None,
-    usage: Usage,
+    usage: Usage | None,
     model: str,
     *,
     tag: str | None = None,
@@ -344,14 +359,20 @@ def charge(
 ) -> None:
     """Append one call's *usage* of *model* on *provider* through *key* to today's ledger, tagged :func:`spend_tag`.
 
+    A reply that reports no *usage* is still a call: it books an ``"unmetered"`` row with no tokens, which no price
+    can value, so the spend report counts it as unpriced -- never skipped, never free (ai-lab #11).
+
     A *batch* call's row says so (``"batch": true``): the vendor bills it at :data:`ai_lab.prices.BATCH_RATE`. A call
     a task's route moved to names the provider it stood in for (``"fallback_from"``).
     """
+    metered = usage or Usage(0, 0, 0)
     row = {
-        'provider': provider, 'key': key, 'tokens': usage.input_tokens + usage.output_tokens, 'model': model,
-        'input': usage.input_tokens, 'output': usage.output_tokens, 'cached': usage.cached_tokens,
+        'provider': provider, 'key': key, 'tokens': metered.input_tokens + metered.output_tokens, 'model': model,
+        'input': metered.input_tokens, 'output': metered.output_tokens, 'cached': metered.cached_tokens,
         'at': _now(), 'tag': spend_tag(tag), 'scope': current(),
     }  # fmt: skip
+    if usage is None:
+        row['unmetered'] = True
     if batch:
         row['batch'] = True
     if fallback_from:

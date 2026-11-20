@@ -61,6 +61,11 @@ ignore = ["COM812", "D203", "D213", "D400", "D401", "N818", "PLR0913", "Q000", "
 # A test asserts, reads private seams of what it tests, and names fixtures rather than documenting them.
 "tests/**" = ["S101", "SLF001", "D", "ANN", "ARG", "FBT003", "PLR2004", "PT018", "INP001"]
 
+# The extras every environment of this repo installs (dev_lab.dev.dep reads it): dev_lab and the test kit live
+# only in `dev`, so a relock without it drops them and the family renderer cannot run.
+[tool.dev_lab.dep]
+extras = ["dev"]
+
 [tool.dev_lab.branchset]
 trunk = 'main'
 sessions = ['integrate/main']
@@ -69,11 +74,11 @@ prune_merged = true
 [tool.dev_lab.parts]
 output = "output/logs"
 # User ruling 2026-11-05: every test completes on GitHub Actions alone. `live` (every real-model call, Anthropic and
-# OpenAI) is one hosted linux row on a non-PR event -- the nightly schedule, whose run gates `integrate promote`, and a
-# manual dispatch -- never per PR (dev_lab.dev.jobparts.hosted_jobs). It names the key tasks it needs (user ruling
+# OpenAI) is one hosted linux row run ONLY on a manual dispatch -- never nightly, never per PR, never on the promote gate
+# (user ruling D66, 2026-11-18; dev_lab.dev.jobparts.hosted_jobs). It names the key tasks it needs (user ruling
 # 2026-11-05: AI_LAB_KEYS_<TASK>); dev-lab renders how each bundle reaches the one key door,
 # `ai_lab.auth login --task <task> --bundle -`; the code never reads an environment key.
-hosted = { live = { tasks = ["live"] } }
+hosted = { live = { tasks = ["live"], manual = true } }  # real provider calls run only on a manual dispatch (D66)
 
 [tool.lab_commons.tests]
 produce = ["-m", "dev_lab.dev.verify", "--part", "{part}"]
@@ -117,9 +122,4 @@ adoption = "scripts/deny_rules.py"
 # Who reviews this repo's PRs: the family's isolated judge host (user ruling 2026-11-10), gated on GitHub by the
 # family App's review/judge check run. Keys and defaults: dev_lab.dev.forgereview_declared.
 [tool.dev_lab.review]
-where = "judge"
 judge_app = 5619495
-
-# The bundle prepare the judge reads, on THIS forge (the base places it on Gitea unless a repo names GitHub).
-[tool.dev_lab.ci."review-prepare.yml"]
-forge = "github"

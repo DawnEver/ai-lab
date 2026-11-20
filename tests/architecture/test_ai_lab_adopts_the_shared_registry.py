@@ -45,7 +45,7 @@ _MECHANISMS: Final = {
     # spelling found in any other tracked file reds (a planted leftover must be found).
     'RETIRED-NAMES-REGISTERED': (TestPath('tests/architecture/test_retired_names_are_registered.py'),),
     # Adopted 2026-10-20 with the ledger's first schema change (schema 2 dropped usage.cost_usd).
-    'FORMATS-UPGRADE-ON-READ': (TestPath('tests/unit/test_ledger_and_rules.py'),),
+    'FORMATS-MIGRATE-ONCE': (TestPath('tests/unit/test_ledger_and_rules.py'),),
     # integrate/main and main are declared in pyproject.toml; the base table's `session-branch` pre-push
     # row refuses the three push-side violations, and the one writer is git's own (guarded from force by it).
     **dict.fromkeys(
@@ -87,6 +87,16 @@ _MECHANISMS: Final = {
     'NO-PUSH-ONTO-A-CLOSED-PR': (TestPath('pyproject.toml'),),
     # Adopted 2026-11-07 with dev-lab #304: the base pre-push row `pr-current` this pyproject's hooks table runs.
     'PR-HEAD-IS-CURRENT': (TestPath('pyproject.toml'),),
+    # Adopted 2026-11-13 with dev-lab 61560e40: the base pre-push row `milestone-base` (dev_lab.dev.milestonebase)
+    # this pyproject's hooks table runs refuses both.
+    'BASE-HOLDS-THE-MILESTONE': (TestPath('pyproject.toml'),),
+    'VERSION-TAG-NEEDS-APPROVAL': (TestPath('pyproject.toml'),),
+    # Adopted 2026-11-19 with the relock to dev-lab integrate/main: the base pre-push row `session-branch`
+    # (dev_lab.dev.sessionbranch) this pyproject's hooks table runs refuses an off-task head.
+    'PUSHED-HEAD-CARRIES-ITS-TASK': (TestPath('pyproject.toml'),),
+    # Adopted 2026-11-19: the rendered settings run one `dev_lab.dev.hookdispatch` row per event, each with
+    # timeout 5, and the dispatcher detaches a slow row.
+    'HOOK-UNDER-FIVE-SECONDS': (TestPath('.claude/settings.json'),),
     # Adopted 2026-10-24 with dev-lab 1d74f38: the October summary is the first month this tree holds.
     'MONTHLY-PLANS-CARRIED': (TestPath('tests/architecture/test_every_month_carries_its_plans.py'),),
     # Adopted 2026-10-26 with dev-lab c9eaa7f: the agent guard ships in every family repo; the rendered
@@ -96,9 +106,16 @@ _MECHANISMS: Final = {
          'INJECTED-TEXT-IS-PROGRESSIVE',
          # Gained 2026-10-29 with dev-lab 5abf8c4d: RECURSIVE-DELETE is a shipped deny rule, and the guard's
          # WIRING installs the `dev_lab.dev.pushwatch` PostToolUse advisory the live test pins.
-         'RECURSIVE-DELETE', 'PUSHED-HEAD-IS-WATCHED',
+         'RECURSIVE-DELETE', 'PUSHED-HEAD-IS-WATCHED', 'TASK-HEARS-ITS-FORGE-EVENTS',
          # Gained 2026-11-07 with dev-lab 8c4ab734: the guard refuses a write outside the checkout.
-         'WRITES-STAY-IN-THE-TREE'),
+         'WRITES-STAY-IN-THE-TREE',
+         # Gained 2026-11-13 with dev-lab 61560e40: the guard's WIRING installs the `dev_lab.dev.walls`
+         # PostToolUse and Stop hooks the live test pins.
+         'WALLS-ARE-RECORDED',
+         # Gained 2026-11-17 with dev-lab b9875921: the per-module rows above became one `dev_lab.dev.hookdispatch`
+         # row per event, and the deny engine took the journal door (TRACKED-CITES-NO-EPHEMERAL) and the
+         # subagent refusal of heavy runs (HEAVY-IS-THE-MAIN-SESSIONS), each a shipped rule the live test pins.
+         'TRACKED-CITES-NO-EPHEMERAL', 'HEAVY-IS-THE-MAIN-SESSIONS'),
         (TestPath('tests/architecture/test_the_agent_guard_is_live.py'),),
     ),
 }  # fmt: skip
@@ -122,7 +139,6 @@ _ABSENT: Final = frozenset({
     'DOCS-SPLIT', 'MEMORY-SHAPE', 'INJECTED-DOC-WIDTH-CEILING',
     # Code placement and scratch: one src/ and one tests/ tree, no scratch.
     'CODE-IN-CODE-ROOTS', 'SCRATCH-IS-NEVER-COMMITTED', 'STRAY-FILE-REFUSED', 'SPLIT-BY-CONCEPT',
-    'TRACKED-CITES-NO-EPHEMERAL',
     # Meta-rules about guards: the guards above are the family's shared bodies, which carry them.
     'DECLARATION-LIES', 'PLANTED-CONTROL', 'FLOOR-ON-EVERY-SCAN', 'ESCAPE-HATCH-CEILING', 'RATCHET-TWO-SIDES',
     'NAMED-SETS-NOT-COUNTS', 'XFAIL-NOT-SKIP', 'MODULE-SIZE-ALARM',
@@ -140,7 +156,8 @@ _ABSENT: Final = frozenset({
 #: (STRAY-FILE-REFUSED, SPLIT-BY-CONCEPT, TRACKED-CITES-NO-EPHEMERAL).
 #: Lowered to 39 on 2026-10-26: the agent guard took AGENT-GUARD and the four rules it refuses.
 #: Lowered to 38 on 2026-11-07: NO-CJK-IN-TRACKED-SOURCE is always on (dev_lab.dev.famtests.alwayson).
-_ABSENT_CEILING: Final = 38
+#: Lowered to 37 on 2026-11-17: TRACKED-CITES-NO-EPHEMERAL became a shipped deny rule of the agent guard.
+_ABSENT_CEILING: Final = 37
 
 
 def test_every_rule_is_enforced_or_declared_absent() -> None:

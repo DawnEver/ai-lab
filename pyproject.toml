@@ -82,7 +82,8 @@ output = "output/logs"
 # renames each to the provider's key-file name and hands them on stdin to the one key door,
 # `ai_lab.auth login --from-file -`; the code never reads an environment key. A fresh runner has no credential
 # helper, so the step configures git's in-memory cache first.
-hosted = { live = { secrets = ["AI_LAB_LIVE_ANTHROPIC_KEY", "AI_LAB_LIVE_OPENAI_KEY"], setup = "sed -e 's/^AI_LAB_LIVE_ANTHROPIC_KEY=/ANTHROPIC_API_KEY=/' -e 's/^AI_LAB_LIVE_OPENAI_KEY=/OPENAI_API_KEY=/' | { git config --global credential.helper 'cache --timeout=7200' && uv run --no-sync python -m ai_lab.auth login --from-file -; }" } }
+# AI_LAB_LIVE_ANTHROPIC_KEY_2, when set, is anthropic slot 2 (user ruling 2026-11-05); unset, its empty line is skipped.
+hosted = { live = { secrets = ["AI_LAB_LIVE_ANTHROPIC_KEY", "AI_LAB_LIVE_ANTHROPIC_KEY_2", "AI_LAB_LIVE_OPENAI_KEY"], setup = "sed -e 's/^AI_LAB_LIVE_ANTHROPIC_KEY=/ANTHROPIC_API_KEY=/' -e 's/^AI_LAB_LIVE_ANTHROPIC_KEY_2=/ANTHROPIC_API_KEY:2=/' -e 's/^AI_LAB_LIVE_OPENAI_KEY=/OPENAI_API_KEY=/' | { git config --global credential.helper 'cache --timeout=7200' && uv run --no-sync python -m ai_lab.auth login --from-file -; }" } }
 
 [tool.lab_commons.tests]
 produce = ["-m", "dev_lab.dev.verify", "--part", "{part}"]

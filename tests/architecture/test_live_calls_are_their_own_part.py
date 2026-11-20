@@ -38,7 +38,7 @@ def test_every_resource_is_produced_on_actions():
 def test_live_holds_both_providers_keys_from_its_own_repo_secrets():
     """Never the org ``ANTHROPIC_API_KEY`` (being revoked): the live row names its own repo secrets."""
     live = hosted_parts(PYPROJECT.read_text(encoding='utf-8'))['live']
-    assert set(live.secrets) == {'AI_LAB_LIVE_ANTHROPIC_KEY', 'AI_LAB_LIVE_OPENAI_KEY'}
-    for key_name in ('ANTHROPIC_API_KEY', 'OPENAI_API_KEY'):
+    assert set(live.secrets) == {'AI_LAB_LIVE_ANTHROPIC_KEY', 'AI_LAB_LIVE_ANTHROPIC_KEY_2', 'AI_LAB_LIVE_OPENAI_KEY'}
+    for key_name in ('ANTHROPIC_API_KEY', 'ANTHROPIC_API_KEY:2', 'OPENAI_API_KEY'):
         assert f'/{key_name}=/' in live.setup, f'the setup renames a secret to {key_name}'
     assert test_openai.pytestmark.name == test_live.pytestmark.name == 'live'

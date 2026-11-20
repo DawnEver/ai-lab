@@ -57,9 +57,12 @@ def test_retries_are_bounded(monkeypatch):
     assert caught.value.kind == ''
 
 
-def test_a_rate_limit_past_its_retries_is_an_account_failure(monkeypatch):
+@pytest.mark.parametrize('status', [429, 529])
+def test_a_rate_limit_or_overload_past_its_retries_is_an_account_failure(monkeypatch, status):
+    """An overload (529) that outlasts the retries is the account's capacity used up (user ruling 2026-11-05)."""
+
     def urlopen(request, timeout):
-        raise _http_error(429, b'slow down')
+        raise _http_error(status, b'slow down')
 
     monkeypatch.setattr('urllib.request.urlopen', urlopen)
     with pytest.raises(ProviderError, match='after 3 attempts') as caught:

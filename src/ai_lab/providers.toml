@@ -12,6 +12,8 @@
 # its vendor serves instead of the row's default (OpenAI's /decisions endpoint serves gpt-6-luna).
 # One provider is ONE ACCOUNT KIND OF ONE VENDOR; a second door into an account is a model_wires entry,
 # never a second row. An "api" row's keys are ordered slots (`login <provider> --slot N`).
+# A row's `fallback` is the providers a TASK's call moves to, in order, once every slot of the row fails at the
+# account level (ai_lab.client; user ruling 2026-11-05): the same task's keys, the same role's model.
 # Add a row in your own providers.toml (ai_lab.client.user_providers_file); a row there replaces one here.
 
 [openai]
@@ -41,6 +43,7 @@ vision = true
 vendor = "anthropic"
 auth = "api"
 models = { base = "claude-sonnet-5-5", sonnet = "claude-sonnet-5-5", opus = "claude-opus-5-5", haiku = "claude-haiku-5-5", fable = "claude-fable-5-1" }
+fallback = ["deepseek"]
 
 [gemini]
 wire = "gemini"
@@ -64,7 +67,7 @@ auth = "api"
 wire = "openai_chat_json"
 url = "https://api.deepseek.com"
 openai_path = "/v1"
-anthropic_path = "/anthropic"
+anthropic_path = "/anthropic/v1"
 key_name = "DEEPSEEK_API_KEY"
 vision = false
 vendor = "deepseek"

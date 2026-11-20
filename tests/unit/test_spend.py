@@ -175,3 +175,34 @@ def test_the_retired_month_and_reserve_keys_are_refused_naming_where_each_lives_
     machine(f'{key} = 1000\n')
     with pytest.raises(ValueError, match=rf'{key} is now .*{home}'):
         spend.report(today=date(2026, 10, 6), directory=tmp_path, price=_price)
+
+
+def test_a_torn_ledger_line_is_counted_never_a_failed_report(tmp_path):
+    """#11 (1): an unlocked append can tear a line; the report counts it and prices every whole row."""
+    _write(tmp_path, '2026-10-06', _row('r#1', 1_000_000))
+    with (tmp_path / 'tokens-2026-10-06.jsonl').open('a', encoding='utf-8') as out:
+        out.write('{"provider": "anthropic", "tok\n')
+    got = spend.report(today=date(2026, 10, 6), directory=tmp_path, price=_price)
+    assert got['spent_usd'] == pytest.approx(1.0)
+    assert got['bad_lines'] == 1
+
+
+def test_planted_control_a_whole_ledger_has_no_bad_lines(tmp_path):
+    _write(tmp_path, '2026-10-06', _row('r#1', 1_000_000))
+    got = spend.report(today=date(2026, 10, 6), directory=tmp_path, price=_price)
+    assert got['bad_lines'] == 0
+
+
+def test_a_call_whose_reply_reports_no_usage_is_charged_as_unpriced_never_skipped(keys, monkeypatch):
+    """#11 (2): a reply without usage is still a call: it books an unmetered row the report counts as unpriced."""
+    monkeypatch.delenv(budget.TAG_ENV, raising=False)
+
+    def post(call, **_):
+        return {'content': [{'type': 'text', 'text': '{}'}]}
+
+    connect('anthropic:claude-x', post=post).respond(_REQUEST)
+    (row,) = [json.loads(line) for line in budget.ledger_file().read_text('utf-8').splitlines()]
+    assert row['unmetered'] is True
+    assert budget.row_usd(row, _price) is None
+    got = spend.report(directory=budget.state_dir(), price=_price)
+    assert got['unpriced_calls'] == 1

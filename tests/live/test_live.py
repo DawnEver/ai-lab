@@ -22,7 +22,7 @@ _API = ['anthropic:claude-sonnet-5-5']
 
 @pytest.mark.parametrize('spec', _API)
 def test_an_api_row_responds_and_decides(spec, request_):
-    client = connect(spec)
+    client = connect(spec, task='live')
     assert client.respond(ResponseRequest('Answer.', (Text('Is 9 prime?'),), SCHEMA)).value == {'prime': False}
     d = client.decide(request_)
     assert d.basis is Basis.STATED and set(d.answers) == {'worth_fea', 'fidelity', 'risk'}
@@ -36,7 +36,7 @@ def test_an_api_row_reads_an_image(spec):
         'required': ['colour'],
         'additionalProperties': False,
     }
-    got = connect(spec).respond(
+    got = connect(spec, task='live').respond(
         ResponseRequest('Name the colour.', (Text('What colour fills this image?'), red_square()), schema)
     )
     assert got.value == {'colour': 'red'}

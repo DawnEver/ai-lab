@@ -1,0 +1,27 @@
+# THE TASK ROUTES (ai_lab.client.routes; user ruling 2026-11-05). A TASK is a caller that owns its own keys
+# (`api-key-<task>[-N]` under each provider's host); the tasks that exist are exactly the [task.*] tables here and
+# in the user's routes.toml beside providers.toml (ai_lab.client.user_routes_file), whose table replaces its
+# namesake. providers.toml stays provider facts; WHICH providers a task calls, in what order, lives here.
+#
+# chain        = ["provider" | "provider:model", ...]  the order a task's call walks: every key slot of one
+#                provider, then the next provider. A bare provider takes the model of the same Claude-class
+#                role (its `models` map; `base` at the head of a chain).
+# fall_over_on = the error classes (ai_lab.client.ERROR_CLASSES: quota, auth, rate_limit, server) that move a
+#                call to the next provider; top level is this file's default, a task's own replaces it.
+#
+# Keys for one task arrive as one bundle: `python -m ai_lab.auth login --task <task> --bundle -`.
+
+fall_over_on = ["quota", "auth", "rate_limit"]
+
+[task.pr-review]  # the advisory PR review (ai_lab.review)
+chain = ["anthropic", "deepseek"]
+
+[task.optimization]  # the optimization decider driven through ai_lab.connect (a consumer's campaigns)
+chain = ["anthropic", "deepseek"]
+
+[task.session]  # the interactive host launchers: the key a session runs on
+chain = ["anthropic", "deepseek"]
+
+[task.live]  # the live tests: each calls ITS provider and must see it fail, so nothing falls over
+chain = ["anthropic", "openai"]
+fall_over_on = []

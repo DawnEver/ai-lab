@@ -41,18 +41,21 @@ slots -- usernames ``api-key-<task>``, ``api-key-<task>-2``... under the same ho
 (:func:`lab_commons.credentials.key_username`) -- in the same fall-over order, and only those: never another
 task's slot, never the default's. A task with no slot 1 is refused naming ``login <provider> --task <task>``.
 
-A TASK FALLS OVER ACROSS PROVIDERS (user ruling 2026-11-05). A row's ``fallback = [provider, ...]`` is the chain a
-TASK's call moves along once every slot of the row fails at the account level: the next provider is called with the
-SAME task's slots, the model of the same Claude-class role (:func:`fallback_model`), and the same protocol when it
-serves it. A per-call error never moves, and neither does a call without a task (the ``live`` tests are the
-provider's own and must see it fail). Each move is logged (provider, task, reason -- never a key) and the ledger
-row of the call it served names ``fallback_from``. Batches stay on their provider: a ticket is bound to its slot.
+A TASK ROUTES ITS CALLS (user ruling 2026-11-05). The tasks are exactly the ``[task.*]`` tables of the packaged
+``routes.toml`` and the user's beside ``providers.toml`` (:func:`routes`); a task's ``chain`` is the providers its
+call walks -- every key slot of one, then the next -- moving on when a failure's class (:func:`error_class`, one
+of :data:`ERROR_CLASSES`) is in the task's ``fall_over_on``. ``connect(task=t)`` starts at the head of the chain;
+``connect(spec, task=t)`` starts at *spec*'s provider and falls over along the rest. A stand-in takes the
+entry's model, else the model of the same Claude-class role (:func:`fallback_model`), and the same protocol
+when it serves it. Each move is logged (provider, task, class -- never a key) and the ledger row of the call
+it served names ``fallback_from``. A call without a task never moves; a batch stays on its provider.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 import time
 import tomllib
@@ -66,7 +69,7 @@ from lab_commons.paths import config_root
 
 from ai_lab import budget, emulate, retired, transport
 from ai_lab.answers import Basis, Decision, Response
-from ai_lab.errors import ACCOUNT_KINDS, BatchLapsed, DailyTokenCapReached, ProviderError, Unsupported
+from ai_lab.errors import ACCOUNT_KINDS, BatchLapsed, ProviderError, SpendCapReached, Unsupported
 from ai_lab.spec import DecisionRequest, ResponseRequest
 from ai_lab.usage import Usage
 from ai_lab.wire import WIRES
@@ -75,16 +78,26 @@ from ai_lab.wire.base import Batches, Wire
 __all__ = [
     'APP',
     'AUTH_KINDS',
+    'ERROR_CLASSES',
+    'FALL_OVER_ON',
     'PROTOCOLS',
     'ROLES',
     'Client',
     'Provider',
+    'Route',
     'Ticket',
     'catalogue',
     'connect',
+    'error_class',
+    'fallback_model',
     'packaged_providers_file',
+    'packaged_routes_file',
+    'route',
+    'routes',
     'stored_slots',
+    'tasks',
     'user_providers_file',
+    'user_routes_file',
 ]
 
 #: The application name the family's path helpers resolve this package's roots under.
@@ -99,6 +112,32 @@ PROTOCOLS = frozenset({'openai', 'anthropic', 'gemini', 'typesafe'})
 
 #: The Claude-class roles a row's ``models`` map may name; ``base`` is required and the default of the rest.
 ROLES = frozenset({'base', 'fable', 'opus', 'sonnet', 'haiku', 'subagent', 'codex'})
+
+#: The classes of failure a route may fall over on -- a closed set, each derived from a failure by
+#: :func:`error_class`: ``quota`` (402, a used-up balance, a reached spend cap), ``auth`` (401/403, a refused key),
+#: ``rate_limit`` (429/529 past their retries) and ``server`` (any other 5xx).
+ERROR_CLASSES = frozenset({'quota', 'auth', 'rate_limit', 'server'})
+
+#: What a route falls over on when neither its file nor its task says (``server`` is legal, never the default).
+FALL_OVER_ON = frozenset({'quota', 'auth', 'rate_limit'})
+
+#: The HTTP statuses of a server error.
+_SERVER_STATUSES = range(500, 600)
+
+
+def error_class(error: BaseException) -> str | None:
+    """*error*'s class in :data:`ERROR_CLASSES`; ``None`` for a failure no route falls over on."""
+    if isinstance(error, SpendCapReached):
+        return 'quota'
+    if not isinstance(error, ProviderError):
+        return None
+    if error.kind == 'exhausted':
+        return 'quota'
+    if error.kind in {'auth', 'rate_limit'}:
+        return error.kind
+    if not error.kind and error.status in _SERVER_STATUSES:
+        return 'server'
+    return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,8 +168,6 @@ class Provider:
     typesafe_path: str = ''
     #: ``{role: model}`` over :data:`ROLES` -- the model each Claude-class role resolves to.
     models: Mapping[str, str] = field(default_factory=dict)
-    #: The providers a task's call moves to, in order, once every slot of this one fails at the account level.
-    fallback: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         """Refuse an unknown wire or auth kind, a wire with no path, a url with a path, a malformed role map."""
@@ -242,13 +279,117 @@ def _rows(text: str, origin: str) -> dict[str, Provider]:
         for key in row:
             retired.refuse('field', key, f'provider {name!r} in {origin}')
     try:
-        return {
-            name: Provider(name=name, **{**row, 'fallback': tuple(row.get('fallback', ()))})
-            for name, row in table.items()
-        }
+        return {name: Provider(name=name, **row) for name, row in table.items()}
     except TypeError as error:
         msg = f'a provider row in {origin} has an unknown or missing field: {error}'
         raise Unsupported(msg) from None
+
+
+@dataclass(frozen=True, slots=True)
+class Route:
+    """One task's route: the ``(provider, model)`` entries its call walks (``''``: the role's model) and when."""
+
+    task: str
+    chain: tuple[tuple[str, str], ...]
+    fall_over_on: frozenset[str]
+
+
+_ROUTE_FILE_KEYS = frozenset({'fall_over_on', 'task'})
+_ROUTE_KEYS = frozenset({'chain', 'fall_over_on'})
+
+
+def _classes(value: object, where: str) -> frozenset[str]:
+    if not isinstance(value, list) or (bad := [c for c in value if c not in ERROR_CLASSES]):
+        shown = bad[0] if isinstance(value, list) else value
+        msg = f'{where}: fall_over_on {shown!r} is not an error class; the classes are {sorted(ERROR_CLASSES)}'
+        raise Unsupported(msg)
+    return frozenset(value)
+
+
+def _route_rows(text: str, origin: str, providers: Mapping[str, Provider]) -> dict[str, Route]:
+    """The ``[task.*]`` tables of one routes file, every key, task, class and provider checked by name."""
+    table = tomllib.loads(text)
+    if unknown := sorted(set(table) - _ROUTE_FILE_KEYS):
+        msg = f'{origin}: unknown key {unknown[0]!r}; a routes file holds {sorted(_ROUTE_FILE_KEYS)}'
+        raise Unsupported(msg)
+    default = _classes(table['fall_over_on'], origin) if 'fall_over_on' in table else FALL_OVER_ON
+    out = {}
+    for task, row in table.get('task', {}).items():
+        where = f'task {task!r} in {origin}'
+        try:
+            key_username(task)
+        except ValueError as refused:
+            msg = f'{where}: {refused}'
+            raise Unsupported(msg) from None
+        if unknown := sorted(set(row) - _ROUTE_KEYS):
+            msg = f'{where}: unknown key {unknown[0]!r}; a task holds {sorted(_ROUTE_KEYS)}'
+            raise Unsupported(msg)
+        chain = tuple(tuple(entry.partition(':')[::2]) for entry in row.get('chain', ()))
+        if not chain:
+            msg = f'{where}: chain is empty; name at least one provider'
+            raise Unsupported(msg)
+        names = [name for name, _ in chain]
+        if bad := [name for name in names if name not in providers]:
+            msg = f'{where}: unknown provider {bad[0]!r}; known: {sorted(providers)}'
+            raise Unsupported(msg)
+        if len(set(names)) != len(names):
+            msg = f'{where}: a provider appears twice in {names}; one entry walks all its slots'
+            raise Unsupported(msg)
+        classes = _classes(row['fall_over_on'], where) if 'fall_over_on' in row else default
+        out[task] = Route(task, chain, classes)
+    return out
+
+
+def packaged_routes_file() -> Path:
+    """The packaged baseline ``routes.toml``."""
+    return Path(__file__).with_name('routes.toml')
+
+
+def user_routes_file() -> Path:
+    """Where a user's own task routes live, beside :func:`user_providers_file` (it need not exist)."""
+    return user_providers_file().with_name('routes.toml')
+
+
+def routes() -> dict[str, Route]:
+    """The packaged routes, with every task of :func:`user_routes_file` replacing its namesake."""
+    providers = catalogue()
+    table = _route_rows(packaged_routes_file().read_text('utf-8'), 'the packaged routes.toml', providers)
+    user = user_routes_file()
+    if user.is_file():
+        table.update(_route_rows(user.read_text('utf-8'), str(user), providers))
+    return table
+
+
+def tasks() -> frozenset[str]:
+    """The tasks that own keys: exactly the routed ones."""
+    return frozenset(routes())
+
+
+def route(task: str) -> Route:
+    """*task*'s route; :class:`Unsupported` naming the routed tasks."""
+    table = routes()
+    if task not in table:
+        msg = f'{task!r} is not a routed task; the tasks are {sorted(table)} (add one in {user_routes_file()})'
+        raise Unsupported(msg)
+    return table[task]
+
+
+#: A launcher's context marker on a role's model (``deepseek-v4-flash[1m]``); not part of the API's model id.
+_CONTEXT_MARKER = re.compile(r'\[[^\]]*\]$')
+
+
+def fallback_model(primary: Provider | None, model: str, fallback: Provider) -> str:
+    """*fallback*'s model for the Claude-class role *model* plays on *primary* (``base`` when it plays none)."""
+    roles = primary.models.items() if primary is not None else ()
+    role = next((r for r, m in roles if _CONTEXT_MARKER.sub('', m) == model), 'base')
+    chosen = fallback.models.get(role) or fallback.models.get('base', '')
+    if not chosen:
+        msg = f'{fallback.name} declares no models, so a route cannot pick one; name it "{fallback.name}:<model>"'
+        raise Unsupported(msg)
+    return _CONTEXT_MARKER.sub('', chosen)
+
+
+_log = logging.getLogger(__name__)
 
 
 def packaged_providers_file() -> Path:
@@ -262,33 +403,7 @@ def catalogue() -> dict[str, Provider]:
     user = user_providers_file()
     if user.is_file():
         table.update(_rows(user.read_text('utf-8'), str(user)))
-    for row in table.values():
-        if bad := [n for n in row.fallback if n not in table or n == row.name or not table[n].keyed]:
-            msg = f'provider {row.name!r}: fallback {bad[0]!r} is not another keyed provider; known: {sorted(table)}'
-            raise Unsupported(msg)
     return table
-
-
-#: A launcher's context marker on a role's model (``deepseek-v4-flash[1m]``); not part of the API's model id.
-_CONTEXT_MARKER = re.compile(r'\[[^\]]*\]$')
-
-
-def fallback_model(primary: Provider, model: str, fallback: Provider) -> str:
-    """*fallback*'s model for the Claude-class role *model* plays on *primary* (``base`` when it plays none)."""
-    role = next((r for r, m in primary.models.items() if m == model), 'base')
-    chosen = fallback.models.get(role) or fallback.models.get('base', '')
-    if not chosen:
-        msg = f'{fallback.name} declares no models, so it cannot stand in for {primary.name}:{model}'
-        raise Unsupported(msg)
-    return _CONTEXT_MARKER.sub('', chosen)
-
-
-_log = logging.getLogger(__name__)
-
-
-def _account_kind(error: Exception) -> str:
-    """*error*'s kind; a daily token cap counts as ``exhausted`` (that budget is used up)."""
-    return 'exhausted' if isinstance(error, DailyTokenCapReached) else error.kind
 
 
 @dataclass(frozen=True, slots=True)
@@ -326,8 +441,15 @@ class Client:
         *tag* is appended to what each call is charged to (:func:`ai_lab.budget.charge`); *max_tokens* replaces the
         wire's output budget where its body carries one.
         """
-        if task is not None:
-            key_username(task)  # an undeclared task is refused here, not at the first call
+        #: The ``(provider, model)`` entries a task's call falls over to, and the classes it falls over on.
+        self.chain: tuple[tuple[str, str], ...] = ()
+        self.fall_over_on: frozenset[str] = frozenset()
+        if task is not None:  # an unrouted task is refused here, not at the first call
+            routed = route(task)
+            self.chain = tuple(entry for entry in routed.chain if entry[0] != provider.name)
+            self.fall_over_on = routed.fall_over_on
+        #: The provider whose failure this client stands in for; ``None`` on the first of a chain.
+        self.fallback_from: str | None = None
         self.wire: Wire = WIRES[provider.wire_for(model, protocol)]
         self.endpoint = provider.endpoint(self.wire.protocol)
         if not model:
@@ -347,8 +469,6 @@ class Client:
         self.max_tokens = max_tokens
         self._post = post
         self._get = get
-        #: The provider whose exhausted slots this client stands in for; ``None`` on a primary.
-        self.fallback_from: str | None = None
 
     @property
     def name(self) -> str:
@@ -367,44 +487,50 @@ class Client:
         """An object of the request's schema."""
         return self._along_chain(lambda client: client.respond_here(request))
 
-    def _along_chain(self, call: Callable[[Client], object]) -> object:
-        """*call* on this client, then -- a task's call failing at the account level -- on each fallback provider."""
+    def _along_chain[T](self, call: Callable[[Client], T]) -> T:
+        """*call* on this client, then -- on a failure whose class the task falls over on -- on each next provider."""
         try:
             return call(self)
-        except (ProviderError, DailyTokenCapReached) as error:
-            if self.task is None or not self.provider.fallback or _account_kind(error) not in ACCOUNT_KINDS:
+        except (ProviderError, SpendCapReached) as error:
+            if not self.chain or error_class(error) not in self.fall_over_on:
                 raise
             failure, missing = error, []
         table = catalogue()
-        for name in self.provider.fallback:
-            row = table[name]
-            protocol = self.wire.protocol if self.wire.protocol in row.protocols else None
-            model = fallback_model(self.provider, self.model, row)
-            effort = self.effort if WIRES[row.wire_for(model, protocol)].effort else ''
-            standin = Client(
-                row, model, effort=effort, task=self.task, protocol=protocol, tag=self.tag,
-                max_tokens=self.max_tokens, post=self._post, get=self._get,
-            )  # fmt: skip
-            standin.fallback_from = self.provider.name
-            _log.warning(
-                'fallback: task %s moves from %s:%s to %s:%s (%s)',
-                self.task, self.provider.name, self.model, name, model, _account_kind(failure),
-            )  # fmt: skip
+        for name, named in self.chain:
             try:
+                standin = self._standin(table[name], named)
+                _log.warning(
+                    'fallback: task %s moves from %s to %s (%s)',
+                    self.task, self.name, standin.name, error_class(failure),
+                )  # fmt: skip
                 return call(standin)
             except Unsupported as absent:
                 missing.append(f'{name}: {absent}')
-            except (ProviderError, DailyTokenCapReached) as error:
-                if _account_kind(error) not in ACCOUNT_KINDS:
+            except (ProviderError, SpendCapReached) as error:
+                if error_class(error) not in self.fall_over_on:
                     raise
                 failure = error
         if missing:
             msg = f'{failure}; fallback unavailable: {"; ".join(missing)}'
-            raise ProviderError(msg, kind=_account_kind(failure)) from failure
+            if isinstance(failure, SpendCapReached):
+                raise SpendCapReached(msg, scope=failure.scope) from failure
+            raise ProviderError(msg, kind=failure.kind, status=failure.status) from failure
         raise failure
 
+    def _standin(self, row: Provider, named: str) -> Client:
+        """A client of *row* standing in for this one: *named*, else the same role's model; same protocol if served."""
+        protocol = self.wire.protocol if self.wire.protocol in row.protocols else None
+        model = named or fallback_model(self.provider, self.model, row)
+        effort = self.effort if WIRES[row.wire_for(model, protocol)].effort else ''
+        standin = Client(
+            row, model, effort=effort, protocol=protocol, tag=self.tag,
+            max_tokens=self.max_tokens, post=self._post, get=self._get,
+        )  # fmt: skip
+        standin.task, standin.fallback_from = self.task, self.provider.name
+        return standin
+
     def decide_here(self, request: DecisionRequest) -> Decision:
-        """:meth:`decide` on this provider alone, never a fallback."""
+        """:meth:`decide` on this provider alone, never another of the task's chain."""
         self._require_vision(has_image=request.has_image)
         start = time.perf_counter()
         if self.wire.decide is not None:
@@ -417,7 +543,7 @@ class Client:
         return Decision(answers, basis, self.provider.name, self.model, latency, usage, slot)
 
     def respond_here(self, request: ResponseRequest) -> Response:
-        """:meth:`respond` on this provider alone, never a fallback."""
+        """:meth:`respond` on this provider alone, never another of the task's chain."""
         self._require_vision(has_image=request.has_image)
         start = time.perf_counter()
         value, usage, slot = self._respond_value(request)
@@ -463,10 +589,10 @@ class Client:
                 break
             try:
                 return act(key, budget.fingerprint(key)), slot
-            except DailyTokenCapReached as spent:
-                if spent.scope == self.provider.name:
+            except SpendCapReached as spent:
+                if not spent.scope.startswith(f'{self.provider.name}/'):  # a provider or allotment level: no key helps
                     raise
-                failures.append(f'slot {slot}: {spent.scope} daily token cap')
+                failures.append(f'slot {slot}: {spent.scope} spend cap')
                 last = spent
                 continue
             except ProviderError as error:
@@ -475,23 +601,32 @@ class Client:
                 failures.append(f'slot {slot}: {error.kind}')
                 last = error
         msg = f'{self.provider.name}: every {whose}key slot for {host} failed ({", ".join(failures)}); last: {last}'
-        if isinstance(last, DailyTokenCapReached):
-            raise DailyTokenCapReached(msg, scope=last.scope) from last
-        raise ProviderError(msg, kind=last.kind) from last
+        if isinstance(last, SpendCapReached):
+            raise SpendCapReached(msg, scope=last.scope) from last
+        raise ProviderError(msg, kind=last.kind, status=last.status) from last
 
     def _dispatch(self, call: transport.HttpCall, key: str | None) -> object:
-        """Send *call* within its provider's and *key*'s token budgets, and charge what its reply reports."""
+        """Send *call* within every enclosing level (:func:`ai_lab.budget.room`), and charge what its reply reports."""
         raw = self._post(self._bounded(call, key))
-        if (usage := self._usage(raw)) is not None:
-            budget.charge(self.provider.name, key, usage, self.model, tag=self.tag, fallback_from=self.fallback_from)
+        budget.charge(
+            self.provider.name, key, self._usage(raw), self.model, tag=self.tag, fallback_from=self.fallback_from
+        )
         return raw
 
     def _bounded(self, call: transport.HttpCall, key: str | None) -> transport.HttpCall:
-        """*call* with its output clamped to the token budgets left and the client's effort applied."""
-        left = budget.remaining(self.provider.name, key)
+        """*call* with its output clamped to what the tightest level has left, and the client's effort applied.
+
+        Its ``max_tokens`` is what the tightest level has left at the model's output rate; a capped call whose
+        model has no price is refused, since nothing could hold it to the cap.
+        """
+        left = budget.room(self.provider.name, key)
+        client = f'{self.provider.name}:{self.model}'
+        held = None if math.isinf(left) else budget.priced(client)
         if 'max_tokens' in call.body:
             wanted = self.max_tokens or call.body['max_tokens']
-            call = replace(call, body={**call.body, 'max_tokens': min(wanted, left)})
+            if held is not None and held.price.output > 0:
+                wanted = min(wanted, max(1, math.floor(left / held.price.output * 1_000_000)))
+            call = replace(call, body={**call.body, 'max_tokens': wanted})
         if self.effort:
             call = self.wire.effort(call, self.effort)
         return call
@@ -567,7 +702,7 @@ class Client:
                 out[cid] = ProviderError(outcome.error, kind=outcome.kind)
                 continue
             usage = self._usage(outcome.raw)
-            if charge and usage is not None:
+            if charge:
                 budget.charge(self.provider.name, fingerprint, usage, self.model, tag=self.tag, batch=True)
             try:
                 value = self.wire.parse_response(outcome.raw)
@@ -583,8 +718,20 @@ class Client:
         self._post(transport.HttpCall(url=url, body={}, headers=self._headers(ticket.slot)))
 
 
-def connect(spec: str, *, task: str | None = None, protocol: str | None = None, **options: object) -> Client:
-    """``'openai:gpt-6-luna'``, ``'openai:gpt-x@high'``, ``'anthropic:<model>'``..."""
+def connect(
+    spec: str | None = None, *, task: str | None = None, protocol: str | None = None, **options: object
+) -> Client:
+    """``'openai:gpt-6-luna'``, ``'openai:gpt-x@high'``, ``'anthropic:<model>'``...; *task* routes it.
+
+    With *task* alone the client starts at the head of the task's chain (its named model, else the provider's
+    ``base``); with *spec* too it starts at *spec* and falls over along the rest of the chain.
+    """
+    if spec is None:
+        if task is None:
+            msg = 'connect needs a spec ("provider:model"), a task, or both'
+            raise Unsupported(msg)
+        name, model = route(task).chain[0]
+        spec = f'{name}:{model or fallback_model(None, "", catalogue()[name])}'
     spec, _, effort = spec.partition('@')
     name, _, model = spec.partition(':')
     retired.refuse('provider', name, f'connect({spec!r})')

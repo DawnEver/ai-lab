@@ -81,7 +81,7 @@ def test_a_missing_task_key_is_refused_by_name_with_the_default_stored(credentia
 
 
 def test_an_undeclared_task_is_refused_at_connect():
-    with pytest.raises(ValueError, match='pr-review'):
+    with pytest.raises(Unsupported, match=r'not a routed task.*pr-review'):
         connect('openai:gpt-6-luna', task='nope')
 
 

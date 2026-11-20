@@ -70,8 +70,9 @@ def post(call: HttpCall, *, timeout_s: float = HTTP_CEILING_S, attempts: int = 3
 
     def parsed(text: str) -> tuple[bool, object]:
         body = json.loads(text)
-        # A 200 carrying only an error (DeepSeek's overloaded queue) is a failed call, judged as a status.
-        if not (isinstance(body, dict) and 'error' in body and 'choices' not in body):
+        # A 200 carrying only an error (DeepSeek's overloaded queue) is a failed call, judged as a status;
+        # OpenAI Responses sends ``"error": null`` on every completed reply, and a null error is none.
+        if not (isinstance(body, dict) and body.get('error') is not None and 'choices' not in body):
             return True, body
         last = f'error body from {call.url}: {str(body["error"])[:500]}'
         if any(marker in last for marker in _EXHAUSTED):
@@ -96,7 +97,7 @@ def _exchange(
     *, timeout_s: float, attempts: int, sleep: Callable,
 ) -> object:  # fmt: skip
     """One request, retried: *parsed* turns a 2xx body into ``(True, value)`` or ``(False, why)`` (retried)."""
-    last, last_kind = '', ''
+    last, last_kind, last_status = '', '', None
     for attempt in range(attempts):
         request = urllib.request.Request(  # noqa: S310 -- the scheme is checked by the caller
             url, data=data, method=method, headers={'Content-Type': 'application/json', **headers}
@@ -111,14 +112,14 @@ def _exchange(
             detail = error.read().decode('utf-8', 'replace')[:500]
             last = f'HTTP {error.code} from {url}: {detail}'
             if (final := _final_kind(error.code, detail)) is not None:
-                raise ProviderError(last, kind=final) from None
-            last_kind = 'rate_limit' if error.code in _RATE_LIMIT else ''
+                raise ProviderError(last, kind=final, status=error.code) from None
+            last_kind, last_status = ('rate_limit' if error.code in _RATE_LIMIT else ''), error.code
         except (urllib.error.URLError, TimeoutError) as error:
             reason = error.reason if isinstance(error, urllib.error.URLError) else error
             timed_out = isinstance(reason, TimeoutError)
             last = f'{url} {"timed out" if timed_out else "unreachable"}: {error}'
-            last_kind = 'timeout' if timed_out else ''
+            last_kind, last_status = ('timeout' if timed_out else ''), None
         if attempt + 1 < attempts:
             sleep(2.0**attempt)
     msg = f'{last} (after {attempts} attempts)'
-    raise ProviderError(msg, kind=last_kind)
+    raise ProviderError(msg, kind=last_kind, status=last_status)

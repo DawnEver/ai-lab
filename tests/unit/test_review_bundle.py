@@ -70,15 +70,15 @@ def _bundle(repo: Path, base: str, head: str, out: Path) -> Path:
             if data is None:
                 continue
             row[f'{side}_blob'] = 'x' * 40
-            if not binary:
-                row[side] = base64.b64encode(data).decode('ascii')
+            row[side] = base64.b64encode(data).decode('ascii')  # every side's bytes, binary or not (v2)
+            if not binary:  # the judge writes only the text files; `binary` is its verdict
                 (out / side / path).parent.mkdir(parents=True, exist_ok=True)
                 (out / side / path).write_bytes(data)
         files.append(row)
     out.mkdir(parents=True, exist_ok=True)
     (out / 'diff.patch').write_text(patch, encoding='utf-8', newline='')
-    doc = {'version': 1, 'repo': 'owner/repo', 'pr': 7, 'base_ref': 'main', 'base_sha': base, 'head_sha': head,
-           'diff': patch, 'declaration': '', 'files': files}  # fmt: skip
+    doc = {'version': 2, 'repo': 'owner/repo', 'pr': 7, 'base_ref': 'main', 'base_sha': base, 'head_sha': head,
+           'files': files}  # fmt: skip
     (out / 'bundle.json').write_text(json.dumps(doc), encoding='utf-8')
     return out
 
@@ -114,6 +114,18 @@ def test_a_bundle_reads_what_git_reads_of_the_change(change):
     assert read.intent()['memory'] == git.intent()['memory'] == [{'path': '.claude/memory/why.md',
                                                                     'text': 'the intent'}]  # fmt: skip
     assert read.intent()['commits'] == [], 'a bundle carries no commits'
+
+
+@pytest.mark.parametrize('version', [1, 3, None])
+def test_a_bundle_of_another_version_is_refused(change, version):
+    """PLANTED CONTROL: the honest v2 bundle reads; the same document at any other version is refused."""
+    _, _, root = change
+    assert BundleSource(root).label
+    doc = json.loads((root / 'bundle.json').read_text(encoding='utf-8'))
+    doc['version'] = version
+    (root / 'bundle.json').write_text(json.dumps(doc), encoding='utf-8')
+    with pytest.raises(ValueError, match='is not a version-2 review bundle'):
+        BundleSource(root)
 
 
 def test_a_file_the_bundle_does_not_hold_is_said_so_never_called_absent(change):

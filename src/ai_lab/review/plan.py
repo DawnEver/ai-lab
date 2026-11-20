@@ -20,7 +20,6 @@ from typing import Final
 
 from ai_lab.client import Provider, catalogue
 from ai_lab.review.method import (
-    DEFAULT_CONFIG,
     METHOD_DIR,
     Method,
     UnknownMethodVersion,
@@ -131,7 +130,7 @@ def build_plan(
     run_mode: str = 'interactive',
     requested: Sequence[str] = (),
     available: Collection[str] = (),
-    defaults: Mapping = DEFAULT_CONFIG,
+    defaults: Mapping | None = None,
     rows: Mapping[str, Provider] | None = None,
 ) -> dict:
     """The plan of one run: its profiles, and per reviewer a provider, a status and (pending) the prompt."""

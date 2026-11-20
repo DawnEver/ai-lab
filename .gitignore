@@ -18,7 +18,6 @@
 .pytest_cache/
 .ruff_cache/
 .venv*
-.verify/
 /build/
 /config/
 /dist/
@@ -50,7 +49,6 @@ output/
 !**/.claude/output-styles/**
 !**/.claude/docs/
 !**/.claude/docs/**
-**/.claude/rules/MEMORY.md
 **/_meta.json
 !**/attic/**
 **/.claude/**/__pycache__/

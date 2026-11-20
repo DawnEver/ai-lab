@@ -18,11 +18,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# The family's development kit: rules registry, rendered configs, shared test bodies, verify entry.
+# The family's development kit: rules registry, rendered configs, shared test bodies, verify entry, and the ONE
+# test kit (pytest, ruff, ...) -- no test tool is declared here on its own.
 dev = [
     "dev-lab[test] @ git+https://github.com/DawnEver/dev-lab.git",
-    "pytest",
-    "ruff",
 ]
 
 [tool.setuptools_scm]
@@ -34,7 +33,7 @@ where = ["src"]
 include = ["ai_lab*"]
 
 [tool.setuptools.package-data]
-ai_lab = ["providers.toml", "review/method_data/**/*"]
+ai_lab = ["providers.toml", "routes.toml", "review/method_data/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -62,6 +61,11 @@ ignore = ["COM812", "D203", "D213", "D400", "D401", "N818", "PLR0913", "Q000", "
 # A test asserts, reads private seams of what it tests, and names fixtures rather than documenting them.
 "tests/**" = ["S101", "SLF001", "D", "ANN", "ARG", "FBT003", "PLR2004", "PT018", "INP001"]
 
+# The extras every environment of this repo installs (dev_lab.dev.dep reads it): dev_lab and the test kit live
+# only in `dev`, so a relock without it drops them and the family renderer cannot run.
+[tool.dev_lab.dep]
+extras = ["dev"]
+
 [tool.dev_lab.branchset]
 trunk = 'main'
 sessions = ['integrate/main']
@@ -77,13 +81,11 @@ collect = 'tests'
 [tool.dev_lab.parts]
 output = "output/logs"
 # User ruling 2026-11-05: every test completes on GitHub Actions alone. `live` (every real-model call, Anthropic and
-# OpenAI) is one hosted linux row on a non-PR event -- the nightly schedule, whose run gates `integrate promote`, and a
-# manual dispatch -- never per PR (dev_lab.dev.jobparts.hosted_jobs). Its setup step alone holds the repo secrets; it
-# renames each to the provider's key-file name and hands them on stdin to the one key door,
-# `ai_lab.auth login --from-file -`; the code never reads an environment key. A fresh runner has no credential
-# helper, so the step configures git's in-memory cache first.
-# AI_LAB_LIVE_ANTHROPIC_KEY_2, when set, is anthropic slot 2 (user ruling 2026-11-05); unset, its empty line is skipped.
-hosted = { live = { secrets = ["AI_LAB_LIVE_ANTHROPIC_KEY", "AI_LAB_LIVE_ANTHROPIC_KEY_2", "AI_LAB_LIVE_OPENAI_KEY"], setup = "sed -e 's/^AI_LAB_LIVE_ANTHROPIC_KEY=/ANTHROPIC_API_KEY=/' -e 's/^AI_LAB_LIVE_ANTHROPIC_KEY_2=/ANTHROPIC_API_KEY:2=/' -e 's/^AI_LAB_LIVE_OPENAI_KEY=/OPENAI_API_KEY=/' | { git config --global credential.helper 'cache --timeout=7200' && uv run --no-sync python -m ai_lab.auth login --from-file -; }" } }
+# OpenAI) is one hosted linux row run ONLY on a manual dispatch -- never nightly, never per PR, never on the promote gate
+# (user ruling D66, 2026-11-18; dev_lab.dev.jobparts.hosted_jobs). It names the key tasks it needs (user ruling
+# 2026-11-05: AI_LAB_KEYS_<TASK>); dev-lab renders how each bundle reaches the one key door,
+# `ai_lab.auth login --task <task> --bundle -`; the code never reads an environment key.
+hosted = { live = { tasks = ["live"], manual = true } }  # real provider calls run only on a manual dispatch (D66)
 
 [tool.lab_commons.tests]
 produce = ["-m", "dev_lab.dev.verify", "--part", "{part}"]
@@ -97,6 +99,12 @@ trunk = "main"
 integration = "integrate/main"
 pr_merges_since = "9d016300ccc6b19cad75729b8c4f22ad21817a03"  # INTEGRATION-TAKES-ONLY-FORGE-MERGES from here
 
+# FORGE-PROTECTION-DECLARED (dev_lab.dev.forgeprotect): the ONE bypass identity per forge; on GitHub the
+# repo admin (integrator ruling 2026-11-10). `python -m dev_lab.dev.forge protect plan|check|apply`.
+[tool.dev_lab.protection]
+[tool.dev_lab.protection.forges."github.com"]
+breakglass = ["app:5704921", "role:admin"]  # the ops App (motronics-ops) merges break-glass; admin stays
+
 # GitHub Actions: the family's one PR lifecycle (dev_lab/dev/ci_base.toml) as is; rendered to
 # .github/workflows/ci.yml by `python -m dev_lab.dev.ciworkflows render`, never hand-edited.
 [tool.dev_lab.ci."ci.yml"]
@@ -109,3 +117,16 @@ BARE-TEST-INVOCATION = "<venv python> -m dev_lab.dev.verify [-- <pytest args>]  
 PUSH-NO-VERIFY = "<venv python> -m dev_lab.dev.verify, then push without skipping the hook"
 NETWORK-VERB = "<venv python> -m dev_lab.dev.netverb -- <git push|fetch|pull|clone|ls-remote|submodule update ...  or  uv lock|add|remove ...>  (retries 3x, then reports a diagnosis); an environment change is <venv python> -m dev_lab.dev.dep --sync, which retries inside"
 ENV-MUTATION-THROUGH-THE-DOOR = "<any family venv python> -m dev_lab.dev.dep --bootstrap <this checkout> --extra dev  (run from this checkout)"
+
+[tool.uv.sources]
+dev-lab = { git = "https://github.com/DawnEver/dev-lab.git", branch = "integrate/main" }
+
+[tool.dev_lab.render]
+# What the family renderers read from this repo (dev_lab.dev.famfiles.RENDERERS); a relock re-runs each one due.
+deltas = "tests/architecture/_famconfig.py"
+adoption = "scripts/deny_rules.py"
+
+# Who reviews this repo's PRs: the family's isolated judge host (user ruling 2026-11-10), gated on GitHub by the
+# family App's review/judge check run. Keys and defaults: dev_lab.dev.forgereview_declared.
+[tool.dev_lab.review]
+judge_app = 5619495

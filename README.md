@@ -206,6 +206,35 @@ cached_input = 0.01
 output = 0.50
 ```
 
+Spend is capped in MONEY per provider per calendar month (UTC), declared once in the per-machine
+file (`~/.config/lab-commons/config.toml`); every caller derives from it (`ai_lab.budget.cap`,
+`ai_lab.budget.left_usd`) and never restates it. A paid provider with no row is refused at its first
+call -- there is no code default -- and `amount = inf` declares it uncapped. A call that would start
+with a scope spent is refused (`kind = "exhausted"`), and its `max_tokens` is clamped to what is left at
+the model's output rate (details: `ai_lab.budget`):
+
+```toml
+[ai_lab.spend_cap]
+openai = { amount = 50, currency = "USD" }
+deepseek = { amount = 100, currency = "CNY" }
+"anthropic/<key fingerprint>" = { amount = 10, currency = "USD" }   # one key of a provider
+
+[ai_lab.usd_per]
+CNY = 0.14
+
+[ai_lab.standing]   # recurring per-month allotments carved out of a provider's cap
+review = { provider = "anthropic", amount = 300, currency = "USD" }
+```
+
+Below the provider's month the levels nest (details: `ai_lab.budget`): a STANDING allotment above, or
+a TASK allotment a caller opens (`with budget.allot('campaign:T3', usd=10, provider='openai') as t:`),
+then children by path (`t.allot('item:4', 0.5)`, `t.split([...])`, `campaign:T3>item:4`). What standing
+and open allotments still hold is not free to anyone else; an opening that does not fit is refused at
+open, a call is refused naming the first level with no room, and `max_tokens` derives from the
+tightest. Every ledger row records its `scope`; `python -m ai_lab.budget allot NAME [--usd N]` opens or
+reopens one from any process (`AI_LAB_SCOPE` carries it to a child), and `python -m ai_lab.spend`
+reports each level's spent against allotted.
+
 - `python -m ai_lab.providers [--json]` -- the resolved catalogue (see above).
 - `python -m ai_lab.call [--ledger PATH]` -- one call as JSON on stdin/stdout (see above).
 - `python -m ai_lab.prices CLIENT [...]` -- each catalog's quote, the consensus, agreement.
@@ -231,10 +260,36 @@ never a key. The slot that served a call is the `key_slot` of its `Decision`/`Re
 ledger entry. Failures are classified into `ProviderError.kind` (`ai_lab.errors.ERROR_KINDS`:
 `exhausted`, `auth`, `rate_limit`, `timeout`; `""` otherwise) for every wire.
 
-A TASK owns its own keys: usernames `api-key-<task>`, `api-key-<task>-2`, ... under the same host, for a
-task declared in `lab_commons.credentials.API_KEY_TASKS`. `connect(spec, task=...)` walks that task's
-slots in the same fall-over order, and only those -- never another task's, never the default's; a task
-with no slot 1 is refused by name. `-s`, `--slot` and `--seat` are one argument.
+A TASK owns its own keys: usernames `api-key-<task>`, `api-key-<task>-2`, ... under the same host. The
+tasks are the `[task.*]` tables of `routes.toml` (packaged, plus yours beside `providers.toml`, whose task
+replaces its namesake) -- `pr-review`, `optimization`, `session`, `live`. A task's route says which
+providers its call walks and when it moves on:
+
+```toml
+fall_over_on = ["quota", "auth", "rate_limit"]   # the default; classes: quota auth rate_limit server
+[task.pr-review]
+chain = ["anthropic", "deepseek"]                 # "provider" (the same role's model) or "provider:model"
+```
+
+`connect(task=...)` starts at the head of the chain, `connect(spec, task=...)` at *spec*; either walks
+every slot of that task on one provider, then the next provider on a failure whose class
+(`ai_lab.client.error_class`) is in `fall_over_on`; the ledger row of a stand-in names `fallback_from`.
+Never another task's slots, never the default's; a call without a task never moves. A review's default
+provider is the head of the `pr-review` route. `-s`, `--slot` and `--seat` are one argument.
+
+A task's keys arrive as ONE TOML bundle on stdin, replacing that task's slots of each provider it lists
+(slot order = list order; a provider not in the catalogue or not in the task's chain is refused by name):
+
+```
+printf '[keys]
+anthropic = ["sk-...", "sk-..."]
+deepseek = ["sk-..."]
+' |
+  python -m ai_lab.auth login --task pr-review --bundle -
+```
+
+A host's secret store holds one bundle per task as `AI_LAB_KEYS_<TASK>` (`-` becomes `_`); the `live`
+part's is `AI_LAB_KEYS_LIVE`.
 
 EVERY TASK AND SLOT GETS ITS OWN KEY. `login` refuses a key another credential of the same host already
 holds -- another task, another slot, or the default -- naming that credential and the key's sha256

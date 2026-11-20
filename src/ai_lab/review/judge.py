@@ -47,6 +47,7 @@ from ai_lab.call import answer
 from ai_lab.review.explore import TURN_BYTES, TURNS, change_map, serve
 from ai_lab.review.method import (
     METHOD_DIR,
+    REVIEW_TASK,
     Method,
     UnknownMethodVersion,
     configured_providers,
@@ -54,7 +55,7 @@ from ai_lab.review.method import (
     principle_list,
     rule_ids,
 )
-from ai_lab.review.run import REVIEW_TASK, explored
+from ai_lab.review.run import explored
 from ai_lab.review.source import BundleSource, GitSource, NotHeld, Source
 
 __all__ = ['ANCHOR_WINDOW', 'CLOSING', 'OUTCOMES', 'SCHEMA_VERSION', 'fence', 'invalid', 'judge_of', 'verified']

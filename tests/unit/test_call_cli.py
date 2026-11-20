@@ -3,12 +3,13 @@
 import base64
 import io
 import json
+import math
 import subprocess
 import sys
 
 import pytest
 
-from ai_lab import DailyTokenCapReached, Ledger, ProviderError, budget
+from ai_lab import Ledger, ProviderError, SpendCapReached, budget
 from ai_lab.call import CALL_SCHEMA_VERSION, REPLY_KINDS, Malformed, answer, main
 from tests.conftest import PNG
 
@@ -76,13 +77,13 @@ def test_a_classified_provider_failure_is_a_reply_not_a_crash(keys, kind):
 
 
 @pytest.mark.parametrize('scope', ['anthropic', 'key:abc123'])
-def test_a_reached_daily_cap_is_an_exhausted_reply_naming_its_scope(keys, monkeypatch, scope):
-    # A cap is TEMPORARY: the reviewer is exhausted for today, not crashed (a crash reads as permanent).
+def test_a_reached_spend_cap_is_an_exhausted_reply_naming_its_scope(keys, monkeypatch, scope):
+    # A cap is TEMPORARY: the reviewer is exhausted for the month, not crashed (a crash reads as permanent).
     def spent(provider, key):
-        msg = f'{scope} reached its daily token cap'
-        raise DailyTokenCapReached(msg, scope=scope)
+        msg = f'{scope} reached its spend cap'
+        raise SpendCapReached(msg, scope=scope)
 
-    monkeypatch.setattr(budget, 'remaining', spent)
+    monkeypatch.setattr(budget, 'left_usd', spent)
     post = _post(_ANTHROPIC_OK)
     reply = answer(RESPOND, post=post)
     assert (reply['ok'], reply['kind'], reply['result']) == (False, 'exhausted', None)
@@ -91,7 +92,7 @@ def test_a_reached_daily_cap_is_an_exhausted_reply_naming_its_scope(keys, monkey
 
 
 def test_the_planted_control_budget_left_still_calls(keys, monkeypatch):
-    monkeypatch.setattr(budget, 'remaining', lambda provider, key: 10**6)
+    monkeypatch.setattr(budget, 'left_usd', lambda provider, key: math.inf)
     reply = answer(RESPOND, post=_post(_ANTHROPIC_OK))
     assert (reply['ok'], reply['kind']) == (True, '')
 

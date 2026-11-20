@@ -70,3 +70,29 @@ def test_cost_bills_cached_input_at_its_rate_and_is_unpriced_without_a_price() -
     price = Price(1.0, 4.0, 0.1)
     assert cost(Usage(1_000_000, 500_000, 1_000_000), price) == pytest.approx(2.1)
     assert cost(Usage(10, 10), None) is None
+
+
+def test_a_rate_from_a_snapshot_later_than_the_call_says_so(tmp_path) -> None:
+    """#11 item 4: an old call with no snapshot that old is repriced from a LATER one, and the origin says so.
+
+    PLANTED CONTROL: a call after the snapshot is priced from it with the plain origin.
+    """
+    get = _catalogs(0.10, 0.10, [])
+    now = quote('openai', 'openai', 'm', directory=tmp_path, get=get, user={})
+    assert 'later than the call' not in now.origin
+    past = datetime.now(UTC) - timedelta(days=30)
+    old = quote('openai', 'openai', 'm', at=past, directory=tmp_path, get=get, user={})
+    assert old.origin.startswith(now.origin) and 'later than the call' in old.origin
+
+
+def test_a_naive_call_time_is_refused_by_name(tmp_path) -> None:
+    """#11 item 3: a hand-written row's naive ``at`` cannot be compared with a snapshot; it is refused by name.
+
+    PLANTED CONTROL: the same instant with its UTC offset is priced.
+    """
+    get = _catalogs(0.10, 0.10, [])
+    quote('openai', 'openai', 'm', directory=tmp_path, get=get, user={})
+    aware = datetime.now(UTC) + timedelta(hours=1)
+    assert quote('openai', 'openai', 'm', at=aware, directory=tmp_path, get=get, user={}) is not None
+    with pytest.raises(ValueError, match='timezone'):
+        quote('openai', 'openai', 'm', at=aware.replace(tzinfo=None), directory=tmp_path, get=get, user={})

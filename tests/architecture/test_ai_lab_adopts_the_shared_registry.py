@@ -118,6 +118,11 @@ _MECHANISMS: Final = {
          'TRACKED-CITES-NO-EPHEMERAL', 'HEAVY-IS-THE-MAIN-SESSIONS'),
         (TestPath('tests/architecture/test_the_agent_guard_is_live.py'),),
     ),
+    # Adopted 2026-11-20 with dev-lab 2adcab2: `[tool.dev_lab.dep] extras` is the one declaration; the rendered
+    # workflows sync only it (ciworkflows refuses an `--all-extras` at render) and the render test pins them.
+    'ALL-EXTRAS-REFUSED': (
+        TestPath('pyproject.toml'), TestPath('tests/architecture/test_the_ci_workflow_is_rendered.py'),
+    ),
 }  # fmt: skip
 
 #: Rules with no subject in this library today, BY NAME -- deriving it from ``RULES`` would silently
@@ -142,6 +147,8 @@ _ABSENT: Final = frozenset({
     # Meta-rules about guards: the guards above are the family's shared bodies, which carry them.
     'DECLARATION-LIES', 'PLANTED-CONTROL', 'FLOOR-ON-EVERY-SCAN', 'ESCAPE-HATCH-CEILING', 'RATCHET-TWO-SIDES',
     'NAMED-SETS-NOT-COUNTS', 'XFAIL-NOT-SKIP', 'MODULE-SIZE-ALARM',
+    # Hosts: ai-lab deploys no host role, so it runs no scheduler to restrict.
+    'SCHEDULER-ONLY-FOR-SERVING',
 })  # fmt: skip
 
 #: The size of the set as of 2026-10-08 (41), re-based 2026-10-13 when the registry added six rules with
@@ -157,7 +164,9 @@ _ABSENT: Final = frozenset({
 #: Lowered to 39 on 2026-10-26: the agent guard took AGENT-GUARD and the four rules it refuses.
 #: Lowered to 38 on 2026-11-07: NO-CJK-IN-TRACKED-SOURCE is always on (dev_lab.dev.famtests.alwayson).
 #: Lowered to 37 on 2026-11-17: TRACKED-CITES-NO-EPHEMERAL became a shipped deny rule of the agent guard.
-_ABSENT_CEILING: Final = 37
+#: Raised to 38 on 2026-11-20: dev-lab 2adcab2 added SCHEDULER-ONLY-FOR-SERVING, a host-deploy rule with no
+#: subject in this library.
+_ABSENT_CEILING: Final = 38
 
 
 def test_every_rule_is_enforced_or_declared_absent() -> None:

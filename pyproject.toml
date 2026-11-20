@@ -70,6 +70,10 @@ extras = ["dev"]
 trunk = 'main'
 sessions = ['integrate/main']
 prune_merged = true
+# Branch limits (user ruling 2026-11-20): land or retire a head past them (dev_lab.dev.branchpolicy).
+max_ahead = 10
+max_idle_hours = 12
+ephemeral = ['pr/*']
 
 [tool.lab_commons.hpc]
 # PIN + FRESHNESS (user ruling 2026-10-17): the venv is exactly the committed lock, and the lock keys it.

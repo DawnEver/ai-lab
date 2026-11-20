@@ -1,4 +1,4 @@
-"""``python -m ai_lab.session <claude|codex> [args]``: the ONE place a session id is minted and the agent CLI launched.
+"""``python -m ai_lab.session <claude|codex|agy> [args]``: the ONE place a session id is minted and launched.
 
 The id is inherited when a parent session already has one, else the vendor's own conversation id named in the
 args (so a resume keeps it), else a fresh UUID; a fresh Claude conversation is pinned to it with
@@ -57,9 +57,33 @@ def test_a_codex_resume_keeps_the_thread_id_and_a_fresh_codex_launch_is_never_pi
     assert argv == ['codex', 'exec', 'x']
 
 
+@pytest.mark.parametrize(
+    'args',
+    [['--conversation', _FRESH], [f'--conversation={_FRESH}']],
+    ids=['space', 'equals'],
+)
+def test_a_named_agy_conversation_is_the_session_and_never_pinned(args: list[str]) -> None:
+    env, argv = launch('agy', args, {})
+    assert (env[ENV], argv) == (_FRESH, ['agy', *args])
+
+
+@pytest.mark.parametrize('args', [[], ['-p', 'hi'], ['mcp', 'list'], ['models']])
+def test_a_fresh_agy_launch_or_subcommand_mints_a_uuid_and_is_never_pinned(args: list[str]) -> None:
+    env, argv = launch('agy', args, {})
+    uuid.UUID(env[ENV])
+    assert argv == ['agy', *args]
+
+
+def test_an_inherited_antigravity_conversation_id_is_kept_across_launches() -> None:
+    env, argv = launch('agy', ['-p', 'hi'], {'ANTIGRAVITY_CONVERSATION_ID': 'native-agy-1'})
+    assert env[ENV] == 'native-agy-1'
+    assert argv == ['agy', '-p', 'hi']
+
+
 def test_a_native_runtime_id_wins_over_a_fresh_uuid() -> None:
     assert session_id({'CLAUDE_CODE_SESSION_ID': 'native-claude-1'}) == 'native-claude-1'
     assert session_id({'CODEX_THREAD_ID': 'native-codex-1'}) == 'native-codex-1'
+    assert session_id({'ANTIGRAVITY_CONVERSATION_ID': 'native-agy-1'}) == 'native-agy-1'
     assert session_id({}, vendor='vendor-id-1') == 'vendor-id-1'
 
 
@@ -75,11 +99,12 @@ def test_main_runs_the_agent_with_the_session_set_and_returns_its_exit() -> None
 
 
 def test_an_unknown_agent_exits_2_naming_the_known_ones(capsys) -> None:
+    assert AGENTS == ('claude', 'codex', 'agy')
     with pytest.raises(SystemExit) as refused:
         main(['gemini'], env={}, runner=lambda *_: 0)
     assert refused.value.code == 2
     err = capsys.readouterr().err
-    assert all(agent in err for agent in AGENTS)
+    assert "['claude', 'codex', 'agy']" in err
 
 
 def test_the_launcher_is_a_module_run_and_ships_no_console_script() -> None:

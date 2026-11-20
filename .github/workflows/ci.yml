@@ -535,7 +535,7 @@
         "GITHUB_TOKEN": "${{ github.token }}"
       },
       "needs": "parts",
-      "if": "${{ (!(github.event.pull_request.draft || startsWith(github.event.pull_request.title, 'WIP:') || startsWith(github.event.pull_request.title, '[WIP]'))) && ((inputs.measurement_paths == '' && inputs.measurement_sha == '') && (needs.parts.outputs.matrix != '' && needs.parts.outputs.event != 'pull_request')) }}",
+      "if": "${{ (!(github.event.pull_request.draft || startsWith(github.event.pull_request.title, 'WIP:') || startsWith(github.event.pull_request.title, '[WIP]'))) && ((inputs.measurement_paths == '' && inputs.measurement_sha == '') && (needs.parts.outputs.matrix != '' && needs.parts.outputs.event == 'workflow_dispatch')) }}",
       "name": "tests/live",
       "runs-on": "ubuntu-latest",
       "steps": [

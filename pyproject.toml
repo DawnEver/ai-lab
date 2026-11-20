@@ -61,6 +61,11 @@ ignore = ["COM812", "D203", "D213", "D400", "D401", "N818", "PLR0913", "Q000", "
 # A test asserts, reads private seams of what it tests, and names fixtures rather than documenting them.
 "tests/**" = ["S101", "SLF001", "D", "ANN", "ARG", "FBT003", "PLR2004", "PT018", "INP001"]
 
+# The extras every environment of this repo installs (dev_lab.dev.dep reads it): dev_lab and the test kit live
+# only in `dev`, so a relock without it drops them and the family renderer cannot run.
+[tool.dev_lab.dep]
+extras = ["dev"]
+
 [tool.dev_lab.branchset]
 trunk = 'main'
 sessions = ['integrate/main']
@@ -125,8 +130,3 @@ adoption = "scripts/deny_rules.py"
 # family App's review/judge check run. Keys and defaults: dev_lab.dev.forgereview_declared.
 [tool.dev_lab.review]
 judge_app = 5619495
-
-# D42 (2026-11-17) adoption ledger, read by dev_lab.dev.famtests.treechecks: findings not yet fixed; shrink-only (a fixed one reds until deleted).
-# The verify remedy is relative because allow_adoption derives the allow entry from it; a {python} slot needs that derivation first.
-[tool.dev_lab.remedypaths]
-declared = ["BARE-TEST-INVOCATION", "PUSH-NO-VERIFY"]

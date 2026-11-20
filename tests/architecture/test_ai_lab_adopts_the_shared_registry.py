@@ -91,6 +91,12 @@ _MECHANISMS: Final = {
     # this pyproject's hooks table runs refuses both.
     'BASE-HOLDS-THE-MILESTONE': (TestPath('pyproject.toml'),),
     'VERSION-TAG-NEEDS-APPROVAL': (TestPath('pyproject.toml'),),
+    # Adopted 2026-11-19 with the relock to dev-lab integrate/main: the base pre-push row `session-branch`
+    # (dev_lab.dev.sessionbranch) this pyproject's hooks table runs refuses an off-task head.
+    'PUSHED-HEAD-CARRIES-ITS-TASK': (TestPath('pyproject.toml'),),
+    # Adopted 2026-11-19: the rendered settings run one `dev_lab.dev.hookdispatch` row per event, each with
+    # timeout 5, and the dispatcher detaches a slow row.
+    'HOOK-UNDER-FIVE-SECONDS': (TestPath('.claude/settings.json'),),
     # Adopted 2026-10-24 with dev-lab 1d74f38: the October summary is the first month this tree holds.
     'MONTHLY-PLANS-CARRIED': (TestPath('tests/architecture/test_every_month_carries_its_plans.py'),),
     # Adopted 2026-10-26 with dev-lab c9eaa7f: the agent guard ships in every family repo; the rendered
@@ -100,7 +106,7 @@ _MECHANISMS: Final = {
          'INJECTED-TEXT-IS-PROGRESSIVE',
          # Gained 2026-10-29 with dev-lab 5abf8c4d: RECURSIVE-DELETE is a shipped deny rule, and the guard's
          # WIRING installs the `dev_lab.dev.pushwatch` PostToolUse advisory the live test pins.
-         'RECURSIVE-DELETE', 'PUSHED-HEAD-IS-WATCHED', 'SESSION-HEARS-ITS-PRS',
+         'RECURSIVE-DELETE', 'PUSHED-HEAD-IS-WATCHED', 'TASK-HEARS-ITS-FORGE-EVENTS',
          # Gained 2026-11-07 with dev-lab 8c4ab734: the guard refuses a write outside the checkout.
          'WRITES-STAY-IN-THE-TREE',
          # Gained 2026-11-13 with dev-lab 61560e40: the guard's WIRING installs the `dev_lab.dev.walls`

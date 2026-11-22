@@ -151,8 +151,9 @@ _ABSENT: Final = frozenset({
     # Meta-rules about guards: the guards above are the family's shared bodies, which carry them.
     'DECLARATION-LIES', 'PLANTED-CONTROL', 'FLOOR-ON-EVERY-SCAN', 'ESCAPE-HATCH-CEILING', 'RATCHET-TWO-SIDES',
     'NAMED-SETS-NOT-COUNTS', 'XFAIL-NOT-SKIP', 'MODULE-SIZE-ALARM',
-    # Hosts: ai-lab deploys no host role, so it runs no scheduler to restrict.
-    'SCHEDULER-ONLY-FOR-SERVING',
+    # Hosts: ai-lab deploys no host role, so it runs no scheduler to restrict, and declares no ssh endpoint
+    # whose key it could check.
+    'SCHEDULER-ONLY-FOR-SERVING', 'SSH-HOST-KEY-DECLARED',
 })  # fmt: skip
 
 #: The size of the set as of 2026-10-08 (41), re-based 2026-10-13 when the registry added six rules with
@@ -170,7 +171,9 @@ _ABSENT: Final = frozenset({
 #: Lowered to 37 on 2026-11-17: TRACKED-CITES-NO-EPHEMERAL became a shipped deny rule of the agent guard.
 #: Raised to 38 on 2026-11-20: dev-lab 2adcab2 added SCHEDULER-ONLY-FOR-SERVING, a host-deploy rule with no
 #: subject in this library.
-_ABSENT_CEILING: Final = 38
+#: Raised to 39 on 2026-11-22 (user ruling 2026-11-22): dev-lab 77ef8452 added SSH-HOST-KEY-DECLARED, and this
+#: library declares no ssh endpoint.
+_ABSENT_CEILING: Final = 39
 
 
 def test_every_rule_is_enforced_or_declared_absent() -> None:

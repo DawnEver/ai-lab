@@ -115,7 +115,11 @@ _MECHANISMS: Final = {
          # Gained 2026-11-17 with dev-lab b9875921: the per-module rows above became one `dev_lab.dev.hookdispatch`
          # row per event, and the deny engine took the journal door (TRACKED-CITES-NO-EPHEMERAL) and the
          # subagent refusal of heavy runs (HEAVY-IS-THE-MAIN-SESSIONS), each a shipped rule the live test pins.
-         'TRACKED-CITES-NO-EPHEMERAL', 'HEAVY-IS-THE-MAIN-SESSIONS'),
+         'TRACKED-CITES-NO-EPHEMERAL', 'HEAVY-IS-THE-MAIN-SESSIONS',
+         # Gained 2026-11-22 with dev-lab 77ef8452: the rendered deny rows refuse code written under output/ and a
+         # hash-like worktree name, and the same live wiring's Stop hook sends back a final message naming an
+         # image by a relative path.
+         'OUTPUT-HOLDS-NO-CODE', 'WORKTREE-NAMES-ITS-TASK', 'IMAGES-BY-ABSOLUTE-PATH'),
         (TestPath('tests/architecture/test_the_agent_guard_is_live.py'),),
     ),
     # Adopted 2026-11-20 with dev-lab 2adcab2: `[tool.dev_lab.dep] extras` is the one declaration; the rendered

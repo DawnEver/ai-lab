@@ -160,7 +160,10 @@ def test_the_module_refuses_a_malformed_request_with_exit_2(monkeypatch, capsys,
 # has a declared ceiling, the current size plus a small margin, that may only go down.
 
 #: Characters of the largest rendered prompt with an empty diff and manifest.
-PROMPT_BUDGET_CHARS = 6950  # raised 2026-11-20: dev-lab 2adcab2 added ALL-EXTRAS-REFUSED and SCHEDULER-ONLY-FOR-SERVING to the cited registry ids (+48 chars, largest 6904)
+# Raised 2026-11-20: dev-lab 2adcab2 added ALL-EXTRAS-REFUSED and SCHEDULER-ONLY-FOR-SERVING to the cited registry
+# ids (+48 chars, largest 6904). Raised 6950 -> 7000 on 2026-11-22 (user ruling 2026-11-22): dev-lab 77ef8452 added
+# four more ids (largest 6999).
+PROMPT_BUDGET_CHARS = 7000
 #: How far the ceiling may sit above the largest prompt before it must be lowered.
 MARGIN_CHARS = 100
 EMPTY = {'range': '', 'excludedSummary': '', 'diff': '', 'manifest': ''}

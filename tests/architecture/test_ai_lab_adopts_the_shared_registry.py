@@ -115,7 +115,11 @@ _MECHANISMS: Final = {
          # Gained 2026-11-17 with dev-lab b9875921: the per-module rows above became one `dev_lab.dev.hookdispatch`
          # row per event, and the deny engine took the journal door (TRACKED-CITES-NO-EPHEMERAL) and the
          # subagent refusal of heavy runs (HEAVY-IS-THE-MAIN-SESSIONS), each a shipped rule the live test pins.
-         'TRACKED-CITES-NO-EPHEMERAL', 'HEAVY-IS-THE-MAIN-SESSIONS'),
+         'TRACKED-CITES-NO-EPHEMERAL', 'HEAVY-IS-THE-MAIN-SESSIONS',
+         # Gained 2026-11-22 with dev-lab 77ef8452: the rendered deny rows refuse code written under output/ and a
+         # hash-like worktree name, and the same live wiring's Stop hook sends back a final message naming an
+         # image by a relative path.
+         'OUTPUT-HOLDS-NO-CODE', 'WORKTREE-NAMES-ITS-TASK', 'IMAGES-BY-ABSOLUTE-PATH'),
         (TestPath('tests/architecture/test_the_agent_guard_is_live.py'),),
     ),
     # Adopted 2026-11-20 with dev-lab 2adcab2: `[tool.dev_lab.dep] extras` is the one declaration; the rendered
@@ -147,8 +151,9 @@ _ABSENT: Final = frozenset({
     # Meta-rules about guards: the guards above are the family's shared bodies, which carry them.
     'DECLARATION-LIES', 'PLANTED-CONTROL', 'FLOOR-ON-EVERY-SCAN', 'ESCAPE-HATCH-CEILING', 'RATCHET-TWO-SIDES',
     'NAMED-SETS-NOT-COUNTS', 'XFAIL-NOT-SKIP', 'MODULE-SIZE-ALARM',
-    # Hosts: ai-lab deploys no host role, so it runs no scheduler to restrict.
-    'SCHEDULER-ONLY-FOR-SERVING',
+    # Hosts: ai-lab deploys no host role, so it runs no scheduler to restrict, and declares no ssh endpoint
+    # whose key it could check.
+    'SCHEDULER-ONLY-FOR-SERVING', 'SSH-HOST-KEY-DECLARED',
 })  # fmt: skip
 
 #: The size of the set as of 2026-10-08 (41), re-based 2026-10-13 when the registry added six rules with
@@ -166,7 +171,9 @@ _ABSENT: Final = frozenset({
 #: Lowered to 37 on 2026-11-17: TRACKED-CITES-NO-EPHEMERAL became a shipped deny rule of the agent guard.
 #: Raised to 38 on 2026-11-20: dev-lab 2adcab2 added SCHEDULER-ONLY-FOR-SERVING, a host-deploy rule with no
 #: subject in this library.
-_ABSENT_CEILING: Final = 38
+#: Raised to 39 on 2026-11-22 (user ruling 2026-11-22): dev-lab 77ef8452 added SSH-HOST-KEY-DECLARED, and this
+#: library declares no ssh endpoint.
+_ABSENT_CEILING: Final = 39
 
 
 def test_every_rule_is_enforced_or_declared_absent() -> None:

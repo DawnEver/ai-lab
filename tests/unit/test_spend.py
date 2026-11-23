@@ -99,6 +99,13 @@ def test_the_cli_prints_the_report_as_json(tmp_path, monkeypatch, capsys):
     assert got['month_by_tag'] == {'r#1': 1.0}
 
 
+def test_a_batch_row_is_priced_at_the_batch_rate(tmp_path):
+    _write(tmp_path, '2026-10-05', {**_row('r#1', 1_000_000, 1_000_000), 'batch': True}, _row('r#2', 1_000_000))
+    got = spend.report(today=date(2026, 10, 6), directory=tmp_path, price=_price)
+    assert got['month_by_tag'] == pytest.approx({'r#1': 3.0 * BATCH_RATE, 'r#2': 1.0})
+    assert BATCH_RATE == 0.5
+
+
 def test_the_report_reads_each_allotment_spent_against_allotted_from_the_budget_levels(keys, tmp_path, monkeypatch):
     machine = tmp_path / 'levels.toml'
     machine.write_text(
@@ -116,8 +123,86 @@ def test_the_report_reads_each_allotment_spent_against_allotted_from_the_budget_
     assert got['campaign:T3'] == {**held, 'allotted_usd': 5.0, 'spent_usd': 1.0, 'standing': False}
 
 
-def test_a_batch_row_is_priced_at_the_batch_rate(tmp_path):
-    _write(tmp_path, '2026-10-05', {**_row('r#1', 1_000_000, 1_000_000), 'batch': True}, _row('r#2', 1_000_000))
+# --- the reset day (user ruling 2026-11-03, kept-capability 2026-11-06) ---------------------------------------
+
+
+@pytest.fixture
+def machine(tmp_path, monkeypatch):
+    """The machine file's ``[ai_lab.spend]`` table, as TOML rows."""
+
+    def declare(rows=''):
+        path = tmp_path / 'machine.toml'
+        path.write_text(f'[ai_lab.spend]\n{rows}', encoding='utf-8')
+        monkeypatch.setenv('LAB_COMMONS_CONFIG', str(path))
+
+    declare()
+    return declare
+
+
+def test_the_default_month_opens_on_the_first(tmp_path, machine):
     got = spend.report(today=date(2026, 10, 6), directory=tmp_path, price=_price)
-    assert got['month_by_tag'] == pytest.approx({'r#1': 3.0 * BATCH_RATE, 'r#2': 1.0})
-    assert BATCH_RATE == 0.5
+    assert got['month_opens'] == '2026-10-01'
+    assert budget.DEFAULT_RESET_DAY == 1
+
+
+def test_the_machine_file_sets_the_reset_day(tmp_path, machine):
+    machine('reset_day = 15\n')
+    _write(tmp_path, '2026-10-14', _row('r#1', 1_000_000))  # before the 15th: last month
+    _write(tmp_path, '2026-10-15', _row('r#1', 2_000_000))
+    got = spend.report(today=date(2026, 10, 20), directory=tmp_path, price=_price)
+    assert got['month_opens'] == '2026-10-15', 'a month opens on its reset day'
+    assert got['spent_usd'] == pytest.approx(2.0)
+
+
+def test_a_month_opens_on_the_reset_day_of_the_previous_calendar_month_before_it(tmp_path, machine):
+    machine('reset_day = 15\n')
+    got = spend.report(today=date(2026, 1, 3), directory=tmp_path, price=_price)
+    assert got['month_opens'] == '2025-12-15'
+
+
+@pytest.mark.parametrize(
+    'rows', ['reset_day = 0\n', 'reset_day = 29\n', 'reset_day = 1.5\n', 'reset_day = true\n', 'unknown = 1\n'],
+)  # fmt: skip
+def test_a_malformed_spend_table_is_refused_by_name(tmp_path, machine, rows):
+    machine(rows)
+    with pytest.raises(ValueError, match=r'\[ai_lab\.spend\]'):
+        spend.report(today=date(2026, 10, 6), directory=tmp_path, price=_price)
+
+
+@pytest.mark.parametrize(('key', 'home'), [('monthly_usd', 'spend_cap'), ('reserve_usd', 'standing')])
+def test_the_retired_month_and_reserve_keys_are_refused_naming_where_each_lives_now(tmp_path, machine, key, home):
+    """The 750/250 split is now a provider's ``spend_cap`` minus what its ``standing`` allotments hold."""
+    machine(f'{key} = 1000\n')
+    with pytest.raises(ValueError, match=rf'{key} is now .*{home}'):
+        spend.report(today=date(2026, 10, 6), directory=tmp_path, price=_price)
+
+
+def test_a_torn_ledger_line_is_counted_never_a_failed_report(tmp_path):
+    """#11 (1): an unlocked append can tear a line; the report counts it and prices every whole row."""
+    _write(tmp_path, '2026-10-06', _row('r#1', 1_000_000))
+    with (tmp_path / 'tokens-2026-10-06.jsonl').open('a', encoding='utf-8') as out:
+        out.write('{"provider": "anthropic", "tok\n')
+    got = spend.report(today=date(2026, 10, 6), directory=tmp_path, price=_price)
+    assert got['spent_usd'] == pytest.approx(1.0)
+    assert got['bad_lines'] == 1
+
+
+def test_planted_control_a_whole_ledger_has_no_bad_lines(tmp_path):
+    _write(tmp_path, '2026-10-06', _row('r#1', 1_000_000))
+    got = spend.report(today=date(2026, 10, 6), directory=tmp_path, price=_price)
+    assert got['bad_lines'] == 0
+
+
+def test_a_call_whose_reply_reports_no_usage_is_charged_as_unpriced_never_skipped(keys, monkeypatch):
+    """#11 (2): a reply without usage is still a call: it books an unmetered row the report counts as unpriced."""
+    monkeypatch.delenv(budget.TAG_ENV, raising=False)
+
+    def post(call, **_):
+        return {'content': [{'type': 'text', 'text': '{}'}]}
+
+    connect('anthropic:claude-x', post=post).respond(_REQUEST)
+    (row,) = [json.loads(line) for line in budget.ledger_file().read_text('utf-8').splitlines()]
+    assert row['unmetered'] is True
+    assert budget.row_usd(row, _price) is None
+    got = spend.report(directory=budget.state_dir(), price=_price)
+    assert got['unpriced_calls'] == 1

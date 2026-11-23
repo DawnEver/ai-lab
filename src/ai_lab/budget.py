@@ -23,7 +23,11 @@ spent raises :class:`~ai_lab.errors.SpendCapReached` and is never sent, and its 
 the tightest scope has left at the model's output rate (a call under way may finish past the cap by its input).
 A capped call whose model has no price is refused: an unpriced call cannot be held to a money cap.
 
-THE PERIOD is the calendar month (UTC): providers bill and budget monthly, and so does :mod:`ai_lab.spend`.
+THE PERIOD is the month (UTC): providers bill and budget monthly, and so does :mod:`ai_lab.spend`. It opens on
+the 1st unless the machine file names another day (user ruling 2026-11-03, kept 2026-11-06), :func:`month_start`::
+
+    [ai_lab.spend]
+    reset_day = 1                                           # the day (1-28, UTC) every month opens on
 
 The ledger is one JSON line per call ``{"provider", "key", "tokens", "model", "input", "output", "cached",
 "at", "tag"}`` (``tag``: what the call is charged to, :data:`TAG_ENV` with the call's own tag appended
@@ -44,8 +48,8 @@ import math
 import os
 import sys
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from dataclasses import dataclass, replace
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Self
 
@@ -78,9 +82,11 @@ __all__ = [
     'key_scope',
     'ledger_file',
     'left_usd',
+    'month_start',
     'priced',
     'rate',
     'require_call',
+    'reset_day',
     'revoke',
     'room',
     'row_usd',
@@ -97,6 +103,12 @@ APP: Final = 'ai_lab'
 TAG_ENV: Final = 'AI_LAB_SPEND_TAG'
 TABLE: Final = 'spend_cap'
 RATES: Final = 'usd_per'
+#: The machine-file table naming the day a month opens on (:func:`reset_day`).
+PERIOD: Final = 'spend'
+#: The day a month opens on when the machine file names none: the 1st (user ruling 2026-11-03).
+DEFAULT_RESET_DAY: Final = 1
+#: The last day every month has, so a reset day past it would skip a month.
+_LAST_COMMON_DAY: Final = 28
 #: The currency every price is quoted in.
 USD: Final = 'USD'
 
@@ -125,10 +137,17 @@ def key_scope(provider: str, key: str) -> str:
 
 
 def rate(client: str, at: datetime | None = None) -> Quote | None:
-    """``provider:model``'s rate at *at* (the current one when no snapshot that old holds it); ``None``: unpriced."""
+    """``provider:model``'s rate at *at*; ``None``: unpriced.
+
+    With no snapshot holding it at all, today's rate is used and its origin says so (#11 item 4).
+    """
     from ai_lab.prices import quote_for  # noqa: PLC0415 -- prices reads the catalogue, which imports this module
 
-    return quote_for(client, at=at) or quote_for(client)
+    held = quote_for(client, at=at)
+    if held is not None or at is None:
+        return held
+    today = quote_for(client)
+    return None if today is None else replace(today, origin=f"{today.origin} (today's rate: none held at the call)")
 
 
 def priced(client: str, at: datetime | None = None) -> Quote:
@@ -172,6 +191,38 @@ def _caps() -> dict[str, Cap]:
             raise ValueError(msg)
         caps[scope] = Cap(amount, currency)
     return caps
+
+
+def reset_day() -> int:
+    """The day of the month (1-28, UTC) a month opens on: ``[ai_lab.spend] reset_day``, else the 1st.
+
+    The table's one key; a malformed day, or a key the table does not hold, is refused by name. Its former
+    ``monthly_usd`` and ``reserve_usd`` are refused naming where each lives now: a provider's month is
+    ``[ai_lab.spend_cap]``, and a reserve is what no ``[ai_lab.standing]`` allotment holds of it.
+    """
+    table = _table().get(PERIOD, {})
+    if not isinstance(table, dict):
+        msg = f'[{APP}.{PERIOD}] is a table, got {table!r}'
+        raise ValueError(msg)  # noqa: TRY004 -- a malformed machine file is a value error, not a type error
+    moved = {'monthly_usd': f'[{APP}.{TABLE}]', 'reserve_usd': f'[{APP}.{TABLE}] minus [{APP}.standing]'}
+    if unknown := sorted(set(table) - {'reset_day'}):
+        where = '; '.join(f'{k} is now {moved[k]}' for k in unknown if k in moved)
+        msg = f'[{APP}.{PERIOD}] has unknown key(s) {unknown}; its one key is reset_day'
+        msg += f' ({where})' if where else ''
+        raise ValueError(msg)
+    day = table.get('reset_day', DEFAULT_RESET_DAY)
+    if not isinstance(day, int) or isinstance(day, bool) or not 1 <= day <= _LAST_COMMON_DAY:
+        msg = f'[{APP}.{PERIOD}] reset_day must be a whole day of the month 1-{_LAST_COMMON_DAY}, got {day!r}'
+        raise ValueError(msg)
+    return day
+
+
+def month_start(today: date, day: int | None = None) -> date:
+    """The day the month holding *today* opened: its reset *day* (default :func:`reset_day`), else the prior one's."""
+    day = reset_day() if day is None else day
+    if today.day >= day:
+        return today.replace(day=day)
+    return (today.replace(day=1) - timedelta(days=1)).replace(day=day)
 
 
 def usd_per(currency: str) -> float:
@@ -222,9 +273,9 @@ def row_usd(row: dict, price: Price | None = None) -> float | None:
 
     A batch row (``"batch": true``) is priced at :data:`ai_lab.prices.BATCH_RATE` of the synchronous price.
     """
-    from ai_lab.prices import BATCH_RATE, cost  # noqa: PLC0415 -- prices reads the catalogue, which imports this module
+    from ai_lab.prices import BATCH_RATE, cost  # noqa: PLC0415 -- prices imports the catalogue, a cycle
 
-    if not row.get('model'):
+    if not row.get('model') or row.get('unmetered'):
         return None
     at = datetime.fromisoformat(row['at']) if row.get('at') else None
     held = (rate if price is None else price)(f'{row["provider"]}:{row["model"]}', at)
@@ -233,9 +284,22 @@ def row_usd(row: dict, price: Price | None = None) -> float | None:
     return usd * BATCH_RATE if usd is not None and row.get('batch') else usd
 
 
+def ledger_lines(path: Path) -> tuple[list[dict], int]:
+    """*path*'s whole JSON rows and how many lines were torn: :func:`charge` appends unlocked, so a line may be."""
+    rows, bad = [], 0
+    for line in path.read_text('utf-8').splitlines():
+        if not line.strip():
+            continue
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            bad += 1
+    return rows, bad
+
+
 def _rows(provider: str, key: str | None, *, month: bool = True) -> list[dict]:
     """*provider*'s ledger rows (through *key*, when given): this month's, else every day's."""
-    start = datetime.now(UTC).date().replace(day=1) if month else date.min
+    start = month_start(datetime.now(UTC).date()) if month else date.min
     rows = []
     for path in sorted(state_dir().glob('tokens-*.jsonl')):
         try:
@@ -243,11 +307,13 @@ def _rows(provider: str, key: str | None, *, month: bool = True) -> list[dict]:
         except ValueError:
             continue
         if day >= start:
-            rows += [json.loads(line) for line in path.read_text('utf-8').splitlines() if line.strip()]
+            rows += ledger_lines(path)[0]
     return [r for r in rows if r['provider'] == provider and (key is None or r['key'] == key)]
 
 
 def _priced(row: dict) -> float:
+    if row.get('unmetered'):  # no tokens to price: the cap holds nothing for it; the spend report counts it unpriced
+        return 0.0
     usd = row_usd(row)
     if usd is None:
         msg = f'{row["provider"]}:{row.get("model")} at {row.get("at")} has no price; declare it in ai_lab prices.toml'
@@ -317,7 +383,7 @@ def spend_tag(tag: str | None = None) -> str | None:
 def charge(
     provider: str,
     key: str | None,
-    usage: Usage,
+    usage: Usage | None,
     model: str,
     *,
     tag: str | None = None,
@@ -326,14 +392,20 @@ def charge(
 ) -> None:
     """Append one call's *usage* of *model* on *provider* through *key* to today's ledger, tagged :func:`spend_tag`.
 
+    A reply that reports no *usage* is still a call: it books an ``"unmetered"`` row with no tokens, which no price
+    can value, so the spend report counts it as unpriced -- never skipped, never free (ai-lab #11).
+
     A *batch* call's row says so (``"batch": true``): the vendor bills it at :data:`ai_lab.prices.BATCH_RATE`. A call
     a task's route moved to names the provider it stood in for (``"fallback_from"``).
     """
+    metered = usage or Usage(0, 0, 0)
     row = {
-        'provider': provider, 'key': key, 'tokens': usage.input_tokens + usage.output_tokens, 'model': model,
-        'input': usage.input_tokens, 'output': usage.output_tokens, 'cached': usage.cached_tokens,
+        'provider': provider, 'key': key, 'tokens': metered.input_tokens + metered.output_tokens, 'model': model,
+        'input': metered.input_tokens, 'output': metered.output_tokens, 'cached': metered.cached_tokens,
         'at': _now(), 'tag': spend_tag(tag), 'scope': current(),
     }  # fmt: skip
+    if usage is None:
+        row['unmetered'] = True
     if batch:
         row['batch'] = True
     if fallback_from:

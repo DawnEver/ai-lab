@@ -45,7 +45,7 @@ _MECHANISMS: Final = {
     # spelling found in any other tracked file reds (a planted leftover must be found).
     'RETIRED-NAMES-REGISTERED': (TestPath('tests/architecture/test_retired_names_are_registered.py'),),
     # Adopted 2026-10-20 with the ledger's first schema change (schema 2 dropped usage.cost_usd).
-    'FORMATS-UPGRADE-ON-READ': (TestPath('tests/unit/test_ledger_and_rules.py'),),
+    'FORMATS-MIGRATE-ONCE': (TestPath('tests/unit/test_ledger_and_rules.py'),),
     # integrate/main and main are declared in pyproject.toml; the base table's `session-branch` pre-push
     # row refuses the three push-side violations, and the one writer is git's own (guarded from force by it).
     **dict.fromkeys(
@@ -70,7 +70,7 @@ _MECHANISMS: Final = {
     'INTEGRATION-TAKES-ONLY-FORGE-MERGES': (
         TestPath('pyproject.toml'), TestPath('tests/architecture/test_session_branch_pushes_are_guarded.py'),
     ),
-    'PR-REVIEW-BLOCKS-ON-HIGH-OR-SECURITY': (TestPath('pyproject.toml'),),
+    'PR-REVIEW-IS-ONE-SHOT-ADVICE': (TestPath('pyproject.toml'),),
     # Adopted 2026-10-23 with the move to dev-lab: the PR-flow rows are the forge's own admission and carry
     # steps (dev_lab.dev.pradmit, dev_lab.dev.forgecarry) over the same declared integrator table.
     'ONE-SESSION-ONE-PR': (TestPath('pyproject.toml'),),
@@ -81,7 +81,22 @@ _MECHANISMS: Final = {
     # lands on a merged PR).
     'DRAFT-UNTIL-READY': (TestPath('pyproject.toml'),),
     'FORGE-DOORS-ARE-CONSENT': (TestPath('pyproject.toml'),),
-    'NO-PUSH-ONTO-A-LANDED-PR': (TestPath('pyproject.toml'),),
+    # Adopted 2026-11-10 (dev-lab #320, as numerics-lab): the rendered `continue.yml` push job, which replaces the
+    # retired NO-PUSH-ONTO-A-LANDED-PR, and the base pre-push row `closed-push`.
+    'LANDED-BRANCH-CONTINUES': (TestPath('.github/workflows/continue.yml'),),
+    'NO-PUSH-ONTO-A-CLOSED-PR': (TestPath('pyproject.toml'),),
+    # Adopted 2026-11-07 with dev-lab #304: the base pre-push row `pr-current` this pyproject's hooks table runs.
+    'PR-HEAD-IS-CURRENT': (TestPath('pyproject.toml'),),
+    # Adopted 2026-11-13 with dev-lab 61560e40: the base pre-push row `milestone-base` (dev_lab.dev.milestonebase)
+    # this pyproject's hooks table runs refuses both.
+    'BASE-HOLDS-THE-MILESTONE': (TestPath('pyproject.toml'),),
+    'VERSION-TAG-NEEDS-APPROVAL': (TestPath('pyproject.toml'),),
+    # Adopted 2026-11-19 with the relock to dev-lab integrate/main: the base pre-push row `session-branch`
+    # (dev_lab.dev.sessionbranch) this pyproject's hooks table runs refuses an off-task head.
+    'PUSHED-HEAD-CARRIES-ITS-TASK': (TestPath('pyproject.toml'),),
+    # Adopted 2026-11-19: the rendered settings run one `dev_lab.dev.hookdispatch` row per event, each with
+    # timeout 5, and the dispatcher detaches a slow row.
+    'HOOK-UNDER-FIVE-SECONDS': (TestPath('.claude/settings.json'),),
     # Adopted 2026-10-24 with dev-lab 1d74f38: the October summary is the first month this tree holds.
     'MONTHLY-PLANS-CARRIED': (TestPath('tests/architecture/test_every_month_carries_its_plans.py'),),
     # Adopted 2026-10-26 with dev-lab c9eaa7f: the agent guard ships in every family repo; the rendered
@@ -91,8 +106,26 @@ _MECHANISMS: Final = {
          'INJECTED-TEXT-IS-PROGRESSIVE',
          # Gained 2026-10-29 with dev-lab 5abf8c4d: RECURSIVE-DELETE is a shipped deny rule, and the guard's
          # WIRING installs the `dev_lab.dev.pushwatch` PostToolUse advisory the live test pins.
-         'RECURSIVE-DELETE', 'PUSHED-HEAD-IS-WATCHED'),
+         'RECURSIVE-DELETE', 'PUSHED-HEAD-IS-WATCHED', 'TASK-HEARS-ITS-FORGE-EVENTS',
+         # Gained 2026-11-07 with dev-lab 8c4ab734: the guard refuses a write outside the checkout.
+         'WRITES-STAY-IN-THE-TREE',
+         # Gained 2026-11-13 with dev-lab 61560e40: the guard's WIRING installs the `dev_lab.dev.walls`
+         # PostToolUse and Stop hooks the live test pins.
+         'WALLS-ARE-RECORDED',
+         # Gained 2026-11-17 with dev-lab b9875921: the per-module rows above became one `dev_lab.dev.hookdispatch`
+         # row per event, and the deny engine took the journal door (TRACKED-CITES-NO-EPHEMERAL) and the
+         # subagent refusal of heavy runs (HEAVY-IS-THE-MAIN-SESSIONS), each a shipped rule the live test pins.
+         'TRACKED-CITES-NO-EPHEMERAL', 'HEAVY-IS-THE-MAIN-SESSIONS',
+         # Gained 2026-11-22 with dev-lab 77ef8452: the rendered deny rows refuse code written under output/ and a
+         # hash-like worktree name, and the same live wiring's Stop hook sends back a final message naming an
+         # image by a relative path.
+         'OUTPUT-HOLDS-NO-CODE', 'WORKTREE-NAMES-ITS-TASK', 'IMAGES-BY-ABSOLUTE-PATH'),
         (TestPath('tests/architecture/test_the_agent_guard_is_live.py'),),
+    ),
+    # Adopted 2026-11-20 with dev-lab 2adcab2: `[tool.dev_lab.dep] extras` is the one declaration; the rendered
+    # workflows sync only it (ciworkflows refuses an `--all-extras` at render) and the render test pins them.
+    'ALL-EXTRAS-REFUSED': (
+        TestPath('pyproject.toml'), TestPath('tests/architecture/test_the_ci_workflow_is_rendered.py'),
     ),
 }  # fmt: skip
 
@@ -113,13 +146,14 @@ _ABSENT: Final = frozenset({
     'REGISTRY-OWNS-THE-DECISION', 'PRODUCTION-ENTRY-POINT',
     # Docs and memory: no rules pages, injected docs or memory tree in this repo.
     'DOCS-SPLIT', 'MEMORY-SHAPE', 'INJECTED-DOC-WIDTH-CEILING',
-    'NO-CJK-IN-TRACKED-SOURCE',
     # Code placement and scratch: one src/ and one tests/ tree, no scratch.
     'CODE-IN-CODE-ROOTS', 'SCRATCH-IS-NEVER-COMMITTED', 'STRAY-FILE-REFUSED', 'SPLIT-BY-CONCEPT',
-    'TRACKED-CITES-NO-EPHEMERAL',
     # Meta-rules about guards: the guards above are the family's shared bodies, which carry them.
     'DECLARATION-LIES', 'PLANTED-CONTROL', 'FLOOR-ON-EVERY-SCAN', 'ESCAPE-HATCH-CEILING', 'RATCHET-TWO-SIDES',
     'NAMED-SETS-NOT-COUNTS', 'XFAIL-NOT-SKIP', 'MODULE-SIZE-ALARM',
+    # Hosts: ai-lab deploys no host role, so it runs no scheduler to restrict, and declares no ssh endpoint
+    # whose key it could check.
+    'SCHEDULER-ONLY-FOR-SERVING', 'SSH-HOST-KEY-DECLARED',
 })  # fmt: skip
 
 #: The size of the set as of 2026-10-08 (41), re-based 2026-10-13 when the registry added six rules with
@@ -133,6 +167,12 @@ _ABSENT: Final = frozenset({
 #: Raised to 44 on 2026-10-23: the dev-lab split brought three rules with no mechanism here yet
 #: (STRAY-FILE-REFUSED, SPLIT-BY-CONCEPT, TRACKED-CITES-NO-EPHEMERAL).
 #: Lowered to 39 on 2026-10-26: the agent guard took AGENT-GUARD and the four rules it refuses.
+#: Lowered to 38 on 2026-11-07: NO-CJK-IN-TRACKED-SOURCE is always on (dev_lab.dev.famtests.alwayson).
+#: Lowered to 37 on 2026-11-17: TRACKED-CITES-NO-EPHEMERAL became a shipped deny rule of the agent guard.
+#: Raised to 38 on 2026-11-20: dev-lab 2adcab2 added SCHEDULER-ONLY-FOR-SERVING, a host-deploy rule with no
+#: subject in this library.
+#: Raised to 39 on 2026-11-22 (user ruling 2026-11-22): dev-lab 77ef8452 added SSH-HOST-KEY-DECLARED, and this
+#: library declares no ssh endpoint.
 _ABSENT_CEILING: Final = 39
 
 

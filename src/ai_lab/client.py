@@ -114,7 +114,7 @@ PROTOCOLS = frozenset({'openai', 'anthropic', 'gemini', 'typesafe'})
 ROLES = frozenset({'base', 'fable', 'opus', 'sonnet', 'haiku', 'subagent', 'codex'})
 
 #: The classes of failure a route may fall over on -- a closed set, each derived from a failure by
-#: :func:`error_class`: ``quota`` (402, a used-up balance, a spent spend cap), ``auth`` (401/403, a refused key),
+#: :func:`error_class`: ``quota`` (402, a used-up balance, a reached spend cap), ``auth`` (401/403, a refused key),
 #: ``rate_limit`` (429/529 past their retries) and ``server`` (any other 5xx).
 ERROR_CLASSES = frozenset({'quota', 'auth', 'rate_limit', 'server'})
 
@@ -614,8 +614,9 @@ class Client:
         """Send *call* within every enclosing level (:func:`ai_lab.budget.room`), and charge what its reply reports."""
         budget.require_call(self.provider.name, self.provider.daily_calls)
         raw = self._post(self._bounded(call, key))
-        if (usage := self._usage(raw)) is not None:
-            budget.charge(self.provider.name, key, usage, self.model, tag=self.tag, fallback_from=self.fallback_from)
+        budget.charge(
+            self.provider.name, key, self._usage(raw), self.model, tag=self.tag, fallback_from=self.fallback_from
+        )
         return raw
 
     def _bounded(self, call: transport.HttpCall, key: str | None) -> transport.HttpCall:
@@ -707,7 +708,7 @@ class Client:
                 out[cid] = ProviderError(outcome.error, kind=outcome.kind)
                 continue
             usage = self._usage(outcome.raw)
-            if charge and usage is not None:
+            if charge:
                 budget.charge(self.provider.name, fingerprint, usage, self.model, tag=self.tag, batch=True)
             try:
                 value = self.wire.parse_response(outcome.raw)

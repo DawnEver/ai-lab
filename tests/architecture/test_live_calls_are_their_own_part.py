@@ -6,10 +6,12 @@ through ``ai_lab.auth login --task live --bundle -`` (declared as ``[tool.dev_la
 Nothing is unproduced.
 """
 
+import shlex
 import tomllib
 from pathlib import Path
 
 from dev_lab.dev.jobparts import hosted_parts
+from dev_lab.dev.taskkeys import loader
 from dev_lab.dev.unproduced import unproduced
 from lab_commons.hpc.needsets import BASE, read_vocabulary, selecting
 
@@ -42,9 +44,11 @@ def test_live_holds_its_task_bundle_from_its_one_repo_secret():
 
     User ruling 2026-11-05: a task's secret is ``AI_LAB_KEYS_<TASK>`` and its setup is the bundle door; the
     ``live`` route's chain names every provider a live test calls, so the bundle may carry each one's keys.
+    The row declares only its tasks; dev-lab renders each task's setup through ``taskkeys.loader``.
     """
     live = hosted_parts(PYPROJECT.read_text(encoding='utf-8'))['live']
+    assert live.tasks == ('live',)
     assert set(live.secrets) == {'AI_LAB_KEYS_LIVE'}
-    assert live.setup == 'python -m ai_lab.auth login --task live --bundle -'
+    assert shlex.join(loader('python', 'live')) == 'python -I -m ai_lab.auth login --task live --bundle -'
     assert {name for name, _ in route('live').chain} >= {'anthropic', 'openai'}
     assert test_openai.pytestmark.name == test_live.pytestmark.name == 'live'

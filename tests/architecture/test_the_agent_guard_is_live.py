@@ -20,9 +20,14 @@ from deny_rules import ADOPTION  # noqa: E402
 #: THE FLOOR, BY NAME: the rules ai-lab ships (adopted with dev-lab c9eaa7f).
 _SHIPPED: Final = frozenset(
     {
+        'BACKGROUND-SHELL-IS-BOUNDED',  # gained 2026-11-17 with dev-lab b9875921
         'BARE-INTERPRETER',
         'BARE-PYTHON',
         'BARE-TEST-INVOCATION',
+        'COMMIT-HOOKS-RUN',  # gained 2026-11-13 with dev-lab 61560e40
+        'CI-CRON-NEEDS-CONSENT',  # gained 2026-11-17 with dev-lab b9875921
+        'CONSENT-CODE-FROM-THE-USER',
+        'FAMILY-REPO-IS-CHECKED-OUT',  # gained 2026-11-20 with dev-lab 2adcab2c
         'FORGE-WRITE-VIA-CLI',
         'FORGE-WRITE-VIA-GH-API',
         'FORGE-WRITE-VIA-HTTP',
@@ -30,17 +35,26 @@ _SHIPPED: Final = frozenset(
         'GIT-RESET',
         'GIT-STAGE-EVERYTHING',
         'GIT-STASH',
+        'HEAVY-IS-THE-MAIN-SESSIONS',  # gained 2026-11-17 with dev-lab b9875921
+        'HPC-THROUGH-THE-DOOR',  # gained 2026-11-07 with dev-lab 8c4ab734
+        'MACHINE-FILE-IS-RENDERED',  # gained 2026-11-20 with dev-lab 2adcab2c
+        'MAIN-ONLY-DOOR',  # gained 2026-11-22 with dev-lab 77ef8452
+        'OUTPUT-HOLDS-NO-CODE',  # gained 2026-11-22 with dev-lab 77ef8452
         'PUSH-FORCE',
         'PUSH-NO-VERIFY',
         'PUSH-REMOTE-DELETE',
         'RECURSIVE-DELETE',
         'RECURSIVE-GREP',
+        'REMOTE-WRITE-THROUGH-A-DOOR',
         'REPORTS-LIVE-IN-MEMORY',
         'STATUS-VIA-DOORS',
         'SUBAGENT-NO-PUSH',
+        'TRACKED-CITES-NO-EPHEMERAL',  # gained 2026-11-17 with dev-lab b9875921 (the journal door, folded in)
         'TREE-HAS-A-LIVE-RUN',
         'WORKTREE-BASE-IS-EXPLICIT',
+        'WORKTREE-NAMES-ITS-TASK',  # gained 2026-11-22 with dev-lab 77ef8452
         'WORKTREES-STAY-INSIDE',
+        'WRITES-STAY-IN-THE-TREE',  # gained 2026-11-07 with dev-lab 8c4ab734
     }
 )
 

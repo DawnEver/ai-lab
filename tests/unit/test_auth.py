@@ -174,3 +174,20 @@ def test_provider_with_from_file_imports_only_that_providers_key(credential_stor
 def test_login_needs_a_provider_or_a_file():
     with pytest.raises(SystemExit):
         auth.main(['login'])
+
+
+class _Terminal(io.StringIO):
+    def isatty(self):
+        return True
+
+
+def test_login_at_a_terminal_asks_the_key_shown_as_typed(credential_store, monkeypatch, capsys):
+    """TYPED-VALUES-ARE-SHOWN (D94): the key is read by ``input``, never a hidden prompt; the prompt says so."""
+    prompts = []
+    monkeypatch.setattr('sys.stdin', _Terminal(''))
+    monkeypatch.setattr('builtins.input', lambda prompt: prompts.append(prompt) or 'sk-fake-shown')
+    assert auth.main(['login', 'openai']) == 0
+    assert credential_for('api.openai.com') == ('api-key', 'sk-fake-shown')
+    assert len(prompts) == 1
+    assert 'shown' in prompts[0]
+    assert 'getpass' not in vars(auth)

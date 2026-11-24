@@ -26,7 +26,8 @@ as its own task) -- naming that credential and the key's fingerprint (a sha256 p
 Re-storing the identical key into the same credential is a no-op. ``status`` lists every group of
 credentials sharing one key. The stored keys are read through :func:`lab_commons.credentials.api_keys`.
 
-The key never travels in argv: ``login <provider>`` reads it from the terminal without echo, or from
+The key never travels in argv: ``login <provider>`` reads it from the terminal SHOWN AS TYPED (family rule
+TYPED-VALUES-ARE-SHOWN, D94: a hidden prompt took Ctrl+V as a control character), or from
 stdin when piped; ``--from-file -`` reads a key file from stdin (``ssh box python -m ai_lab.auth login
 --from-file - < keys``). ``--task`` and ``--slot`` apply to a key file exactly as to a prompted key, and
 ``login <provider> --from-file`` imports only that provider's line.
@@ -61,7 +62,6 @@ carries what is stored, a default<->task duplicate included.
 from __future__ import annotations
 
 import argparse
-import getpass
 import re
 import sys
 import tomllib
@@ -183,15 +183,15 @@ def _not_keyed(name: str | None, keyed: dict[str, Provider]) -> bool:
 
 
 def _read_pairs(source: str | None, provider: Provider | None, which: str) -> list[KeyLine] | None:
-    """Key lines from the key file *source*, else *provider*'s one key read without echo."""
+    """Key lines from the key file *source*, else *provider*'s one key read shown as typed."""
     if source is not None:
         text = sys.stdin.read() if source == '-' else Path(source).read_text(encoding='utf-8')
         pairs, malformed = parse_key_file(text)
         for number in malformed:
             sys.stderr.write(f'line {number}: no value; skipped\n')
         return pairs
-    prompt = f'{provider.key_name} for {provider.host} ({which}): '
-    secret = (getpass.getpass(prompt) if sys.stdin.isatty() else sys.stdin.readline()).strip()
+    prompt = f'{provider.key_name} for {provider.host} ({which}; paste with a right-click, the key is shown): '
+    secret = (input(prompt) if sys.stdin.isatty() else sys.stdin.readline()).strip()
     if not secret:
         sys.stderr.write('empty key; nothing stored\n')
         return None
@@ -372,7 +372,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     verbs = parser.add_subparsers(dest='verb', required=True)
     login = verbs.add_parser('login', help='store a key: read from the terminal/stdin, or import a key file')
     login.add_argument(
-        'provider', nargs='?', help='a keyed provider; its key is read without echo (or its line of --from-file)'
+        'provider', nargs='?', help='a keyed provider; its key is read shown as typed (or its line of --from-file)'
     )
     login.add_argument(
         '--from-file', metavar='PATH', help='a NAME[:<task>][:<slot>]=value (or space) file; "-" reads stdin'

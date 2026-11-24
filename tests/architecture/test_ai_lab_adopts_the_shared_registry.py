@@ -91,6 +91,8 @@ _MECHANISMS: Final = {
     # this pyproject's hooks table runs refuses both.
     'BASE-HOLDS-THE-MILESTONE': (TestPath('pyproject.toml'),),
     'VERSION-TAG-NEEDS-APPROVAL': (TestPath('pyproject.toml'),),
+    # Adopted 2026-11-24 with dev-lab cbecf58a: the same milestonebase pre-push row refuses a non-version tag.
+    'ONLY-VERSION-TAGS': (TestPath('pyproject.toml'),),
     # Adopted 2026-11-19 with the relock to dev-lab integrate/main: the base pre-push row `session-branch`
     # (dev_lab.dev.sessionbranch) this pyproject's hooks table runs refuses an off-task head.
     'PUSHED-HEAD-CARRIES-ITS-TASK': (TestPath('pyproject.toml'),),

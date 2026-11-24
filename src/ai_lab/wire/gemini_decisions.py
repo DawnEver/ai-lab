@@ -41,6 +41,6 @@ WIRE = Wire(
     name='gemini_decisions',
     protocol='gemini',
     decide=_decide,
-    parse_decision=noul.parse_answers,
+    parse_decision=noul.parse_decision,
     parse_usage=decisions_usage,
 )

@@ -11,7 +11,7 @@ from ai_lab.answers import YES_AT, Answer, ChoiceAnswer, PredicateAnswer, Refusa
 from ai_lab.errors import ProviderError
 from ai_lab.spec import Choice, DecisionRequest, Predicate, Question
 
-__all__ = ['parse_answers', 'questions']
+__all__ = ['parse_decision', 'questions']
 
 
 def _question(q: Question) -> dict:
@@ -35,7 +35,7 @@ def questions(request: DecisionRequest) -> dict[str, dict]:
     return {q.name: _question(q) for q in request.questions}
 
 
-def parse_answers(raw: dict, request: DecisionRequest) -> dict[str, Answer]:
+def parse_decision(raw: dict, request: DecisionRequest) -> dict[str, Answer]:
     """Every question's answer off ``raw['answers']``; a missing or unknown one is a :class:`ProviderError`."""
     got = raw.get('answers', {})
     answers: dict[str, Answer] = {}

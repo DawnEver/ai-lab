@@ -190,4 +190,5 @@ def test_login_at_a_terminal_asks_the_key_shown_as_typed(credential_store, monke
     assert credential_for('api.openai.com') == ('api-key', 'sk-fake-shown')
     assert len(prompts) == 1
     assert 'shown' in prompts[0]
-    assert 'getpass' not in vars(auth)
+    with pytest.raises(AttributeError):
+        auth.getpass  # noqa: B018 -- the shown prompt never imports getpass

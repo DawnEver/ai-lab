@@ -26,5 +26,9 @@ def _decide(request: DecisionRequest, model: str, endpoint: str, key: str) -> Ht
 
 #: Usage measured 2026-10-09: `usage.input_tokens` / `output_tokens`, the Responses shape.
 WIRE = Wire(
-    name='typesafe', protocol='typesafe', decide=_decide, parse_decision=noul.parse_answers, parse_usage=responses_usage
+    name='typesafe',
+    protocol='typesafe',
+    decide=_decide,
+    parse_decision=noul.parse_decision,
+    parse_usage=responses_usage,
 )

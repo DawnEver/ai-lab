@@ -152,7 +152,7 @@ forge's review blocks a merge on (dev-lab `forgereview`). Each reviewer's `statu
 the failed call's kind (`exhausted`, `auth`, `rate_limit`, `timeout`, `unsupported`); `unavailable` (the
 provider is not in the catalogue -- never substituted -- or the failure was unclassified); `skipped` (an
 empty diff, no call made). Every reviewer but an `ok` or `skipped` one carries `error`, saying why: the
-failed call's error text verbatim (never a key), else the method's reason for its status. A refused invocation -- no `method.json`, an unknown `schema_version`, a range
+failed call's error text verbatim (never a key), else the method's reason for its status. A refused invocation -- no `method.toml`, an unknown `schema_version`, a range
 git cannot diff -- exits 2 naming it on stderr with nothing on stdout. The rules the data cannot state
 (pick, templating, status precedence, merge) are pinned by the method's `conformance/` fixtures, which
 ship with it and which this test suite runs.

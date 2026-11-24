@@ -1,7 +1,13 @@
 """The four ways a call cannot produce what was asked, each naming its remedy."""
 
 __all__ = [
-    'ACCOUNT_KINDS', 'ERROR_KINDS', 'BatchLapsed', 'ProviderError', 'ReplayMiss', 'SpendCapReached',
+    'ACCOUNT_KINDS',
+    'ERROR_KINDS',
+    'BatchLapsed',
+    'CallCapReached',
+    'ProviderError',
+    'ReplayMiss',
+    'SpendCapReached',
     'Unsupported',
 ]  # fmt: skip
 
@@ -58,3 +64,7 @@ class SpendCapReached(Exception):
         """Carry ``scope``, the provider or key whose cap was reached."""
         super().__init__(message)
         self.scope = scope
+
+
+class CallCapReached(SpendCapReached):
+    """A provider made today's (UTC) declared ``daily_calls``; no call starts there until tomorrow."""

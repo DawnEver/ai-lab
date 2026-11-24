@@ -57,7 +57,7 @@ from lab_commons.config import config_path, section
 from platformdirs import user_state_path
 
 from ai_lab import retired
-from ai_lab.errors import SpendCapReached, Unsupported
+from ai_lab.errors import CallCapReached, SpendCapReached, Unsupported
 from ai_lab.usage import Usage
 
 if TYPE_CHECKING:
@@ -73,6 +73,7 @@ __all__ = [
     'allot',
     'approvals',
     'approve',
+    'calls_today',
     'cap',
     'charge',
     'close',
@@ -84,6 +85,7 @@ __all__ = [
     'month_start',
     'priced',
     'rate',
+    'require_call',
     'reset_day',
     'revoke',
     'room',
@@ -347,6 +349,30 @@ def left_usd(provider: str, key: str | None = None) -> float:
             raise SpendCapReached(msg, scope=scope)
         left.append(limit - spent)
     return min(left)
+
+
+def calls_today(provider: str) -> int:
+    """The calls to *provider* today's (UTC) ledger holds: one row per answered call."""
+    path = ledger_file()
+    rows = path.read_text('utf-8').splitlines() if path.is_file() else []
+    return sum(1 for line in rows if line.strip() and json.loads(line)['provider'] == provider)
+
+
+def require_call(provider: str, daily_calls: int) -> None:
+    """Refuse a call on *provider* once it made its declared *daily_calls* today; ``0`` declares no quota.
+
+    The quota is the provider row's (``providers.toml``), a vendor fact of the account, not a spend: Google's free
+    tier answers ``gemini-decision-1`` 10,000 times a day. Counted on this machine's ledger, like every cap here.
+    """
+    if not daily_calls:
+        return
+    made = calls_today(provider)
+    if made >= daily_calls:
+        msg = (
+            f'{provider} has made {made} of its {daily_calls} calls today (UTC); no call starts there until '
+            f'tomorrow, or raise daily_calls on its providers.toml row'
+        )
+        raise CallCapReached(msg, scope=provider)
 
 
 def spend_tag(tag: str | None = None) -> str | None:

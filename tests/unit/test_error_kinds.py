@@ -24,6 +24,7 @@ _SPECS = {
     'typesafe:t': 'typesafe',
     'anthropic:claude-x': 'anthropic_messages',
     'gemini:g': 'gemini',
+    'gemini:gemini-decision-1': 'gemini_decisions',
     'openrouter:o': 'openai_chat',
     'deepseek:d': 'openai_chat_json',
 }
@@ -48,6 +49,8 @@ _FAILURES = [
     ('gemini:g', 400, '{"error":{"status":"INVALID_ARGUMENT","details":[{"reason":"API_KEY_INVALID"}]}}', 'auth'),
     ('gemini:g', 403, '{"error":{"status":"PERMISSION_DENIED"}}', 'auth'),
     ('gemini:g', 429, '{"error":{"status":"RESOURCE_EXHAUSTED"}}', 'rate_limit'),
+    ('gemini:gemini-decision-1', 403, '{"error":{"status":"PERMISSION_DENIED"}}', 'auth'),
+    ('gemini:gemini-decision-1', 429, '{"error":{"status":"RESOURCE_EXHAUSTED"}}', 'rate_limit'),
     ('openrouter:o', 402, '{"error":{"message":"Insufficient credits"}}', 'exhausted'),
     ('openrouter:o', 401, '{}', 'auth'),
     ('deepseek:d', 402, '{"error":{"message":"Insufficient Balance"}}', 'exhausted'),

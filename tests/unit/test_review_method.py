@@ -6,6 +6,7 @@ An unknown version is refused.
 import json
 import re
 import shutil
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -57,9 +58,10 @@ def test_the_method_is_read_in_place(method_dir):
 def test_an_unknown_schema_version_is_refused_by_name(method_dir, tmp_path):
     copy = tmp_path / 'method'
     shutil.copytree(method_dir, copy)
-    data = json.loads((copy / 'method.json').read_text(encoding='utf-8'))
-    data['schema_version'] = 99
-    (copy / 'method.json').write_text(json.dumps(data), encoding='utf-8')
+    spec = copy / 'method.toml'
+    spec.write_text(
+        spec.read_text(encoding='utf-8').replace('schema_version = 3', 'schema_version = 99'), encoding='utf-8'
+    )
     with pytest.raises(UnknownMethodVersion, match=r'schema_version 99.*\[3\]'):
         load_method(copy, principles=PRINCIPLES, registry=())
     assert 99 not in METHOD_SCHEMA_VERSIONS
@@ -87,7 +89,7 @@ def test_the_rule_ids_are_the_principles_then_the_registry(method_dir):
 def test_the_method_keeps_no_principle_list_of_its_own(method_dir):
     """The family principles are dev-lab's (user ruling 2026-10-27): none ships with the method, none is loaded."""
     assert not list(method_dir.rglob('principles*.json'))
-    assert 'principles' not in json.loads((method_dir / 'method.json').read_text(encoding='utf-8'))['files']
+    assert 'principles' not in tomllib.loads((method_dir / 'method.toml').read_text(encoding='utf-8'))['files']
     assert load_method(method_dir, principles=(), registry=()).principles == ()
 
 
@@ -146,18 +148,19 @@ def test_a_principle_id_that_is_also_a_registry_id_is_refused(method_dir):
 
 
 def test_a_directory_without_a_method_is_refused_naming_it(tmp_path):
-    with pytest.raises(FileNotFoundError, match=r'method.json'):
+    with pytest.raises(FileNotFoundError, match=r'method.toml'):
         load_method(tmp_path, principles=PRINCIPLES, registry=())
 
 
 @pytest.mark.parametrize('choice', ['filled', 'unfilled', 'neither'])
-def test_the_prompt_schema_is_the_one_method_json_names(method_dir, tmp_path, choice):
+def test_the_prompt_schema_is_the_one_the_method_names(method_dir, tmp_path, choice):
     """``rules.prompt_schema`` picks the prompt's schema; validation keeps the filled one. Unknown is refused."""
     copy = tmp_path / 'method'
     shutil.copytree(method_dir, copy)
-    data = json.loads((copy / 'method.json').read_text(encoding='utf-8'))
-    data['rules']['prompt_schema'] = choice
-    (copy / 'method.json').write_text(json.dumps(data), encoding='utf-8')
+    spec = copy / 'method.toml'
+    text = spec.read_text(encoding='utf-8').replace('prompt_schema = "unfilled"', f'prompt_schema = "{choice}"')
+    spec.write_text(text, encoding='utf-8')
+    data = tomllib.loads(text)
     if choice == 'neither':
         with pytest.raises(ValueError, match=r"prompt_schema is 'neither'"):
             load_method(copy, principles=PRINCIPLES, registry=())

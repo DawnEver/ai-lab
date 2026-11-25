@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import sys
+import tomllib
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -57,7 +58,7 @@ def configured_providers(config: Mapping, run_mode: str, defaults: Mapping | Non
     return None
 
 
-#: The ``method.json`` versions this executor reads; any other is refused, never guessed.
+#: The ``method.toml`` versions this executor reads; any other is refused, never guessed.
 METHOD_SCHEMA_VERSIONS: Final = frozenset({3})
 
 
@@ -67,13 +68,13 @@ class UnknownMethodVersion(ValueError):
 
 @dataclass(frozen=True)
 class Method:
-    """The parsed method: ``spec`` is ``method.json``; the rest are the files it names."""
+    """The parsed method: ``spec`` is ``method.toml``; the rest are the files it names."""
 
     root: Path
     spec: dict
     profiles: tuple[dict, ...]
     finding_schema: dict
-    #: The finding schema a reviewer prompt shows: ``method.json rules.prompt_schema`` picks filled or unfilled.
+    #: The finding schema a reviewer prompt shows: ``method.toml rules.prompt_schema`` picks filled or unfilled.
     prompt_schema: dict
     output_schema: dict
     #: The principles the CALLER gave (dev-lab owns the family's): every reviewer judges against them.
@@ -101,6 +102,10 @@ class Method:
 
 def _json(path: Path) -> dict:
     return json.loads(path.read_text(encoding='utf-8'))
+
+
+def _toml(path: Path) -> dict:
+    return tomllib.loads(path.read_text(encoding='utf-8'))
 
 
 #: What an invocation without ``--rules`` is refused with: the ids come from the caller, never from an import.
@@ -170,13 +175,13 @@ def load_method(root: str | Path = METHOD_DIR, *, principles: Iterable[dict], re
     *principles* and *registry* are both the caller's (dev-lab owns them): ai-lab keeps no list and imports no registry.
     """
     root = Path(root)
-    spec_file = root / 'method.json'
+    spec_file = root / 'method.toml'
     if not spec_file.is_file():
         msg = (
             f'{spec_file} not found: --method must name a sharp-review method directory (omit it for the packaged one)'
         )
         raise FileNotFoundError(msg)
-    spec = _json(spec_file)
+    spec = _toml(spec_file)
     version = spec.get('schema_version')
     if version not in METHOD_SCHEMA_VERSIONS:
         msg = f'{spec_file} declares schema_version {version!r}; this executor reads {sorted(METHOD_SCHEMA_VERSIONS)}'
@@ -194,7 +199,7 @@ def load_method(root: str | Path = METHOD_DIR, *, principles: Iterable[dict], re
     return Method(
         root=root,
         spec=spec,
-        profiles=tuple(_json(root / files['profiles'])['profiles']),
+        profiles=tuple(_toml(root / files['profiles'])['profiles']),
         finding_schema=finding_schema,
         prompt_schema=prompt_schemas[choice],
         output_schema=_json(root / files['output_schema']),
@@ -204,7 +209,7 @@ def load_method(root: str | Path = METHOD_DIR, *, principles: Iterable[dict], re
 
 
 def _with_rule_ids(schema: dict, spec: dict, ids: Sequence[str]) -> dict:
-    """``method.json rules.fills``: the schema names the field; the principles and the registry alone list its ids."""
+    """``method.toml rules.fills``: the schema names the field; the principles and the registry alone list its ids."""
     field = spec['finding_field']
     if field not in schema['properties']:
         msg = f'the finding schema has no {field!r} property for the rule ids to fill'

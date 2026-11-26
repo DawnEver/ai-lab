@@ -66,6 +66,10 @@ ignore = ["COM812", "D203", "D213", "D400", "D401", "N818", "PLR0913", "Q000", "
 [tool.dev_lab.dep]
 extras = ["dev"]
 
+# ENV-IS-READ-ONCE: ai_lab.hostenv is the one module that reads the environment (dev_lab.dev.envreads).
+[tool.dev_lab.env]
+entry = ['src/ai_lab/hostenv.py']
+
 [tool.dev_lab.branchset]
 trunk = 'main'
 sessions = ['integrate/main']

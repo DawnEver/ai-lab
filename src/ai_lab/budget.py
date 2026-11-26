@@ -45,7 +45,6 @@ import argparse
 import hashlib
 import json
 import math
-import os
 import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
@@ -56,8 +55,9 @@ from typing import TYPE_CHECKING, Final, Self
 from lab_commons.config import config_path, section
 from platformdirs import user_state_path
 
-from ai_lab import retired
+from ai_lab import hostenv, retired
 from ai_lab.errors import CallCapReached, SpendCapReached, Unsupported
+from ai_lab.hostenv import SCOPE_ENV, TAG_ENV
 from ai_lab.usage import Usage
 
 if TYPE_CHECKING:
@@ -99,8 +99,6 @@ __all__ = [
 ]
 
 APP: Final = 'ai_lab'
-#: The environment variable naming what a call is charged to (a PR review sets ``<owner>/<repo>#<number>``).
-TAG_ENV: Final = 'AI_LAB_SPEND_TAG'
 TABLE: Final = 'spend_cap'
 RATES: Final = 'usd_per'
 #: The machine-file table naming the day a month opens on (:func:`reset_day`).
@@ -259,7 +257,7 @@ def cap(provider: str) -> Cap | None:
 
 def state_dir() -> Path:
     """``$AI_LAB_HOME/state`` when set, else the platform's per-user local state directory."""
-    home = os.environ.get('AI_LAB_HOME')
+    home = hostenv.context().home
     return Path(home).expanduser() / 'state' if home else user_state_path(APP, appauthor=False)
 
 
@@ -377,7 +375,7 @@ def require_call(provider: str, daily_calls: int) -> None:
 
 def spend_tag(tag: str | None = None) -> str | None:
     """What a call is charged to: :data:`TAG_ENV`, ``/``-joined with the call's own *tag* (a review profile)."""
-    return '/'.join(t for t in (os.environ.get(TAG_ENV), tag) if t) or None
+    return '/'.join(t for t in (hostenv.context().spend_tag, tag) if t) or None
 
 
 def charge(
@@ -443,8 +441,6 @@ def charge(
 # default beside it. An approval that does not fit where the task would open is refused at approve, naming the
 # level; :func:`revoke` restores the default.
 
-#: The environment variable naming the scope a call is charged in: the cross-process contract.
-SCOPE_ENV: Final = 'AI_LAB_SCOPE'
 #: Separates a scope path's levels: ``campaign:T3>item:4``.
 SEP: Final = '>'
 STANDING: Final = 'standing'
@@ -490,17 +486,13 @@ class Allotment:
 
     def __enter__(self) -> Self:
         """Charge every call started inside (here, and in child processes through :data:`SCOPE_ENV`) to this scope."""
-        _stack.append(os.environ.get(SCOPE_ENV))
-        os.environ[SCOPE_ENV] = self.name
+        _stack.append(hostenv.context().scope or None)
+        hostenv.set_scope(self.name)
         return self
 
     def __exit__(self, *_: object) -> None:
         """Restore the enclosing scope; the allotment stays open (:func:`close` releases it)."""
-        before = _stack.pop()
-        if before is None:
-            os.environ.pop(SCOPE_ENV, None)
-        else:
-            os.environ[SCOPE_ENV] = before
+        hostenv.set_scope(_stack.pop())
 
 
 _stack: list[str | None] = []
@@ -711,7 +703,7 @@ def close(name: str) -> None:
 
 def current() -> str | None:
     """The scope a call started here is charged in (:data:`SCOPE_ENV`); ``None``: unscoped."""
-    return os.environ.get(SCOPE_ENV) or None
+    return hostenv.context().scope or None
 
 
 def room(provider: str, key: str | None = None) -> float:
@@ -770,7 +762,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     granted.add_argument('--amount', type=float, required=True)
     granted.add_argument('--currency', default=USD)
     granted.add_argument('--provider', required=True)
-    granted.add_argument('--by', default=os.environ.get('USERNAME') or os.environ.get('USER') or 'unknown')
+    granted.add_argument('--by', default=hostenv.context().user or 'unknown')
     granted.add_argument('--reason', required=True)
     verbs.add_parser('revoke').add_argument('name')
     verbs.add_parser('approvals')

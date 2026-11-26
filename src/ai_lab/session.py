@@ -15,13 +15,14 @@ commit-msg by dev-lab. The id is, in order:
 
 from __future__ import annotations
 
-import os
 import shutil
 import subprocess
 import sys
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from typing import Final
+
+from ai_lab import hostenv
 
 #: ``main`` is reached through the console script, not imported, so it is not declared here.
 __all__ = ['AGENTS', 'ENV', 'launch', 'session_id']
@@ -103,7 +104,7 @@ def main(
         got = repr(args[0]) if args else 'no agent'
         sys.stderr.write(f'ai_lab.session: {got}; the agents are {list(AGENTS)}\n')
         raise SystemExit(_EXIT_USAGE)
-    child_env, child_argv = launch(args[0], args[1:], os.environ if env is None else env)
+    child_env, child_argv = launch(args[0], args[1:], hostenv.environment() if env is None else env)
     return runner(child_argv, child_env)
 
 

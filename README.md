@@ -333,6 +333,6 @@ make verify                    # python -m dev_lab.dev.verify: ruff, the suite, 
 python -m dev_lab.dev.verify --part live   # real calls: every provider whose key is stored
 ```
 
-`.gitignore`, `.gitattributes` and `Makefile` are RENDERED from
+`.gitignore` and `.gitattributes` are RENDERED from
 the family bases (`tests/architecture/_famconfig.py` holds ai-lab's delta, empty today): a hand edit
 reds `tests/architecture/test_the_family_config_is_rendered.py`.

@@ -99,8 +99,6 @@ _MECHANISMS: Final = {
     # Adopted 2026-11-19: the rendered settings run one `dev_lab.dev.hookdispatch` row per event, each with
     # timeout 5, and the dispatcher detaches a slow row.
     'HOOK-UNDER-FIVE-SECONDS': (TestPath('.claude/settings.json'),),
-    # Adopted 2026-10-24 with dev-lab 1d74f38: the October summary is the first month this tree holds.
-    'MONTHLY-PLANS-CARRIED': (TestPath('tests/architecture/test_every_month_carries_its_plans.py'),),
     # Adopted 2026-10-26 with dev-lab c9eaa7f: the agent guard ships in every family repo; the rendered
     # `.claude/hooks/deny-rules.json` refuses these, each by its own rule, and the test pins it live.
     **dict.fromkeys(

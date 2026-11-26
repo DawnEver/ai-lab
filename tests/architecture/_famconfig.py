@@ -16,6 +16,5 @@ __all__ = ['DELTAS', 'REPO']
 REPO: Final = 'ai-lab'
 
 DELTAS: Final[dict[str, Delta]] = {
-    artifact: Delta(repo=REPO, added=(), dropped={}, ceiling=0)
-    for artifact in ('.gitattributes', '.gitignore')
+    artifact: Delta(repo=REPO, added=(), dropped={}, ceiling=0) for artifact in ('.gitattributes', '.gitignore')
 }

@@ -152,7 +152,7 @@ forge's review blocks a merge on (dev-lab `forgereview`). Each reviewer's `statu
 the failed call's kind (`exhausted`, `auth`, `rate_limit`, `timeout`, `unsupported`); `unavailable` (the
 provider is not in the catalogue -- never substituted -- or the failure was unclassified); `skipped` (an
 empty diff, no call made). Every reviewer but an `ok` or `skipped` one carries `error`, saying why: the
-failed call's error text verbatim (never a key), else the method's reason for its status. A refused invocation -- no `method.json`, an unknown `schema_version`, a range
+failed call's error text verbatim (never a key), else the method's reason for its status. A refused invocation -- no `method.toml`, an unknown `schema_version`, a range
 git cannot diff -- exits 2 naming it on stderr with nothing on stdout. The rules the data cannot state
 (pick, templating, status precedence, merge) are pinned by the method's `conformance/` fixtures, which
 ship with it and which this test suite runs.
@@ -239,7 +239,7 @@ reports each level's spent against allotted.
 - `python -m ai_lab.call [--ledger PATH]` -- one call as JSON on stdin/stdout (see above).
 - `python -m ai_lab.prices CLIENT [...]` -- each catalog's quote, the consensus, agreement.
 - `python -m ai_lab.report LEDGER [...]` -- calls, latency, tokens and cost per `provider:model[@effort]`.
-- `python -m ai_lab.evaluate DATASET --decider SPEC [...]` -- every decider on the same labelled
+- `python -m ai_lab.evaluate DATASET --decider SPEC [...]` -- every decider on the same labeled
   requests (`{"request": ..., "labels": {...}}` per line): AUC, precision, recall, latency, tokens,
   cost. With `--ledger`, known calls are served from it -- a recorded run is a free benchmark.
 
@@ -333,6 +333,6 @@ make verify                    # python -m dev_lab.dev.verify: ruff, the suite, 
 python -m dev_lab.dev.verify --part live   # real calls: every provider whose key is stored
 ```
 
-`.gitignore`, `.gitattributes`, `.rgignore` and `Makefile` are RENDERED from
+`.gitignore` and `.gitattributes` are RENDERED from
 the family bases (`tests/architecture/_famconfig.py` holds ai-lab's delta, empty today): a hand edit
 reds `tests/architecture/test_the_family_config_is_rendered.py`.

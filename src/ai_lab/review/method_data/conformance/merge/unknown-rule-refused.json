@@ -69,7 +69,7 @@
             "anchor": "let e = 5;",
             "summary": "Known principle",
             "category": "Bug",
-            "rule": "names-match-behaviour"
+            "rule": "names-match-behavior"
           },
           {
             "severity": "MEDIUM",
@@ -103,10 +103,10 @@
     ],
     "findings": [
       {
-        "id": "F-72f8ec3f2de1",
+        "id": "F-36796eaa27d9",
         "severity": "LOW",
         "security": false,
-        "rule": "names-match-behaviour",
+        "rule": "names-match-behavior",
         "file": "a.js",
         "anchor": "let e = 5;",
         "summary": "Known principle",

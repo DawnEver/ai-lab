@@ -102,6 +102,12 @@ RETIRED: Final = (
         'a cap is money per provider and per allotment level, so the error a spent one raises names spend, not tokens',
         '2026-11-06',
     ),
+    Retired(
+        'name', 'noul.parse_answers', 'noul.parse_decision',
+        'a public name has one home: emulate.parse_answers reads a schema-bound reply, the noul wire parses a '
+        'decision off raw answers, so the wire function is named for the parse_decision slot it fills',
+        '2026-11-24',
+    ),
 )  # fmt: skip
 
 _BY_NAME: Final = {(r.kind, r.spelling): r for r in RETIRED}

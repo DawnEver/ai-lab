@@ -1,7 +1,7 @@
 """``POST /chat/completions`` with ``response_format: json_object`` -- JSON guaranteed, schema NOT enforced.
 
 For a vendor that accepts no ``json_schema`` format (DeepSeek). The schema travels in the system
-prompt, so the reply is valid JSON whose SHAPE is the model's to honour: a decision built on it is
+prompt, so the reply is valid JSON whose SHAPE is the model's to honor: a decision built on it is
 still checked answer by answer against the declared options (:mod:`ai_lab.emulate`).
 """
 

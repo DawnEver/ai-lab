@@ -127,7 +127,7 @@ def _ok_call(request):
     return _reply({'changes': [{'claim': 'adds', 'cites': ['aaaaaaa1']}], 'open_items': []})
 
 
-def test_the_cli_puts_the_summary_first_and_honours_disposed(method_dir, tmp_path, capsys):
+def test_the_cli_puts_the_summary_first_and_honors_disposed(method_dir, tmp_path, capsys):
     fid = finding_id(load_method(principles=PRINCIPLES, registry=()).spec['merge']['id'], FINDING)
     disposed = tmp_path / 'disposed.json'
     disposed.write_text(json.dumps({'disposed': [{'id': fid, 'reason': 'wontfix'}]}), encoding='utf-8')

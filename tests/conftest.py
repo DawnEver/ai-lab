@@ -77,7 +77,7 @@ def credential_store(tmp_path, monkeypatch):
 def only_provider(monkeypatch):
     """``only(name)``: ``auth`` sees the one catalogue row a test's claim is about.
 
-    Load, not behaviour: ``status`` asks git for every keyed host x (default + each task) x slot, one
+    Load, not behavior: ``status`` asks git for every keyed host x (default + each task) x slot, one
     ``git credential`` process each (~60 over the full catalogue, ~7 s on Windows). A claim about one
     host's line is the same claim with the other rows absent.
     """

@@ -1,7 +1,7 @@
 """The method's rules that are not data: pick, template rendering, reviewer status and merge.
 
-Each rule reads its parameters from ``method.json``; the vocabulary it may name (an algorithm, a
-precedence step) is fixed here, and an unknown one is refused rather than guessed. Behaviour is pinned by
+Each rule reads its parameters from ``method.toml``; the vocabulary it may name (an algorithm, a
+precedence step) is fixed here, and an unknown one is refused rather than guessed. Behavior is pinned by
 the method's ``conformance/`` fixtures, shared with the Node executor.
 """
 
@@ -112,7 +112,7 @@ def prompt_parts(method: Method, profile: Mapping, manifest: Mapping) -> dict:
         'finding_schema': schema,
         'cache_break': _BREAK,
     }
-    # method.json rules.list_item once per given principle, one per line; then the registry ids on one line.
+    # method.toml rules.list_item once per given principle, one per line; then the registry ids on one line.
     item = method.spec['rules']['list_item']
     variables['principle_list'] = '\n'.join(render(method, item, p) for p in method.principles)
     variables['registry_list'] = ', '.join(method.registry)

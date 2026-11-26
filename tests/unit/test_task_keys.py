@@ -29,7 +29,7 @@ def test_login_task_stores_the_task_username_under_the_providers_host(credential
 
 def test_login_refuses_an_undeclared_task_and_stores_nothing(credential_store, monkeypatch, capsys):
     _stdin(monkeypatch, 'sk-ant-x\n')
-    assert auth.main(['login', 'anthropic', '--task', 'pr_reveiw']) == 1
+    assert auth.main(['login', 'anthropic', '--task', 'pr_reveiw']) == 1  # a misspelled task (spelling-ignore-line)
     assert 'pr-review' in capsys.readouterr().err
     assert not credential_store.file.exists() or 'sk-ant-x' not in credential_store.file.read_text(encoding='utf-8')
 

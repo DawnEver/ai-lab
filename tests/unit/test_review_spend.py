@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from ai_lab import ReplayMiss, ResponseRequest, Text, budget, connect
+from ai_lab import ReplayMiss, ResponseRequest, Text, budget, connect, hostenv
 from ai_lab.call import answer
 from ai_lab.ledger import Ledger
 from ai_lab.review.__main__ import main
@@ -99,7 +99,7 @@ def test_a_recorded_review_call_replays_its_stable_prefix_and_a_changed_prefix_m
 
 
 def test_each_review_call_is_charged_to_its_profile(tmp_path, capsys, review_key, monkeypatch):
-    monkeypatch.setenv(budget.TAG_ENV, 'DawnEver/motronics-studio#5149')
+    monkeypatch.setenv(hostenv.TAG_ENV, 'DawnEver/motronics-studio#5149')
     repo, range_ = _repo(tmp_path, {'src/a.py': f'{SENTINEL}\n'})
     argv = ['--principles', str(PRINCIPLES_FILE), '--rules', '', '--range', range_, '--model', 'claude-x',
             '--repo', str(repo), '--lens', 'strict', '--no-summary']  # fmt: skip
@@ -110,7 +110,7 @@ def test_each_review_call_is_charged_to_its_profile(tmp_path, capsys, review_key
 
 
 def test_planted_control_a_call_with_no_tag_env_is_charged_to_its_profile_alone(keys, monkeypatch):
-    monkeypatch.delenv(budget.TAG_ENV, raising=False)
+    monkeypatch.delenv(hostenv.TAG_ENV, raising=False)
     answer({'verb': 'respond', 'provider': 'anthropic', 'model': 'claude-x', 'instructions': 'i', 'tag': 'security',
             'context': [{'kind': 'text', 'text': 't'}], 'schema': {'type': 'object'}}, post=Wire({}))  # fmt: skip
     (row,) = [json.loads(line) for line in budget.ledger_file().read_text('utf-8').splitlines()]

@@ -53,7 +53,7 @@ def test_providers_override_the_default(method_dir, capsys):
 def test_an_unknown_method_version_exits_2_naming_it(method_dir, tmp_path, capsys):
     copy = tmp_path / 'method'
     shutil.copytree(method_dir, copy)
-    (copy / 'method.json').write_text('{"schema_version": 99}', encoding='utf-8')
+    (copy / 'method.toml').write_text('schema_version = 99\n', encoding='utf-8')
     assert (
         main(
             [

@@ -1,4 +1,4 @@
-"""A decider is scored on labelled requests: round-tripped JSON, AUC, precision, recall, choices, ledger."""
+"""A decider is scored on labeled requests: round-tripped JSON, AUC, precision, recall, choices, ledger."""
 
 from __future__ import annotations
 

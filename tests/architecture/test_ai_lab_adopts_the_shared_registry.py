@@ -29,7 +29,7 @@ _MECHANISMS: Final = {
     'MERGE-RESOLUTION-DECLARED': (TestPath('tests/architecture/test_merges_declare_their_resolutions.py'),),
     # Capability is a declared Wire record; the shared scanner reads every tracked Python file.
     'NO-REFLECTION': (TestPath('tests/architecture/test_no_reflection.py'),),
-    # Every family artefact is the live base plus an (empty) delta; nothing project-level is unaccounted.
+    # Every family artifact is the live base plus an (empty) delta; nothing project-level is unaccounted.
     'PROJECT-FILES-HAVE-ONE-SOURCE': (TestPath('tests/architecture/test_the_family_config_is_rendered.py'),),
     # `__all__` everywhere, and one public name has one home.
     'PUBLIC-SURFACE-DECLARED': (_SURFACE,),
@@ -91,14 +91,14 @@ _MECHANISMS: Final = {
     # this pyproject's hooks table runs refuses both.
     'BASE-HOLDS-THE-MILESTONE': (TestPath('pyproject.toml'),),
     'VERSION-TAG-NEEDS-APPROVAL': (TestPath('pyproject.toml'),),
+    # Adopted 2026-11-24 with dev-lab cbecf58a: the same milestonebase pre-push row refuses a non-version tag.
+    'ONLY-VERSION-TAGS': (TestPath('pyproject.toml'),),
     # Adopted 2026-11-19 with the relock to dev-lab integrate/main: the base pre-push row `session-branch`
     # (dev_lab.dev.sessionbranch) this pyproject's hooks table runs refuses an off-task head.
     'PUSHED-HEAD-CARRIES-ITS-TASK': (TestPath('pyproject.toml'),),
     # Adopted 2026-11-19: the rendered settings run one `dev_lab.dev.hookdispatch` row per event, each with
     # timeout 5, and the dispatcher detaches a slow row.
     'HOOK-UNDER-FIVE-SECONDS': (TestPath('.claude/settings.json'),),
-    # Adopted 2026-10-24 with dev-lab 1d74f38: the October summary is the first month this tree holds.
-    'MONTHLY-PLANS-CARRIED': (TestPath('tests/architecture/test_every_month_carries_its_plans.py'),),
     # Adopted 2026-10-26 with dev-lab c9eaa7f: the agent guard ships in every family repo; the rendered
     # `.claude/hooks/deny-rules.json` refuses these, each by its own rule, and the test pins it live.
     **dict.fromkeys(
@@ -127,6 +127,16 @@ _MECHANISMS: Final = {
     'ALL-EXTRAS-REFUSED': (
         TestPath('pyproject.toml'), TestPath('tests/architecture/test_the_ci_workflow_is_rendered.py'),
     ),
+    # Adopted 2026-11-26 with the dev-lab re-render: `[tool.dev_lab.env] entry` names ai_lab.hostenv and the
+    # family scan pins every other tracked read; the secret-sink scan reads every tracked Python file; and the
+    # forge's merge step reads `Red-On-Record` lines over the declared integrator table.
+    'ENV-IS-READ-ONCE': (TestPath('tests/architecture/test_the_environment_is_read_once.py'),),
+    'NEVER-LOG-SECRETS': (TestPath('tests/architecture/test_no_secret_is_logged.py'),),
+    'RED-INTEGRATION-MERGES': (TestPath('pyproject.toml'),),
+    # layout.toml declares the whole tree; the family scan refuses an undeclared directory or format, a second
+    # config format and a backup copy under output/ or scratch/.
+    **dict.fromkeys(('DECLARED-LAYOUT', 'NO-BACKUP-COPIES', 'ONE-FORMAT-PER-NEED'),
+                    (TestPath('layout.toml'), TestPath('tests/architecture/test_the_tree_is_the_declared_layout.py'))),
 }  # fmt: skip
 
 #: Rules with no subject in this library today, BY NAME -- deriving it from ``RULES`` would silently
@@ -153,7 +163,14 @@ _ABSENT: Final = frozenset({
     'NAMED-SETS-NOT-COUNTS', 'XFAIL-NOT-SKIP', 'MODULE-SIZE-ALARM',
     # Hosts: ai-lab deploys no host role, so it runs no scheduler to restrict, and declares no ssh endpoint
     # whose key it could check.
-    'SCHEDULER-ONLY-FOR-SERVING', 'SSH-HOST-KEY-DECLARED',
+    'SCHEDULER-ONLY-FOR-SERVING', 'SSH-HOST-KEY-DECLARED', 'MACHINES-MEET-ONLY-THROUGH-THE-FORGE',
+    # Opt-in architecture tables this library does not declare: no dependencies.toml, no [tool.dev_lab.layers]
+    # or [tool.dev_lab.native], no crate to price, no recorded baselines.
+    'OWNER-DAG', 'NO-DETOUR', 'ZERO-CORE-CHANGE', 'NATIVE-FIRST', 'MEASURE-BEFORE-PORTING',
+    'BASELINE-REWRITE-QUOTED',
+    # Guard-shipped rules whose hook rows this repo's agent guard does not render yet (no task ledger tracked,
+    # no codeplace hook, no unit-parsing config reader of its own).
+    'LEDGER-WRITES-THROUGH-ITS-DOOR', 'PRIOR-ART-FIRST', 'CONFIG-VALUES-CARRY-UNITS',
 })  # fmt: skip
 
 #: The size of the set as of 2026-10-08 (41), re-based 2026-10-13 when the registry added six rules with
@@ -173,7 +190,9 @@ _ABSENT: Final = frozenset({
 #: subject in this library.
 #: Raised to 39 on 2026-11-22 (user ruling 2026-11-22): dev-lab 77ef8452 added SSH-HOST-KEY-DECLARED, and this
 #: library declares no ssh endpoint.
-_ABSENT_CEILING: Final = 39
+#: Raised to 49 on 2026-11-26 (user ruling 2026-11-26: raise now, lower the hard ones in the full review): the
+#: dev-lab re-render added sixteen rules; six gained mechanisms here, ten are declared absent above.
+_ABSENT_CEILING: Final = 49
 
 
 def test_every_rule_is_enforced_or_declared_absent() -> None:

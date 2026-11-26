@@ -4,7 +4,7 @@ A reviewer is given its tier's brief (:func:`ai_lab.review.explore.brief`: the w
 medium, the directory map and the commit messages when huge); each turn it answers with ``findings`` or with
 ``requests`` the caller's *explore* answers, for at most ``turns`` turns, the last of which must answer.
 
-``method.json``'s ``run_modes.headless`` is the capability: its providers (the shipped default config's, else
+``method.toml``'s ``run_modes.headless`` is the capability: its providers (the shipped default config's, else
 overridable), the contexts
 and call modes it can execute, its per-provider models. A reviewer is ``skipped`` when its context has
 nothing to review, ``unavailable`` when its provider is not in the available set (never substituted),

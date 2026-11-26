@@ -57,7 +57,7 @@ def _installed_version() -> str | None:
     """The installed ``ai_lab`` dist's version, or ``None`` when ``src`` runs uninstalled on a path.
 
     A source-shipping host (``tool.lab_commons.hpc.source_roots``) installs the lock's dependencies but
-    not the project, so no metadata exists; ``__version__.py`` is a build artefact and is absent too.
+    not the project, so no metadata exists; ``__version__.py`` is a build artifact and is absent too.
     """
     try:
         return version('ai_lab')

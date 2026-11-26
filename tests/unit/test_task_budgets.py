@@ -11,7 +11,7 @@ import sys
 
 import pytest
 
-from ai_lab import ResponseRequest, SpendCapReached, Text, budget, connect
+from ai_lab import ResponseRequest, SpendCapReached, Text, budget, connect, hostenv
 from ai_lab.errors import Unsupported
 from ai_lab.prices import Price, Quote
 
@@ -42,7 +42,7 @@ def machine(tmp_path, monkeypatch, keys):
         monkeypatch.setenv('LAB_COMMONS_CONFIG', str(path))
 
     monkeypatch.setattr(budget, 'rate', lambda client, at=None: _RATE)
-    monkeypatch.delenv(budget.SCOPE_ENV, raising=False)
+    monkeypatch.delenv(hostenv.SCOPE_ENV, raising=False)
     return write
 
 
@@ -170,7 +170,7 @@ def test_the_scope_rides_to_a_child_process_through_its_environment(machine):
     machine(10)
     with budget.allot('campaign:T3', usd=1, provider='anthropic'):
         out = subprocess.run(
-            [sys.executable, '-c', f'import os; print(os.environ["{budget.SCOPE_ENV}"])'],
+            [sys.executable, '-c', f'import os; print(os.environ["{hostenv.SCOPE_ENV}"])'],
             capture_output=True, text=True, check=True,
         ).stdout  # fmt: skip
     assert out.strip() == 'campaign:T3'

@@ -9,7 +9,7 @@ import json
 
 import pytest
 
-from ai_lab import SpendCapReached, budget, spend
+from ai_lab import SpendCapReached, budget, hostenv, spend
 from ai_lab.prices import Price, Quote
 
 _RATE = Quote(Price(1.0, 2.0), 'test', agreed=True, sources={})
@@ -25,7 +25,7 @@ def machine(tmp_path, monkeypatch, keys):
     )
     monkeypatch.setenv('LAB_COMMONS_CONFIG', str(path))
     monkeypatch.setattr(budget, 'rate', lambda client, at=None: _RATE)
-    monkeypatch.delenv(budget.SCOPE_ENV, raising=False)
+    monkeypatch.delenv(hostenv.SCOPE_ENV, raising=False)
     return path
 
 

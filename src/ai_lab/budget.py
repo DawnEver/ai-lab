@@ -57,16 +57,14 @@ from platformdirs import user_state_path
 
 from ai_lab import hostenv, retired
 from ai_lab.errors import CallCapReached, SpendCapReached, Unsupported
-from ai_lab.hostenv import SCOPE_ENV, TAG_ENV
+from ai_lab.hostenv import SCOPE_ENV
 from ai_lab.usage import Usage
 
 if TYPE_CHECKING:
     from ai_lab.prices import Quote
 
 __all__ = [
-    'SCOPE_ENV',
     'SEP',
-    'TAG_ENV',
     'Allotment',
     'Approval',
     'Cap',

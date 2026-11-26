@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime
 
 import pytest
 
-from ai_lab import ResponseRequest, Text, budget, connect, spend
+from ai_lab import ResponseRequest, Text, budget, connect, hostenv, spend
 from ai_lab.prices import BATCH_RATE, Price, Quote
 
 _REQUEST = ResponseRequest('i', (Text('t'),), {'type': 'object', 'properties': {}})
@@ -37,7 +37,7 @@ def _row(tag, inp, out=0, model='claude-x', at='2026-10-05T00:00:00+00:00'):
 
 
 def test_a_call_records_its_model_tokens_time_and_the_tag_it_is_charged_to(keys, monkeypatch):
-    monkeypatch.setenv(budget.TAG_ENV, 'DawnEver/dev-lab#11')
+    monkeypatch.setenv(hostenv.TAG_ENV, 'DawnEver/dev-lab#11')
     connect('anthropic:claude-x', post=_reply(700, 300, cached=200)).respond(_REQUEST)
     (row,) = [json.loads(line) for line in budget.ledger_file().read_text('utf-8').splitlines()]
     assert row['tag'] == 'DawnEver/dev-lab#11'
@@ -52,7 +52,7 @@ def test_a_call_records_its_model_tokens_time_and_the_tag_it_is_charged_to(keys,
 
 
 def test_planted_control_an_untagged_call_is_charged_to_no_tag(keys, monkeypatch):
-    monkeypatch.delenv(budget.TAG_ENV, raising=False)
+    monkeypatch.delenv(hostenv.TAG_ENV, raising=False)
     connect('anthropic:claude-x', post=_reply(1, 1)).respond(_REQUEST)
     (row,) = [json.loads(line) for line in budget.ledger_file().read_text('utf-8').splitlines()]
     assert row['tag'] is None
@@ -195,7 +195,7 @@ def test_planted_control_a_whole_ledger_has_no_bad_lines(tmp_path):
 
 def test_a_call_whose_reply_reports_no_usage_is_charged_as_unpriced_never_skipped(keys, monkeypatch):
     """#11 (2): a reply without usage is still a call: it books an unmetered row the report counts as unpriced."""
-    monkeypatch.delenv(budget.TAG_ENV, raising=False)
+    monkeypatch.delenv(hostenv.TAG_ENV, raising=False)
 
     def post(call, **_):
         return {'content': [{'type': 'text', 'text': '{}'}]}

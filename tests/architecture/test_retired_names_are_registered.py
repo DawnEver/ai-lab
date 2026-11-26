@@ -15,6 +15,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from dev_lab.dev.retirementclass import refusals
 
 from ai_lab import Ledger, Unsupported, budget, catalogue, connect
 from ai_lab.ledger import LEDGER_SCHEMA_VERSION
@@ -115,3 +116,12 @@ def test_a_scanned_retired_spelling_appears_in_no_other_tracked_file():
 
 def test_the_planted_control_the_scan_finds_a_leftover():
     assert _leftovers('claude_code', {'README.md': 'use `claude_code` here', 'x.py': 'claude_code_x'}) == ['README.md']
+
+
+def test_every_retirement_is_classified():
+    rows = {f'{r.kind} {r.spelling}': (r.replacement, r.reason, r.retirement_class) for r in RETIRED}
+    assert refusals(rows) == []
+
+
+def test_a_capability_dropped_without_a_ruling_is_refused():
+    assert refusals({'name x': ('y', 'it was old', 'capability-dropped')}) != []

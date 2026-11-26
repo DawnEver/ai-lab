@@ -22,20 +22,26 @@ KINDS: Final = frozenset({'provider', 'wire', 'field', 'auth', 'usage', 'name', 
 
 #: Why the two subscription doors left (user ruling 2026-10-20): ai-lab is the pay-per-token API layer.
 _API_ONLY = (
-    'ai-lab is the pay-per-token API layer only; a subscription is used inside a host session '
-    '(Claude Code, Codex, or fabric agent mode), never through ai-lab'
+    'ai-lab is the pay-per-token API layer only (user ruling 2026-10-20); a subscription is used inside a host '
+    'session (Claude Code, Codex, or fabric agent mode), never through ai-lab'
 )
 
 
 @dataclass(frozen=True, slots=True)
 class Retired:
-    """One retired spelling of one kind: what replaced it, why, and since when."""
+    """One retired spelling of one kind: what replaced it, why, since when, and its class.
+
+    The class (``dev_lab.dev.retirementclass``) says what was lost: ``renamed``, ``baggage``, or
+    ``capability-dropped``, which only a user ruling may do, so its reason cites it.
+    ``tests/architecture/test_retired_names_are_registered.py`` holds every row to it.
+    """
 
     kind: str
     spelling: str
     replacement: str
     reason: str
     since: str
+    retirement_class: str
     scanned: bool = True
 
     def __post_init__(self) -> None:
@@ -49,64 +55,73 @@ RETIRED: Final = (
     Retired(
         'field', 'key_env', 'key_name',
         'keys are no longer read from the environment; store the key with python -m ai_lab.auth login <provider>',
-        '2026-10-13',
+        '2026-10-13', 'renamed',
     ),
     Retired(
         'provider', 'openai_decisions', 'openai', 'one provider is one account; the model picks the wire',
-        '2026-10-16', scanned=False,  # still the live name of the decisions WIRE
+        '2026-10-16', 'renamed', scanned=False,  # still the live name of the decisions WIRE
     ),
-    Retired('provider', 'claude_code', 'anthropic', _API_ONLY, '2026-10-20'),
-    Retired('provider', 'codex', 'openai', _API_ONLY, '2026-10-20', scanned=False),  # a Claude-role model key
-    Retired('wire', 'claude_code', 'anthropic_messages', _API_ONLY, '2026-10-20'),
-    Retired('wire', 'codex', 'openai_responses', _API_ONLY, '2026-10-20', scanned=False),
-    Retired('auth', 'subscription', 'api', _API_ONLY, '2026-10-20', scanned=False),
+    Retired('provider', 'claude_code', 'anthropic', _API_ONLY, '2026-10-20', 'capability-dropped'),
+    Retired(
+        'provider', 'codex', 'openai',
+        _API_ONLY, '2026-10-20', 'capability-dropped', scanned=False,  # a Claude-role model key
+    ),
+    Retired('wire', 'claude_code', 'anthropic_messages', _API_ONLY, '2026-10-20', 'capability-dropped'),
+    Retired('wire', 'codex', 'openai_responses', _API_ONLY, '2026-10-20', 'capability-dropped', scanned=False),
+    Retired('auth', 'subscription', 'api', _API_ONLY, '2026-10-20', 'capability-dropped', scanned=False),
     Retired(
         'field', 'endpoint', 'url and <protocol>_path',
-        'one row serves each protocol of its account at its own path', '2026-10-20', scanned=False,
+        'one row serves each protocol of its account at its own path', '2026-10-20', 'renamed', scanned=False,
     ),
-    Retired('field', 'api_provider', '(nothing: every row is an api or local account)', _API_ONLY, '2026-10-20'),
+    Retired(
+        'field', 'api_provider', '(nothing: every row is an api or local account)',
+        _API_ONLY, '2026-10-20', 'capability-dropped',
+    ),
     Retired(
         'usage', 'cost_usd', '(nothing: ai_lab.prices.cost derives dollars from the tokens)',
-        'no wire reports its own dollars any more; a schema-1 ledger entry is upgraded on read', '2026-10-20',
+        'no wire reports its own dollars any more; a schema-1 ledger entry is upgraded on read',
+        '2026-10-20', 'baggage',
         scanned=False,  # still the live name of a report row's derived dollars
     ),
     Retired(
         'name', 'DEFAULT_CONFIG', 'ai_lab.review.method.default_config()',
-        "a review's default provider is the head of the pr-review route (routes.toml)", '2026-11-05',
+        "a review's default provider is the head of the pr-review route (routes.toml)", '2026-11-05', 'renamed',
     ),
     Retired(
         'name', 'default-config.json', 'routes.toml [task.pr-review] chain',
-        "a review's default provider is the head of the pr-review route", '2026-11-05',
+        "a review's default provider is the head of the pr-review route", '2026-11-05', 'renamed',
     ),
     Retired(
         'name', 'AI_LAB_LIVE_ANTHROPIC_KEY', 'AI_LAB_KEYS_LIVE',
-        "one secret per task: the live task's key bundle (ai_lab.auth login --task live --bundle -)", '2026-11-05',
+        "one secret per task: the live task's key bundle (ai_lab.auth login --task live --bundle -)",
+        '2026-11-05', 'renamed',
     ),
     Retired(
         'name', 'AI_LAB_LIVE_OPENAI_KEY', 'AI_LAB_KEYS_LIVE',
-        "one secret per task: the live task's key bundle (ai_lab.auth login --task live --bundle -)", '2026-11-05',
+        "one secret per task: the live task's key bundle (ai_lab.auth login --task live --bundle -)",
+        '2026-11-05', 'renamed',
     ),
     Retired(
         'table', 'daily_token_cap', 'spend_cap',
         'a cap is MONEY per provider (amount + currency), priced per call; a token count was a second fact, '
-        'and its code default silently capped a 50 USD account at ~2 USD (2026-11-06)', '2026-11-06',
+        'and its code default silently capped a 50 USD account at ~2 USD (2026-11-06)', '2026-11-06', 'renamed',
     ),
     Retired(
         'constant', 'FAMILY_MONTHLY_USD', '[ai_lab.standing] review',
         'one family number beside the provider caps was a second budget fact; the review draws on a standing '
         'allotment carved out of its provider cap, and the spend report reads every level from ai_lab.budget',
-        '2026-11-06',
+        '2026-11-06', 'renamed',
     ),
     Retired(
         'name', 'DailyTokenCapReached', 'SpendCapReached',
         'a cap is money per provider and per allotment level, so the error a spent one raises names spend, not tokens',
-        '2026-11-06',
+        '2026-11-06', 'renamed',
     ),
     Retired(
         'name', 'noul.parse_answers', 'noul.parse_decision',
         'a public name has one home: emulate.parse_answers reads a schema-bound reply, the noul wire parses a '
         'decision off raw answers, so the wire function is named for the parse_decision slot it fills',
-        '2026-11-24',
+        '2026-11-24', 'renamed',
     ),
 )  # fmt: skip
 

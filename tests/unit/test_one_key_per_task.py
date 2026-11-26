@@ -74,6 +74,6 @@ def test_status_lists_a_default_and_task_group_sharing_one_key(credential_store,
     assert "'api-key'" in line
     assert "'api-key-pr-review'" in line
     assert 'api-key-optimization' not in line
-    assert 'delet' in out
+    assert 'delet' in out  # a stem: delete or deleting (spelling-ignore-line)
     assert _no_key(out, 'sk-migrated')
     assert _prefix('sk-own') not in out

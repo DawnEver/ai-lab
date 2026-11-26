@@ -270,7 +270,7 @@ def _held(finding: Mapping, nonce: str, *, source: Source, rows: Sequence) -> st
 
 def _sample(finding: Mapping, call: Callable, request: Mapping, *, source: Source, rows: Sequence,
             mapped: str, method: Method, rng: random.Random) -> tuple[str, str, list[str]]:  # fmt: skip
-    """One independent judgement: its outcome, evidence and verified cites (a fresh nonce every time)."""
+    """One independent judgment: its outcome, evidence and verified cites (a fresh nonce every time)."""
     nonce = f'{rng.getrandbits(96):024x}'
 
     def explore(asked: Mapping) -> str:

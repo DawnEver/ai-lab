@@ -1,7 +1,7 @@
 """The method's rules that are not data: pick, template rendering, reviewer status and merge.
 
 Each rule reads its parameters from ``method.toml``; the vocabulary it may name (an algorithm, a
-precedence step) is fixed here, and an unknown one is refused rather than guessed. Behaviour is pinned by
+precedence step) is fixed here, and an unknown one is refused rather than guessed. Behavior is pinned by
 the method's ``conformance/`` fixtures, shared with the Node executor.
 """
 

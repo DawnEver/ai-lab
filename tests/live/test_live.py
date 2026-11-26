@@ -32,11 +32,11 @@ def test_an_api_row_responds_and_decides(spec, request_):
 def test_an_api_row_reads_an_image(spec):
     schema = {
         'type': 'object',
-        'properties': {'colour': {'type': 'string', 'enum': ['red', 'green', 'blue']}},
-        'required': ['colour'],
+        'properties': {'color': {'type': 'string', 'enum': ['red', 'green', 'blue']}},
+        'required': ['color'],
         'additionalProperties': False,
     }
     got = connect(spec, task='live').respond(
-        ResponseRequest('Name the colour.', (Text('What colour fills this image?'), red_square()), schema)
+        ResponseRequest('Name the color.', (Text('What color fills this image?'), red_square()), schema)
     )
-    assert got.value == {'colour': 'red'}
+    assert got.value == {'color': 'red'}

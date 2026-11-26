@@ -29,7 +29,7 @@ _MECHANISMS: Final = {
     'MERGE-RESOLUTION-DECLARED': (TestPath('tests/architecture/test_merges_declare_their_resolutions.py'),),
     # Capability is a declared Wire record; the shared scanner reads every tracked Python file.
     'NO-REFLECTION': (TestPath('tests/architecture/test_no_reflection.py'),),
-    # Every family artefact is the live base plus an (empty) delta; nothing project-level is unaccounted.
+    # Every family artifact is the live base plus an (empty) delta; nothing project-level is unaccounted.
     'PROJECT-FILES-HAVE-ONE-SOURCE': (TestPath('tests/architecture/test_the_family_config_is_rendered.py'),),
     # `__all__` everywhere, and one public name has one home.
     'PUBLIC-SURFACE-DECLARED': (_SURFACE,),

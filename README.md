@@ -239,7 +239,7 @@ reports each level's spent against allotted.
 - `python -m ai_lab.call [--ledger PATH]` -- one call as JSON on stdin/stdout (see above).
 - `python -m ai_lab.prices CLIENT [...]` -- each catalog's quote, the consensus, agreement.
 - `python -m ai_lab.report LEDGER [...]` -- calls, latency, tokens and cost per `provider:model[@effort]`.
-- `python -m ai_lab.evaluate DATASET --decider SPEC [...]` -- every decider on the same labelled
+- `python -m ai_lab.evaluate DATASET --decider SPEC [...]` -- every decider on the same labeled
   requests (`{"request": ..., "labels": {...}}` per line): AUC, precision, recall, latency, tokens,
   cost. With `--ledger`, known calls are served from it -- a recorded run is a free benchmark.
 

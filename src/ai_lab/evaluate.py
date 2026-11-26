@@ -1,4 +1,4 @@
-"""``python -m ai_lab.evaluate DATASET --decider SPEC [...]`` -- score deciders on labelled requests.
+"""``python -m ai_lab.evaluate DATASET --decider SPEC [...]`` -- score deciders on labeled requests.
 
 A DATASET is JSONL, one recorded request per line with the truth for its questions::
 

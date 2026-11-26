@@ -95,7 +95,7 @@ def test_a_judge_that_asks_to_show_a_file_reads_it_next_turn_inside_a_fence(tmp_
         (_ok({'outcome': 'maybe', 'evidence': 'x', 'cites': []}), 'no valid outcome'),
     ],
 )
-def test_a_failed_or_invalid_judgement_fails_closed(tmp_path: Path, capsys, reply: Mapping, reason: str) -> None:
+def test_a_failed_or_invalid_judgment_fails_closed(tmp_path: Path, capsys, reply: Mapping, reason: str) -> None:
     _, doc, _ = _run(tmp_path, [_finding('a')], lambda _request: reply, capsys)
     (verdict,) = doc['verdicts']
     assert verdict['outcome'] == 'present'

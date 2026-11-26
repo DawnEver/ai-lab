@@ -143,7 +143,7 @@ def test_the_module_runs_as_a_cli():
     assert 'login' in done.stdout and 'status' in done.stdout
 
 
-def test_from_file_honours_task_and_slot(credential_store, tmp_path, capsys):
+def test_from_file_honors_task_and_slot(credential_store, tmp_path, capsys):
     keys = tmp_path / 'keys'
     keys.write_text('OPENAI_API_KEY sk-task-two\n', encoding='utf-8')
     assert auth.main(['login', '--from-file', str(keys), '--task', 'optimization', '-s', '2']) == 0

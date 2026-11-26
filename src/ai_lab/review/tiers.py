@@ -2,7 +2,7 @@
 
 User ruling 2026-10-31: the bounds :func:`ai_lab.review.explore.tier` uses are INITIAL values, to be learned. Every
 headless review appends one row (:func:`evidence`) to its repository's append-only JSONL, beside ai-lab's token
-ledger (``state_dir()/review-tiers/<repo>.jsonl``); ``python -m ai_lab.review.tiers report <ledger>`` summarises
+ledger (``state_dir()/review-tiers/<repo>.jsonl``); ``python -m ai_lab.review.tiers report <ledger>`` summarizes
 findings per thousand diff bytes (UTF-8) and cost, by tier and by size bucket. Nothing tunes itself: a person reads the
 report and moves the constants.
 """
@@ -117,7 +117,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """``python -m ai_lab.review.tiers report <ledger>``: print the ledger's summary."""
     parser = argparse.ArgumentParser(prog='python -m ai_lab.review.tiers', description=__doc__.split('\n', 1)[0])
     verbs = parser.add_subparsers(dest='verb', required=True)
-    verbs.add_parser('report', help='summarise a ledger by tier and size').add_argument('ledger')
+    verbs.add_parser('report', help='summarize a ledger by tier and size').add_argument('ledger')
     args = parser.parse_args(argv)
     text = Path(args.ledger).read_text(encoding='utf-8')
     sys.stdout.write(summary([json.loads(line) for line in text.splitlines() if line.strip()]) + '\n')

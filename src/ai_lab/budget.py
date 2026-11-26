@@ -418,7 +418,7 @@ def charge(
 #
 # LEVEL 1 is the provider's month (:func:`cap`). LEVEL 2 is an ALLOTMENT carved out of it: a STANDING one, a named
 # recurring USD amount per calendar month declared ONCE in ``[ai_lab.standing]`` of the machine file (the PR
-# review, a CI job), or a TASK one a caller opens for one task (a campaign, an optimisation run, a diagnosis) and
+# review, a CI job), or a TASK one a caller opens for one task (a campaign, an optimization run, a diagnosis) and
 # closes when done. LEVEL 3 is a child of either (an item, an arm, one PR), opened under it by path
 # (``campaign:T3>item:4``, ``review>owner/repo#5``) or derived by :meth:`Allotment.split`; a call's own level is
 # its ``max_tokens``, derived from what the tightest enclosing level leaves.

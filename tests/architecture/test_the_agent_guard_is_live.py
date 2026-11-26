@@ -20,6 +20,9 @@ from deny_rules import ADOPTION  # noqa: E402
 #: THE FLOOR, BY NAME: the rules ai-lab ships (adopted with dev-lab c9eaa7f).
 _SHIPPED: Final = frozenset(
     {
+        'LEDGER-WRITES-THROUGH-ITS-DOOR',  # gained 2026-11-26 with the dev-lab relock (fold-1124)
+        'NO-BACKUP-COPIES',  # gained 2026-11-26 with the dev-lab relock (fold-1124)
+        'USER-FROZEN-FILES',  # gained 2026-11-26 with the dev-lab relock (fold-1124)
         'ARCHIVE-IS-NO-STORE',  # gained 2026-11-24 with dev-lab cbecf58a (relock-family-1124)
         'BACKGROUND-SHELL-IS-BOUNDED',  # gained 2026-11-17 with dev-lab b9875921
         'BARE-INTERPRETER',
@@ -110,7 +113,7 @@ def test_a_forbidden_shape_is_refused_by_the_rule_that_owns_it(command: str, rul
     [
         './.venv/Scripts/python.exe -m dev_lab.dev.verify',
         'git push origin main',
-        'git worktree add --detach .claude/worktrees/scratch 1a2b3c4',
+        'git worktree add --detach .claude/worktrees/fold-review 1a2b3c4',
         './.venv/Scripts/python.exe -m dev_lab.dev.forge issue create --title x --body y',
         'gh issue list --state open',
         'git add -- src/ai_lab/__init__.py',

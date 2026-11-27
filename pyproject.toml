@@ -138,3 +138,17 @@ adoption = "scripts/deny_rules.py"
 # family App's review/judge check run. Keys and defaults: dev_lab.dev.forgereview_declared.
 [tool.dev_lab.review]
 judge_app = 5619495
+
+# EVIDENCE-OUTLIVES-OUTPUT escapes (dev_lab.dev.evidencerefs): each token is a path the code WRITES or a
+# fixture name under tmp_path, never a recorded number's evidence. The count equals the ceiling.
+[tool.dev_lab.evidence_refs]
+ceiling = 7
+escapes = [
+  { file = "pyproject.toml", token = "src/ai_lab/__version__.py", reason = "setuptools_scm writes the version file; it is generated, not cited" },
+  { file = "src/ai_lab/review/method.py", token = ".claude/sharp-review.json", reason = "the review's local config path the code reads, not evidence" },
+  { file = "src/ai_lab/review/plan.py", token = ".claude/sharp-review.json", reason = "the review's local config path the code reads, not evidence" },
+  { file = "tests/unit/test_review_bundle.py", token = ".claude/memory/why.md", reason = "a fixture file name under tmp_path" },
+  { file = "tests/unit/test_review_plan.py", token = "output/logs/26/10/20/sharp-review/sharp-review.md", reason = "the asserted report path the code writes, not evidence" },
+  { file = "tests/unit/test_review_summary.py", token = ".claude/memory/m.md", reason = "a fixture file name under tmp_path" },
+  { file = "tests/unit/test_review_summary.py", token = ".claude/memory/n.md", reason = "a fixture file name under tmp_path" },
+]

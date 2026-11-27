@@ -67,6 +67,16 @@ command = ["~/tools/llama.cpp/llama-server", "-m", "~/models/qwen3.8-27b/Qwen3.8
 - `--alias` must equal the row's `models.base` (the name Claude Code requests).
 - `--jinja` is required: without the model's chat template there is no tool calling.
 - `--parallel 1` gives the one slot the whole context; Claude Code's side calls queue behind it.
+- `--chat-template-file`: Claude Code sends system text after the first message, and Qwen's template
+  refuses that (`System message must be at the beginning`, HTTP 500). Extract the model's template once
+  and render a late system message as a system turn instead:
+
+  ```bash
+  cd ~/models/qwen3.8-27b
+  curl -s localhost:8080/props | python -c "import sys,json; t=json.load(sys.stdin)['chat_template'];   t=t.replace(\"{{- raise_exception('System message must be at the beginning.') }}\",   \"{{- '<|im_start|>system\\n' + content + '<|im_end|>\\n' }}\");   open('chat_template.claude-code.jinja','w',encoding='utf-8',newline='').write(t)"
+  ```
+
+  then append `"--chat-template-file", "~/models/qwen3.8-27b/chat_template.claude-code.jinja"` to `command`.
 
 ## 5. Start and check
 

@@ -164,7 +164,9 @@ def test_the_module_refuses_a_malformed_request_with_exit_2(monkeypatch, capsys,
 # ids (+48 chars, largest 6904). Raised 6950 -> 7000 on 2026-11-22 (user ruling 2026-11-22): dev-lab 77ef8452 added
 # four more ids (largest 6999). Raised 7000 -> 7400 on 2026-11-26 (user ruling 2026-11-26: raise now, lower the hard
 # ones in the full review): the dev-lab re-render added sixteen registry ids (largest adversarial/huge 7365).
-PROMPT_BUDGET_CHARS = 7400
+# Raised 7400 -> 7500 on 2026-11-27 under the same ruling: the dev-lab relock added EVIDENCE-OUTLIVES-OUTPUT,
+# SHARE-FOLDER-HOLDS-DATA and WORKTREES-DO-NOT-NEST (largest adversarial/huge 7439).
+PROMPT_BUDGET_CHARS = 7500
 #: How far the ceiling may sit above the largest prompt before it must be lowered.
 MARGIN_CHARS = 100
 EMPTY = {'range': '', 'excludedSummary': '', 'diff': '', 'manifest': ''}

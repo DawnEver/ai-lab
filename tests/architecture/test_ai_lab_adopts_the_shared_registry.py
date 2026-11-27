@@ -137,6 +137,12 @@ _MECHANISMS: Final = {
     # config format and a backup copy under output/ or scratch/.
     **dict.fromkeys(('DECLARED-LAYOUT', 'NO-BACKUP-COPIES', 'ONE-FORMAT-PER-NEED'),
                     (TestPath('layout.toml'), TestPath('tests/architecture/test_the_tree_is_the_declared_layout.py'))),
+    # Adopted 2026-11-27 with the dev-lab relock: the family's evidence scan over every tracked file, its escapes
+    # in [tool.dev_lab.evidence_refs], and the worktree reader that names a tree nested in another.
+    'EVIDENCE-OUTLIVES-OUTPUT': (
+        TestPath('pyproject.toml'), TestPath('tests/architecture/test_no_tracked_value_cites_output_evidence.py'),
+    ),
+    'WORKTREES-DO-NOT-NEST': (TestPath('tests/architecture/test_no_worktree_nests.py'),),
 }  # fmt: skip
 
 #: Rules with no subject in this library today, BY NAME -- deriving it from ``RULES`` would silently
@@ -171,6 +177,8 @@ _ABSENT: Final = frozenset({
     # Guard-shipped rules whose hook rows this repo's agent guard does not render yet (no task ledger tracked,
     # no codeplace hook, no unit-parsing config reader of its own).
     'LEDGER-WRITES-THROUGH-ITS-DOOR', 'PRIOR-ART-FIRST', 'CONFIG-VALUES-CARRY-UNITS',
+    # Share folders: this library declares no synced share folder, so it holds no figure to refuse.
+    'SHARE-FOLDER-HOLDS-DATA',
 })  # fmt: skip
 
 #: The size of the set as of 2026-10-08 (41), re-based 2026-10-13 when the registry added six rules with
@@ -192,7 +200,9 @@ _ABSENT: Final = frozenset({
 #: library declares no ssh endpoint.
 #: Raised to 49 on 2026-11-26 (user ruling 2026-11-26: raise now, lower the hard ones in the full review): the
 #: dev-lab re-render added sixteen rules; six gained mechanisms here, ten are declared absent above.
-_ABSENT_CEILING: Final = 49
+#: Raised to 50 on 2026-11-27: the dev-lab relock added SHARE-FOLDER-HOLDS-DATA, and this library declares no
+#: share folder; its two siblings from the same relock gained mechanisms above.
+_ABSENT_CEILING: Final = 50
 
 
 def test_every_rule_is_enforced_or_declared_absent() -> None:

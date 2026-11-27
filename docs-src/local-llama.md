@@ -3,7 +3,8 @@
 A model served by `llama-server` on this machine: nothing leaves the box. The catalogue row
 `[llamacpp]` (`src/ai_lab/providers.toml`) says where it answers (`http://127.0.0.1:8080`, OpenAI and
 Anthropic Messages under `/v1`); your `serve.toml` says how this machine starts it. Claude Code reaches it
-as `ccla` (claude-code-config), which runs `python -m ai_lab.serve ensure llamacpp` first.
+as `ccla` and Codex as `codla` (claude-code-config); both run `python -m ai_lab.serve ensure llamacpp`
+first. Codex speaks the Responses API, which llama-server serves under the same `/v1`.
 
 ## 1. Install llama.cpp (CUDA build)
 

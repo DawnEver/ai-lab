@@ -92,3 +92,16 @@ openai_path = "/v1"
 key_name = ""
 vision = true
 auth = "local"
+
+# A llama.cpp `llama-server` on this machine (docs-src/local-llama.md): it serves both the OpenAI and the
+# Anthropic Messages protocol under /v1. Nothing leaves the box; `python -m ai_lab.serve ensure llamacpp`
+# starts it from the user's serve.toml. Every role is the one loaded model (`--alias`).
+[llamacpp]
+wire = "openai_chat"
+url = "http://127.0.0.1:8080"
+openai_path = "/v1"
+anthropic_path = "/v1"
+key_name = ""
+vision = false
+auth = "local"
+models = { base = "qwen3.8-27b" }

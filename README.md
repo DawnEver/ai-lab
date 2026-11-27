@@ -49,6 +49,9 @@ host launcher reads the same table through `python -m ai_lab.providers --json`. 
 Put a `providers.toml` in the family config root (`$AI_LAB_HOME/config`, else the platform's user
 config directory for `ai_lab`) to add rows or replace one of the same name.
 
+A keyless local model (llama.cpp on this machine, row `llamacpp`): install, sizing and the
+`serve.toml` that `python -m ai_lab.serve ensure <provider>` starts it from are in `docs-src/local-llama.md`.
+
 One provider is ONE ACCOUNT OF ONE VENDOR. A second door into an account is never a second row: a
 door only some models use is a `model_wires` entry (`openai:gpt-6-luna` goes to OpenAI's
 `/decisions`, any other `openai:<model>` to `/responses`), and a second protocol is a path of the same

@@ -127,7 +127,7 @@ def _user_rows(tmp_path, monkeypatch, rows):
 
 def test_every_packaged_row_declares_its_auth_kind():
     kinds = {name: row.auth for name, row in catalogue().items()}
-    assert {name for name, kind in kinds.items() if kind == 'local'} == {'ollama'}
+    assert {name for name, kind in kinds.items() if kind == 'local'} == {'llamacpp', 'ollama'}
     assert set(kinds.values()) == {'api', 'local'}
 
 

@@ -6,7 +6,7 @@ import pytest
 
 from ai_lab.client import Provider
 from ai_lab.errors import Unsupported
-from ai_lab.serve import argv, ensure, specs
+from ai_lab.serve import argv, ensure, release, specs
 
 ROW = Provider(name='llamacpp', wire='openai_chat', url='http://127.0.0.1:8080', auth='local', openai_path='/v1')
 
@@ -24,14 +24,20 @@ def test_argv_refuses_a_command_that_names_its_own_host_or_port():
 
 def test_a_running_server_is_not_started_again():
     spawned = []
-    assert ensure(ROW, {'command': ['x']}, probe=lambda _: True, spawn=spawned.append) == 'running'
+    assert ensure(ROW, {'command': ['x']}, probe=lambda _: True, spawn=lambda c: spawned.append(c) or 1) == 'running'
     assert spawned == []
 
 
 def test_a_down_server_is_spawned_and_waited_for():
     state = iter([False, False, True])
     spawned = []
-    out = ensure(ROW, {'command': ['x']}, probe=lambda _: next(state), spawn=spawned.append, sleep=lambda _: None)
+    out = ensure(
+        ROW,
+        {'command': ['x']},
+        probe=lambda _: next(state),
+        spawn=lambda c: spawned.append(c) or 1,
+        sleep=lambda _: None,
+    )
     assert out == 'started'
     assert spawned == [['x', '--host', '127.0.0.1', '--port', '8080']]
 
@@ -52,3 +58,40 @@ def test_specs_names_the_file_when_a_provider_has_none(tmp_path):
     path.write_text('[other]\ncommand = ["x"]\n', encoding='utf-8')
     assert specs(path) == {'other': {'command': ['x']}}
     assert specs(tmp_path / 'absent.toml') == {}
+
+
+# A server ai_lab.serve started is held by the sessions that ensured it and stopped when the last lets go.
+
+
+def _started(tmp_path, holder):
+    answers = iter([False, True])
+    return ensure(
+        ROW, {'command': ['x']}, probe=lambda _: next(answers), spawn=lambda _: 4242,
+        sleep=lambda _: None, holder=holder, state=tmp_path,
+    )  # fmt: skip
+
+
+def test_the_last_holder_to_release_stops_the_server_it_started(tmp_path):
+    assert _started(tmp_path, 100) == 'started'
+    assert ensure(ROW, {'command': ['x']}, probe=lambda _: True, holder=200, state=tmp_path) == 'running'
+    stopped = []
+    alive = {100, 200, 4242}.__contains__
+    assert release(ROW, 100, alive=alive, stop=stopped.append, state=tmp_path) == 'held'
+    assert stopped == []
+    assert release(ROW, 200, alive=alive, stop=stopped.append, state=tmp_path) == 'stopped'
+    assert stopped == [4242]
+
+
+def test_a_dead_holder_never_keeps_the_server_up(tmp_path):
+    _started(tmp_path, 100)
+    ensure(ROW, {'command': ['x']}, probe=lambda _: True, holder=200, state=tmp_path)
+    stopped = []
+    assert release(ROW, 100, alive={100, 4242}.__contains__, stop=stopped.append, state=tmp_path) == 'stopped'
+    assert stopped == [4242], 'holder 200 died without releasing'
+
+
+def test_a_server_serve_did_not_start_is_never_stopped(tmp_path):
+    ensure(ROW, {'command': ['x']}, probe=lambda _: True, holder=100, state=tmp_path)
+    stopped = []
+    assert release(ROW, 100, alive=lambda _: True, stop=stopped.append, state=tmp_path) == 'not-ours'
+    assert stopped == []

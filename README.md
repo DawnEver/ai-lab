@@ -150,8 +150,9 @@ version is refused), exit 0 whatever the reviewers did. Every finding is TAGGED:
 (`HIGH`/`MEDIUM`/`LOW`), `security` (boolean), and `rule` -- the one principle id (the principles its caller gives with `--principles FILE`) or
 family registry rule id (the ids its caller gives with `--rules`: the method keeps no copy of either and imports no registry) it violates -- plus
 `anchor`, the verbatim line it is about. Its `id` is `F-<12 hex>` of sha256(rule, file, anchor): the same in
-every round and from every reviewer, never a line number or a date. A HIGH or `security` finding is what the
-forge's review blocks a merge on (dev-lab `forgereview`). Each reviewer's `status`: `ok` (a findings array; `[]` is a clean pass);
+every round and from every reviewer, never a line number or a date. The review is ADVISORY: a `security`
+finding is the only one the forge's review holds a merge on (dev-lab `forgereview`); `HIGH` > `MEDIUM` > `LOW`
+ranks advice. Each reviewer's `status`: `ok` (a findings array; `[]` is a clean pass);
 the failed call's kind (`exhausted`, `auth`, `rate_limit`, `timeout`, `unsupported`); `unavailable` (the
 provider is not in the catalogue -- never substituted -- or the failure was unclassified); `skipped` (an
 empty diff, no call made). Every reviewer but an `ok` or `skipped` one carries `error`, saying why: the

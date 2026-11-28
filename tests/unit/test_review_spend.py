@@ -16,7 +16,7 @@ from ai_lab.ledger import Ledger
 from ai_lab.review.__main__ import main
 from ai_lab.review.explore import SMALL_TURNS, TURNS, turns_for
 from ai_lab.review.summary import SOURCE_TOKENS, SUMMARY_TOKENS, SummaryTruncated, change_summary, output_budget
-from tests.review_principles import PRINCIPLES_FILE
+from tests.review_principles import CALLER_ARGS
 from tests.unit.test_review_explore import PAD, SENTINEL, Scripted, _repo, _review
 
 _ASKS = {'requests': {'show': ['src/a.py']}}
@@ -67,7 +67,7 @@ def test_the_stable_prefix_is_the_first_block_behind_a_breakpoint_and_every_prof
 ):
     repo, range_ = _repo(tmp_path, {'src/a.py': f'{SENTINEL}\n'})
     wire = Wire(_ASKS)
-    argv = ['--principles', str(PRINCIPLES_FILE), '--rules', '', '--range', range_, '--model', 'claude-x',
+    argv = [*CALLER_ARGS, '--rules', '', '--range', range_, '--model', 'claude-x',
             '--repo', str(repo), '--lens', 'strict', '--no-summary']  # fmt: skip
     assert main(argv, call=_through(wire)) == 0
     doc = json.loads(capsys.readouterr().out)
@@ -101,7 +101,7 @@ def test_a_recorded_review_call_replays_its_stable_prefix_and_a_changed_prefix_m
 def test_each_review_call_is_charged_to_its_profile(tmp_path, capsys, review_key, monkeypatch):
     monkeypatch.setenv(hostenv.TAG_ENV, 'DawnEver/motronics-studio#5149')
     repo, range_ = _repo(tmp_path, {'src/a.py': f'{SENTINEL}\n'})
-    argv = ['--principles', str(PRINCIPLES_FILE), '--rules', '', '--range', range_, '--model', 'claude-x',
+    argv = [*CALLER_ARGS, '--rules', '', '--range', range_, '--model', 'claude-x',
             '--repo', str(repo), '--lens', 'strict', '--no-summary']  # fmt: skip
     assert main(argv, call=_through(Wire({'findings': []}))) == 0
     profiles = json.loads(capsys.readouterr().out)['profiles']
@@ -141,7 +141,7 @@ def test_a_summary_cut_at_its_budget_fails_loudly(review_key):
 def test_a_truncated_summary_exits_3_before_any_reviewer_is_paid(tmp_path, capsys, review_key):
     repo, range_ = _repo(tmp_path, {'src/a.py': f'{SENTINEL}\n'})
     wire = Wire({'changes': []}, stop_reason='max_tokens')
-    argv = ['--principles', str(PRINCIPLES_FILE), '--rules', '', '--range', range_, '--model', 'claude-x',
+    argv = [*CALLER_ARGS, '--rules', '', '--range', range_, '--model', 'claude-x',
             '--repo', str(repo), '--lens', 'light']  # fmt: skip
     assert main(argv, call=_through(wire)) == 3
     out = capsys.readouterr()

@@ -279,7 +279,7 @@
           },
           "security": {
             "type": "boolean",
-            "description": "true when any reviewer of this finding called it a security defect. A HIGH or security finding blocks the merge until a later round confirms it fixed or the integrator disposes of it."
+            "description": "true when any reviewer of this finding called it a security defect. The review is advisory: a security finding alone holds the merge; every other finding, HIGH included, is advice."
           },
           "rule": {
             "type": "string",
@@ -338,6 +338,47 @@
         }
       },
       "description": "Deduplicated across reviewers by id (method.toml merge.id), in first-seen order."
+    },
+    "requirements": {
+      "type": "array",
+      "description": "One verdict per requirement the caller declared (--requirements: every principle, each architecture document arch:<path>), in requirement order, combined over the reviewers by method.toml merge.requirements. Present only when the caller declared a requirement; optional, so a schema_version 3 reader that ignores it reads the rest unchanged. Information for the integrator: no verdict holds the merge.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "verdict",
+          "cites",
+          "evidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The requirement: a principle id, or arch:<path> for an architecture document."
+          },
+          "verdict": {
+            "enum": [
+              "violated",
+              "amended",
+              "unverified",
+              "met",
+              "untouched"
+            ],
+            "description": "violated: the change breaks it, citing a changed file. amended: the change edits the requirement's own document consistently. unverified: no reviewer returned a verdict, or a violated one cited no file the change touches (advice, not a grounded claim). met: the change bears on it and keeps it. untouched: the change does not bear on it."
+          },
+          "cites": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The changed files (path or path:line) the verdict rests on, the union over the reviewers."
+          },
+          "evidence": {
+            "type": "string",
+            "description": "One sentence: the deciding reviewer's, prefixed with why when the verdict was made unverified."
+          }
+        }
+      }
     },
     "disposed": {
       "type": "array",

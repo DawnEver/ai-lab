@@ -4,9 +4,9 @@
   "type": "object",
   "required": ["severity", "security", "rule", "file", "anchor", "summary", "category"],
   "properties": {
-    "severity": { "type": "string", "enum": ["HIGH", "MEDIUM", "LOW"], "description": "HIGH blocks the merge until fixed or disposed; MEDIUM and LOW do not." },
+    "severity": { "type": "string", "enum": ["HIGH", "MEDIUM", "LOW"], "description": "HIGH > MEDIUM > LOW, all advice: no severity holds a merge." },
     "security": { "type": "boolean", "description": "true when the finding is a security defect; a security finding blocks the merge whatever its severity." },
-    "rule": { "type": "string", "description": "The ONE id this finding violates: a principle id or a registry rule id from the list above; an unknown id refuses the finding." },
+    "rule": { "type": "string", "description": "The ONE id it violates, from the lists above (a principle, a registry rule, arch:<path>); an unknown id refuses the finding." },
     "file": { "type": "string", "description": "The repo-relative path, no line number." },
     "anchor": { "type": "string", "minLength": 1, "description": "One line of the file the finding is about, copied VERBATIM (never a line number): with rule and file it is the finding's identity across review rounds." },
     "summary": { "type": "string" },

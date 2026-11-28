@@ -131,9 +131,19 @@ object, so the reply's shape changed and the version moved. A caller prices the 
 
 ```
 python -m ai_lab.review [--method <dir>] --range main...HEAD --model <model id>
+                        --rules <ids> --principles <file> --requirements <file>
                         [--providers anthropic ...] [--repo <path>]
-python -m ai_lab.review.merge [--method <dir>]   < run-record.json
+python -m ai_lab.review.merge [--method <dir>] --rules <ids> --principles <file> --requirements <file>
+                              < run-record.json
 ```
+
+What a review is held to is its CALLER's (dev-lab owns it): the registry ids (`--rules`), the principles
+(`--principles`) and the REQUIREMENTS (`--requirements`, `{"principles": true, "architecture": [{id, path, blob,
+text}]}`; `{}` declares none). Every reviewer returns a verdict on each requirement -- `met`, `violated`,
+`amended` or `untouched`, with the changed files it cites -- and the document lists one per requirement under
+`requirements`, `unverified` when no reviewer answered or a `violated` one cites no file the change touches.
+An architecture document's id (`arch:<path>`) is also a `rule` a finding may name; its text is fenced in the
+prompt as data, never instructions.
 
 The review METHOD is ai-lab's own data, packaged as `ai_lab/review/method_data/` (it moved here from
 cc-market under PLAN-a-short-robust-toolchain P4): profiles, prompt templates, the finding schema and the
@@ -150,8 +160,9 @@ version is refused), exit 0 whatever the reviewers did. Every finding is TAGGED:
 (`HIGH`/`MEDIUM`/`LOW`), `security` (boolean), and `rule` -- the one principle id (the principles its caller gives with `--principles FILE`) or
 family registry rule id (the ids its caller gives with `--rules`: the method keeps no copy of either and imports no registry) it violates -- plus
 `anchor`, the verbatim line it is about. Its `id` is `F-<12 hex>` of sha256(rule, file, anchor): the same in
-every round and from every reviewer, never a line number or a date. A HIGH or `security` finding is what the
-forge's review blocks a merge on (dev-lab `forgereview`). Each reviewer's `status`: `ok` (a findings array; `[]` is a clean pass);
+every round and from every reviewer, never a line number or a date. The review is ADVISORY: a `security`
+finding is the only one the forge's review holds a merge on (dev-lab `forgereview`); `HIGH` > `MEDIUM` > `LOW`
+ranks advice. Each reviewer's `status`: `ok` (a findings array; `[]` is a clean pass);
 the failed call's kind (`exhausted`, `auth`, `rate_limit`, `timeout`, `unsupported`); `unavailable` (the
 provider is not in the catalogue -- never substituted -- or the failure was unclassified); `skipped` (an
 empty diff, no call made). Every reviewer but an `ok` or `skipped` one carries `error`, saying why: the

@@ -22,7 +22,7 @@ from ai_lab.review.__main__ import main as review_main
 from ai_lab.review.explore import numstat
 from ai_lab.review.judge import main as judge_main
 from ai_lab.review.source import BundleSource, GitSource
-from tests.review_principles import PRINCIPLES_FILE
+from tests.review_principles import CALLER_ARGS, PRINCIPLES_FILE, REQUIREMENTS_FILE
 from tests.unit.test_review_explore import FINDING, SENTINEL, Scripted, _git
 
 _EXE = shutil.which('git') or 'git'
@@ -139,7 +139,19 @@ def test_a_file_the_bundle_does_not_hold_is_said_so_never_called_absent(change):
 
 
 def _review(argv: list[str], call, capsys) -> dict:
-    base = ['--principles', str(PRINCIPLES_FILE), '--rules', '', '--model', 'm', '--lens', 'light', '--no-summary']
+    base = [
+        '--principles',
+        str(PRINCIPLES_FILE),
+        '--requirements',
+        str(REQUIREMENTS_FILE),
+        '--rules',
+        '',
+        '--model',
+        'm',
+        '--lens',
+        'light',
+        '--no-summary',
+    ]
     assert review_main([*base, *argv], call=call) == 0
     return json.loads(capsys.readouterr().out)
 
@@ -175,7 +187,7 @@ def test_a_bundle_summary_reads_the_pr_body_and_the_memory_and_starts_no_git(cha
             return {'ok': True, 'result': {'changes': [], 'open_items': []}, 'usage': {}}
         return {'ok': True, 'result': {'findings': []}, 'usage': {}}
 
-    argv = ['--principles', str(PRINCIPLES_FILE), '--rules', '', '--model', 'm', '--lens', 'light',
+    argv = [*CALLER_ARGS, '--rules', '', '--model', 'm', '--lens', 'light',
             '--bundle', str(bundle), '--pr-body', str(body)]  # fmt: skip
     assert review_main(argv, call=call) == 0
     doc = json.loads(capsys.readouterr().out)
@@ -187,7 +199,18 @@ def test_a_bundle_summary_reads_the_pr_body_and_the_memory_and_starts_no_git(cha
 @pytest.mark.parametrize('main', [review_main, judge_main])
 def test_range_and_bundle_are_exactly_one(main, change, tmp_path):
     _repo, range_, bundle = change
-    common = ['--model', 'm', '--rules', '', '--principles', str(PRINCIPLES_FILE), '--findings', str(tmp_path / 'f')]
+    common = [
+        '--model',
+        'm',
+        '--rules',
+        '',
+        '--principles',
+        str(PRINCIPLES_FILE),
+        '--requirements',
+        str(REQUIREMENTS_FILE),
+        '--findings',
+        str(tmp_path / 'f'),
+    ]
     with pytest.raises(SystemExit) as both:
         main([*common, '--range', range_, '--bundle', str(bundle)])
     with pytest.raises(SystemExit) as neither:
@@ -196,7 +219,7 @@ def test_range_and_bundle_are_exactly_one(main, change, tmp_path):
 
 
 def _judge(argv: list[str], findings: Path, call, capsys) -> dict:
-    code = judge_main([*argv, '--model', 'm', '--rules', 'R1', '--principles', str(PRINCIPLES_FILE),
+    code = judge_main([*argv, '--model', 'm', '--rules', 'R1', *CALLER_ARGS,
                        '--findings', str(findings)], call=call)  # fmt: skip
     assert code == 0
     return json.loads(capsys.readouterr().out)
@@ -277,7 +300,7 @@ def _never(_request):
 def test_a_batched_review_exits_pending_then_resumes_its_batch_without_resubmitting(change, tmp_path, capsys):
     _repo, _range, bundle = change
     vendor, state = _Vendor(), tmp_path / 'state.json'
-    argv = ['--principles', str(PRINCIPLES_FILE), '--rules', '', '--model', 'm', '--lens', 'light', '--no-summary',
+    argv = [*CALLER_ARGS, '--rules', '', '--model', 'm', '--lens', 'light', '--no-summary',
             '--bundle', str(bundle), '--batch', '--batch-state', str(state)]  # fmt: skip
     assert review_main([*argv, '--wait', '0'], call=_never, connect=vendor.connect) == PENDING_EXIT
     out = capsys.readouterr()
@@ -297,7 +320,7 @@ def test_a_batched_judge_exits_pending_then_resumes(change, tmp_path, capsys):
            'reviewers': ['diff@anthropic']}  # fmt: skip
     findings.write_text(json.dumps({'findings': [row]}), encoding='utf-8')
     vendor, state = _Vendor(), tmp_path / 'state.json'
-    argv = ['--bundle', str(bundle), '--model', 'm', '--rules', 'R1', '--principles', str(PRINCIPLES_FILE),
+    argv = ['--bundle', str(bundle), '--model', 'm', '--rules', 'R1', *CALLER_ARGS,
             '--findings', str(findings), '--batch', '--batch-state', str(state)]  # fmt: skip
     assert judge_main([*argv, '--wait', '0'], call=_never, connect=vendor.connect) == PENDING_EXIT
     assert capsys.readouterr().out == ''

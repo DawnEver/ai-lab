@@ -17,7 +17,15 @@ import sys
 from collections.abc import Sequence
 from typing import Final
 
-from ai_lab.review.method import METHOD_DIR, UnknownMethodVersion, load_method, principle_list, rule_ids
+from ai_lab.review.method import (
+    METHOD_DIR,
+    REQUIREMENTS_HELP,
+    UnknownMethodVersion,
+    load_method,
+    principle_list,
+    requirement_file,
+    rule_ids,
+)
 from ai_lab.review.rules import merge
 
 __all__ = []
@@ -58,10 +66,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         '--principles', help='a JSON file {"principles": [{id, name, statement}]} (required: the caller owns them)'
     )
+    parser.add_argument('--requirements', help=REQUIREMENTS_HELP)
     args = parser.parse_args(argv)
     try:
         doc = merge(
-            load_method(args.method, principles=principle_list(args.principles), registry=rule_ids(args.rules)),
+            load_method(
+                args.method,
+                principles=principle_list(args.principles),
+                registry=rule_ids(args.rules),
+                requirements=requirement_file(args.requirements),
+            ),
             **_run_record(sys.stdin.read()),
         )
     except (FileNotFoundError, UnknownMethodVersion, ValueError, TypeError) as refused:

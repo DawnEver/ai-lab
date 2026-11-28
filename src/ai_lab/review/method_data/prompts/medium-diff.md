@@ -4,6 +4,8 @@ You review this change by EXPLORING it. Below is its MAP -- the changed files wi
 
 {{rules}}
 
+{{requirements}}
+
 {{output_contract}}
 
 Change map:

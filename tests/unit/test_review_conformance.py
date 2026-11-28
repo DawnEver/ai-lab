@@ -36,12 +36,18 @@ _REGISTRY = ('NAMED-SETS-NOT-COUNTS',)
 
 
 def _method(given: dict):
-    return load_method(METHOD_DIR, principles=PRINCIPLES, registry=given.get('registry', _REGISTRY))
+    """The method a fixture is judged with: its own registry and requirements when it names them, else none."""
+    return load_method(
+        METHOD_DIR,
+        principles=PRINCIPLES,
+        requirements=given.get('requirements', {}),
+        registry=given.get('registry', _REGISTRY),
+    )
 
 
 @pytest.fixture(scope='module')
 def method(method_dir):
-    return load_method(method_dir, principles=PRINCIPLES, registry=_REGISTRY)
+    return load_method(method_dir, principles=PRINCIPLES, requirements={}, registry=_REGISTRY)
 
 
 def test_every_kind_has_fixtures():

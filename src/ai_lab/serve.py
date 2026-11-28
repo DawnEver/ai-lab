@@ -14,8 +14,10 @@ A started server is detached; its log is ``serve-<provider>.log`` in the same di
 passes ``--holder <its pid>`` to ``ensure``, and to ``release`` when its session ends: the server this
 module started is stopped when its last LIVE holder lets go (a holder that died without releasing does not
 keep it up). A server it did not start (one already answering, or ``ensure`` without a holder) is never
-stopped. The state is ``serve-<provider>.pid`` and ``serve-<provider>.holders`` beside the log. Setup and
-sizing: ``docs-src/local-llama.md``.
+stopped. A launcher killed with its window never releases, so a server started for a holder is also
+watched: a detached ``watch`` process checks the holders every :data:`WATCH_INTERVAL` seconds and stops
+the server once none is alive. The state is ``serve-<provider>.pid`` and ``serve-<provider>.holders``
+beside the log. Setup and sizing: ``docs-src/local-llama.md``.
 """
 
 from __future__ import annotations
@@ -38,13 +40,16 @@ from lab_commons.paths import config_root
 from ai_lab.client import APP, Provider, catalogue
 from ai_lab.errors import Unsupported
 
-__all__ = ['argv', 'ensure', 'release', 'serve_file', 'specs']
+__all__ = ['argv', 'ensure', 'release', 'serve_file', 'specs', 'watch']
 
 #: The status ``/health`` answers once the model is loaded.
 HEALTHY = 200
 
 #: Seconds a fresh server gets to load its weights and answer ``/health``.
 TIMEOUT = 600.0
+
+#: Seconds between two checks of the watcher for a live holder.
+WATCH_INTERVAL = 5.0
 
 
 def serve_file() -> Path:
@@ -73,6 +78,11 @@ def _probe(url: str) -> bool:
             return response.status == HEALTHY
     except OSError:
         return False
+
+
+def _watch_spawn(provider: str, log: Path) -> None:
+    """The detached watcher that stops *provider*'s server once no holder is alive."""
+    _spawn([sys.executable, '-m', 'ai_lab.serve', 'watch', provider], log)
 
 
 def _spawn(command: list[str], log: Path) -> int:
@@ -143,6 +153,7 @@ def ensure(
     timeout: float = TIMEOUT,
     holder: int | None = None,
     state: Path | None = None,
+    watcher: Callable[[str, Path], None] = _watch_spawn,
 ) -> str:
     """``'running'`` when *row*'s server answers, else start it and return ``'started'`` once it does.
 
@@ -169,6 +180,8 @@ def ensure(
                 if pid:
                     _write(pid_file, str(pid))
                 _write(holders_file, json.dumps([holder]))
+                if pid:
+                    watcher(row.name, log)
             return 'started'
     msg = f'{row.name} server at {row.url} not healthy after {timeout:.0f}s; see {log}'
     raise Unsupported(msg)
@@ -200,12 +213,42 @@ def release(
     return 'stopped'
 
 
+def watch(
+    row: Provider,
+    *,
+    alive: Callable[[int], bool] = _alive,
+    stop: Callable[[int], None] = _stop,
+    sleep: Callable[[float], None] = time.sleep,
+    state: Path | None = None,
+    interval: float = WATCH_INTERVAL,
+) -> str:
+    """Stop the server this module started once none of its holders is alive: ``'stopped'``.
+
+    Leaves with ``'released'`` once the server is no longer this module's (a :func:`release` stopped it).
+    """
+    pid_file, holders_file = _state(row, state)
+    while True:
+        sleep(interval)
+        if not pid_file.is_file():
+            return 'released'
+        server = int(pid_file.read_text(encoding='utf-8'))
+        if not alive(server):
+            pid_file.unlink(missing_ok=True)
+            return 'released'
+        if not any(alive(pid) for pid in _holders(holders_file)):
+            pid_file.unlink(missing_ok=True)
+            _write(holders_file, '[]')
+            stop(server)
+            return 'stopped'
+
+
 def main(args: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog='python -m ai_lab.serve', description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest='verb', required=True)
     verbs = {
         'ensure': 'start the server unless it already answers',
         'release': 'let a holder go; stop the server this module started once no live holder is left',
+        'watch': 'stop the server this module started once no holder is alive (spawned by ensure)',
     }
     for verb, text in verbs.items():
         verb_parser = sub.add_parser(verb, help=text)
@@ -216,6 +259,9 @@ def main(args: Sequence[str] | None = None) -> int:
     if parsed.provider not in rows:
         sys.stderr.write(f'unknown provider {parsed.provider!r}; the catalogue has {sorted(rows)}\n')
         return 2
+    if parsed.verb == 'watch':
+        sys.stdout.write(f'{parsed.provider}: {watch(rows[parsed.provider])}\n')
+        return 0
     if parsed.verb == 'release':
         sys.stdout.write(f'{parsed.provider}: {release(rows[parsed.provider], parsed.holder)}\n')
         return 0

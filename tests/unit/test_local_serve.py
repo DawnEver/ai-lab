@@ -6,7 +6,7 @@ import pytest
 
 from ai_lab.client import Provider
 from ai_lab.errors import Unsupported
-from ai_lab.serve import argv, ensure, release, specs
+from ai_lab.serve import argv, ensure, release, specs, watch
 
 ROW = Provider(name='llamacpp', wire='openai_chat', url='http://127.0.0.1:8080', auth='local', openai_path='/v1')
 
@@ -67,7 +67,7 @@ def _started(tmp_path, holder):
     answers = iter([False, True])
     return ensure(
         ROW, {'command': ['x']}, probe=lambda _: next(answers), spawn=lambda _: 4242,
-        sleep=lambda _: None, holder=holder, state=tmp_path,
+        sleep=lambda _: None, holder=holder, state=tmp_path, watcher=lambda *_: None,
     )  # fmt: skip
 
 
@@ -95,3 +95,26 @@ def test_a_server_serve_did_not_start_is_never_stopped(tmp_path):
     stopped = []
     assert release(ROW, 100, alive=lambda _: True, stop=stopped.append, state=tmp_path) == 'not-ours'
     assert stopped == []
+
+
+def test_the_watcher_stops_the_server_once_every_holder_is_gone_even_without_release(tmp_path):
+    # A closed terminal kills the launcher before it can release: the watcher sees no live holder and stops.
+    _started(tmp_path, 100)
+    living = {100, 4242}
+    ticks = []
+
+    def sleep(_):
+        ticks.append(1)
+        if len(ticks) == 2:
+            living.discard(100)  # the window is closed
+
+    stopped = []
+    assert watch(ROW, alive=living.__contains__, stop=stopped.append, sleep=sleep, state=tmp_path) == 'stopped'
+    assert stopped == [4242]
+    assert not (tmp_path / 'serve-llamacpp.pid').exists()
+
+
+def test_the_watcher_leaves_when_the_server_is_released_or_gone(tmp_path):
+    _started(tmp_path, 100)
+    release(ROW, 100, alive=lambda _: True, stop=lambda _: None, state=tmp_path)
+    assert watch(ROW, alive=lambda _: True, stop=lambda _: None, sleep=lambda _: None, state=tmp_path) == 'released'

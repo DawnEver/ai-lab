@@ -89,7 +89,8 @@ curl -s localhost:8080/v1/messages -H 'content-type: application/json' \
 
 A launcher (`ccla`, `codla`) passes `--holder <its pid>` and runs `python -m ai_lab.serve release llamacpp
 --holder <pid>` when its session ends: the server ai_lab.serve started stops once no live session holds it,
-so the model's VRAM is freed with the last session. A server you started yourself (or `ensure` without
+so the model's VRAM is freed with the last session. A session killed with its window never releases, so a
+detached `ai_lab.serve watch` checks the holders every 5 s and stops the server once none is alive. A server you started yourself (or `ensure` without
 `--holder`) is never stopped; stop it with `taskkill /IM llama-server.exe /F` or `pkill llama-server`.
 
 ## Another model

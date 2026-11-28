@@ -53,36 +53,83 @@ it silently pages VRAM to system RAM and prefill drops ~30x. If `nvidia-smi` sho
 prefill is in the tens of tok/s, lower `-c` or the V cache type. Other GPU users (a browser, a second
 model) eat the same headroom.
 
-## 4. Declare how to start it: `serve.toml`
+Other models on the same card (2026-11-28, b12816, same ~27k-token prompt):
+
+| model | layout | config | VRAM | prefill | generate |
+|---|---|---|---|---|---|
+| Muse Glimmer 30B, UD-Q4_K_XL 15.9 GB | dense; 13 of 52 layers full attention (2 KV heads), the rest a 2048 sliding window: ~6.5 KB/token at q8; native 131k; thinks first | 131072 | 15.9 GB | 1433 tok/s | 31.0 tok/s |
+| | | 655360, YaRN x5 (`rope-scaling yarn`, `rope-scale 5`, `yarn-orig-ctx 131072`) | 20.5 GB | 1426 tok/s | 30.7 tok/s |
+| Qwen3-Coder-30B-A3B, UD-Q4_K_XL 17.7 GB | MoE, 3B active; 48 full-attention layers (4 KV heads): ~48 KB/token at q8; native 262k | 65536, all on GPU | 20.4 GB | 3060 tok/s | 60.1 tok/s |
+| | | 196608, `n-cpu-moe 14` | 22.7 GB | 1105 tok/s | 47.2 tok/s |
+| | | 262144, `n-cpu-moe 24` | 22.9 GB | 816 tok/s | 40.4 tok/s |
+
+Muse at 640k recalled a fact placed at the very start of a 499k-token prompt (prefill 752 tok/s, 11 min;
+generation 12.2 tok/s that deep), so its YaRN context is usable, not only allocatable. 1M (YaRN x8) loads at
+23.9 GB, on the spill edge. Qwen3.8-27B (~32 KB/token at q8 plus 16.6 GB of weights) and Qwen3-Coder
+(~48 KB/token) cannot pass ~256k on 24 GB.
+
+## 4. Declare the models: `serve.toml`
 
 In the ai-lab config root (`$AI_LAB_HOME/config`, else the platform's user config dir for `ai_lab`,
-beside your own `providers.toml`). `--host`/`--port` come from the catalogue url and are refused here.
+beside your own `providers.toml`). It is the ONE source: `ai_lab.serve` renders llama-server's router
+preset (`serve-llamacpp.ini`, INI) from it on every `ensure`; never edit the INI. One table per model holds
+its llama-server options, keys as the long option without `--`; `shared` holds what all of them share.
+`--host`, `--port` and `--models-preset` are set by `ai_lab.serve` and refused in `command`.
 
 ```toml
 [llamacpp]
-command = ["~/tools/llama.cpp/llama-server", "-m", "~/models/qwen3.8-27b/Qwen3.8-27B-UD-Q4_K_M.gguf",
-           "--alias", "qwen3.8-27b", "--jinja", "-ngl", "99", "-c", "196608", "-fa", "on",
-           "-ctk", "q8_0", "-ctv", "q8_0", "--parallel", "1"]
+command = ["~/tools/llama.cpp/llama-server", "--models-max", "1"]
+default = "qwen3.8-27b"
+
+[llamacpp.shared]
+jinja = true          # required: without the model's chat template there is no tool calling
+flash-attn = "on"
+n-gpu-layers = 99
+parallel = 1          # one slot gets the whole context; Claude Code's side calls queue behind it
+
+[llamacpp.models."qwen3.8-27b"]
+model = "~/models/qwen3.8-27b/Qwen3.8-27B-UD-Q4_K_M.gguf"
+ctx-size = 196608
+cache-type-k = "q8_0"
+cache-type-v = "q8_0"
+chat-template-file = "~/models/qwen3.8-27b/chat_template.claude-code.jinja"
+
+[llamacpp.models."muse-glimmer-30b"]
+model = "~/models/muse-glimmer-30b/Muse-Glimmer-30B-UD-Q4_K_XL.gguf"
+ctx-size = 655360
+cache-type-k = "q8_0"
+cache-type-v = "q8_0"
+rope-scaling = "yarn"
+rope-scale = 5
+yarn-orig-ctx = 131072
+
+[llamacpp.models."qwen3-coder-30b-a3b"]
+model = "~/models/qwen3-coder-30b-a3b/Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf"
+ctx-size = 196608
+cache-type-k = "q8_0"
+cache-type-v = "q8_0"
+n-cpu-moe = 14
 ```
 
-- `--alias` must equal the row's `models.base` (the name Claude Code requests).
-- `--jinja` is required: without the model's chat template there is no tool calling.
-- `--parallel 1` gives the one slot the whole context; Claude Code's side calls queue behind it.
-- `--chat-template-file`: Claude Code sends system text after the first message, and Qwen's template
-  refuses that (`System message must be at the beginning`, HTTP 500). Extract the model's template once
-  and render a late system message as a system turn instead:
+- `--models-max 1`: one model at a time on a 24 GB card; asking for another swaps it in (~17 s).
+- A model is named by its table; `ccla -l <name>` / `codla -l <name>` picks one (a prefix, a contained
+  part or a near typo is enough), a bare `-l` lists them, none uses `default`.
+- `chat-template-file` (Qwen3.8 only): Claude Code sends system text after the first message, and Qwen's
+  template refuses that (`System message must be at the beginning`, HTTP 500). Extract the model's
+  template once and render a late system message as a system turn instead:
 
   ```bash
   cd ~/models/qwen3.8-27b
-  curl -s localhost:8080/props | python -c "import sys,json; t=json.load(sys.stdin)['chat_template'];   t=t.replace(\"{{- raise_exception('System message must be at the beginning.') }}\",   \"{{- '<|im_start|>system\\n' + content + '<|im_end|>\\n' }}\");   open('chat_template.claude-code.jinja','w',encoding='utf-8',newline='').write(t)"
+  curl -s "localhost:8080/props?model=qwen3.8-27b" | python -c "import sys,json; t=json.load(sys.stdin)['chat_template'];   t=t.replace(\"{{- raise_exception('System message must be at the beginning.') }}\",   \"{{- '<|im_start|>system\\n' + content + '<|im_end|>\\n' }}\");   open('chat_template.claude-code.jinja','w',encoding='utf-8',newline='').write(t)"
   ```
 
-  then append `"--chat-template-file", "~/models/qwen3.8-27b/chat_template.claude-code.jinja"` to `command`.
+  Muse Glimmer and Qwen3-Coder accept a late system message as shipped.
 
 ## 5. Start and check
 
 ```bash
-python -m ai_lab.serve ensure llamacpp    # running | started; the log is serve-llamacpp.log beside serve.toml
+python -m ai_lab.serve models llamacpp                      # the models; * marks the default
+python -m ai_lab.serve ensure llamacpp --model qwen3.8-27b  # running | started, that model loaded; log: serve-llamacpp.log
 curl -s localhost:8080/v1/messages -H 'content-type: application/json' \
   -d '{"model":"qwen3.8-27b","max_tokens":32,"messages":[{"role":"user","content":"hi"}]}'
 ```
@@ -95,5 +142,7 @@ detached `ai_lab.serve watch` checks the holders every 5 s and stops the server 
 
 ## Another model
 
-Add the GGUF under `~/models`, point `serve.toml` at it, and either change `models.base` in a row of your
-own `providers.toml` (a user row replaces the packaged one) or add a second local row on another port.
+Download the GGUF under `~/models`, add a `[llamacpp.models."<name>"]` table, and size it as in section 3:
+read the base model's `config.json` (full-attention layers, KV heads, head_dim, native context), then
+measure VRAM and prefill at the context you want. Check that a tool call comes back as `tool_use` and that
+a late system message is accepted before using it through `ccla -l <name>`.

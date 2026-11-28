@@ -10,6 +10,24 @@ cannot disagree). A machine path lives only there, never in the packaged catalog
                "--alias", "qwen3.8-27b", "--jinja", "-ngl", "99", "-c", "196608", "-fa", "on",
                "-ctk", "q8_0", "-ctv", "q8_0", "--parallel", "1"]
 
+Several models behind one server: ``[<provider>.models.<name>]`` tables (and ``[<provider>.shared]`` for
+what every model shares) hold each model's llama-server options, keys as the long option without ``--``.
+They are the ONE source; the router preset llama-server reads (``--models-preset``, INI) is rendered from
+them into ``serve-<provider>.ini`` on every ``ensure``, never hand-edited::
+
+    [llamacpp]
+    command = ["~/tools/llama.cpp/llama-server", "--models-max", "1"]
+    default = "qwen3.8-27b"
+
+    [llamacpp.shared]
+    jinja = true
+
+    [llamacpp.models."qwen3.8-27b"]
+    model = "~/models/qwen3.8-27b/Qwen3.8-27B-UD-Q4_K_M.gguf"
+    ctx-size = 196608
+
+``ensure --model <name>`` loads that model (the router swaps it in); ``models <provider>`` lists them.
+
 A started server is detached; its log is ``serve-<provider>.log`` in the same directory. A launcher
 passes ``--holder <its pid>`` to ``ensure``, and to ``release`` when its session ends: the server this
 module started is stopped when its last LIVE holder lets go (a holder that died without releasing does not
@@ -40,7 +58,7 @@ from lab_commons.paths import config_root
 from ai_lab.client import APP, Provider, catalogue
 from ai_lab.errors import Unsupported
 
-__all__ = ['argv', 'ensure', 'release', 'serve_file', 'specs', 'watch']
+__all__ = ['argv', 'ensure', 'models_of', 'preset', 'release', 'serve_file', 'specs', 'watch']
 
 #: The status ``/health`` answers once the model is loaded.
 HEALTHY = 200
@@ -62,14 +80,73 @@ def specs(path: Path) -> dict[str, dict]:
     return tomllib.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
 
 
-def argv(row: Provider, spec: Mapping) -> list[str]:
-    """*spec*'s ``command`` with ``~`` expanded and ``--host``/``--port`` taken from *row*'s url."""
-    command = [str(Path(part).expanduser()) if part.startswith('~') else part for part in spec['command']]
-    if clash := sorted({'--host', '--port'} & set(command)):
-        msg = f'serve.toml [{row.name}] names {clash[0]}; drop it, the catalogue url {row.url} sets it'
+def _home(value: str) -> str:
+    return str(Path(value).expanduser()) if value.startswith('~') else value
+
+
+def _ini(value: object) -> str:
+    if isinstance(value, bool):
+        return 'true' if value else 'false'
+    return _home(value) if isinstance(value, str) else str(value)
+
+
+def preset(spec: Mapping) -> str:
+    """The router preset (INI) of *spec*'s ``shared`` and ``models`` tables, ``~`` expanded."""
+    sections = [('*', spec.get('shared') or {}), *dict(spec.get('models') or {}).items()]
+    lines = ['version = 1', '']
+    for name, options in sections:
+        if options or name != '*':
+            lines += [f'[{name}]', *(f'{key} = {_ini(value)}' for key, value in options.items()), '']
+    return '\n'.join(lines)
+
+
+def models_of(spec: Mapping) -> tuple[list[str], str | None]:
+    """*spec*'s model names, sorted, and its ``default`` (``None`` when it names none)."""
+    names = sorted(spec.get('models') or {})
+    default = spec.get('default')
+    if default is not None and default not in names:
+        msg = f'serve.toml default {default!r} names no model; the models are {names}'
         raise Unsupported(msg)
+    return names, default
+
+
+def argv(row: Provider, spec: Mapping, *, preset_file: Path | None = None) -> list[str]:
+    """*spec*'s ``command`` with ``~`` expanded, its rendered preset, and ``--host``/``--port`` from *row*'s url."""
+    command = [_home(part) for part in spec['command']]
+    if clash := sorted({'--host', '--port', '--models-preset'} & set(command)):
+        msg = f'serve.toml [{row.name}] names {clash[0]}; drop it, ai_lab.serve sets it'
+        raise Unsupported(msg)
+    if spec.get('models'):
+        target = preset_file if preset_file is not None else serve_file().with_name(f'serve-{row.name}.ini')
+        _write(target, preset(spec))
+        command += ['--models-preset', str(target)]
     url = urlsplit(row.url)
     return [*command, '--host', url.hostname or '127.0.0.1', '--port', str(url.port or 80)]
+
+
+def _get_json(url: str) -> dict:
+    with urllib.request.urlopen(url, timeout=10) as response:  # noqa: S310 -- catalogue url
+        return json.loads(response.read())
+
+
+def _load(url: str, model: str, *, timeout: float = TIMEOUT) -> None:
+    """Have the router re-read its preset, load *model*, and wait until it is loaded."""
+    base = url.rstrip('/')
+    _get_json(f'{base}/models?reload=1')
+    request = urllib.request.Request(  # noqa: S310 -- catalogue url
+        f'{base}/models/load', data=json.dumps({'model': model}).encode(), headers={'content-type': 'application/json'}
+    )
+    with urllib.request.urlopen(request, timeout=30):  # noqa: S310 -- catalogue url
+        pass
+    waited = 0.0
+    while waited < timeout:
+        rows = {m.get('id'): m for m in _get_json(f'{base}/models').get('data', [])}
+        if (rows.get(model, {}).get('status') or {}).get('value') == 'loaded':
+            return
+        time.sleep(1.0)
+        waited += 1.0
+    msg = f'model {model!r} not loaded after {timeout:.0f}s; see the server log beside serve.toml'
+    raise Unsupported(msg)
 
 
 def _probe(url: str) -> bool:
@@ -154,35 +231,54 @@ def ensure(
     holder: int | None = None,
     state: Path | None = None,
     watcher: Callable[[str, Path], None] = _watch_spawn,
+    model: str | None = None,
+    load: Callable[[str, str], None] = _load,
 ) -> str:
     """``'running'`` when *row*'s server answers, else start it and return ``'started'`` once it does.
 
     A *holder* (the launcher's pid) is recorded as holding the server, and a server started for it is
-    recorded as this module's, so :func:`release` may stop it.
+    recorded as this module's, so :func:`release` may stop it. A *model* of a router spec is loaded.
     """
     if row.auth != 'local':
         msg = f'{row.name} is auth {row.auth!r}; only a local provider has a server to start'
         raise Unsupported(msg)
+    if model is not None and model not in (names := models_of(spec)[0]):
+        msg = f'serve.toml [{row.name}] has no model {model!r}; the models are {names}'
+        raise Unsupported(msg)
     pid_file, holders_file = _state(row, state)
+    preset_file = pid_file.with_suffix('.ini')
     if probe(row.url):
         if holder is not None:
             _write(holders_file, json.dumps(sorted({*_holders(holders_file), holder})))
-        return 'running'
-    log = serve_file().with_name(f'serve-{row.name}.log')
-    command = argv(row, spec)
-    pid = _spawn(command, log) if spawn is None else spawn(command)
+        if spec.get('models'):
+            _write(preset_file, preset(spec))
+        outcome = 'running'
+    else:
+        log = serve_file().with_name(f'serve-{row.name}.log')
+        command = argv(row, spec, preset_file=preset_file)
+        pid = _spawn(command, log) if spawn is None else spawn(command)
+        _await(row, probe, sleep, timeout, log)
+        if holder is not None:
+            _write(holders_file, json.dumps([holder]))
+            if pid:
+                _write(pid_file, str(pid))
+                watcher(row.name, log)
+        outcome = 'started'
+    if model is not None:
+        load(row.url, model)
+    return outcome
+
+
+def _await(
+    row: Provider, probe: Callable[[str], bool], sleep: Callable[[float], None], timeout: float, log: Path
+) -> None:
+    """Wait until *row*'s fresh server answers ``/health``; refuse after *timeout* naming its log."""
     waited = 0.0
     while waited < timeout:
         sleep(1.0)
         waited += 1.0
         if probe(row.url):
-            if holder is not None:
-                if pid:
-                    _write(pid_file, str(pid))
-                _write(holders_file, json.dumps([holder]))
-                if pid:
-                    watcher(row.name, log)
-            return 'started'
+            return
     msg = f'{row.name} server at {row.url} not healthy after {timeout:.0f}s; see {log}'
     raise Unsupported(msg)
 
@@ -249,32 +345,47 @@ def main(args: Sequence[str] | None = None) -> int:
         'ensure': 'start the server unless it already answers',
         'release': 'let a holder go; stop the server this module started once no live holder is left',
         'watch': 'stop the server this module started once no holder is alive (spawned by ensure)',
+        'models': "list the provider's models (serve.toml) and its default",
     }
     for verb, text in verbs.items():
         verb_parser = sub.add_parser(verb, help=text)
         verb_parser.add_argument('provider')
-        verb_parser.add_argument('--holder', type=int, required=verb == 'release', help='the launcher pid')
+        if verb in {'ensure', 'release'}:
+            verb_parser.add_argument('--holder', type=int, required=verb == 'release', help='the launcher pid')
+        if verb == 'ensure':
+            verb_parser.add_argument('--model', help='load this model of a router spec')
+        if verb == 'models':
+            verb_parser.add_argument('--json', action='store_true', help='print {"models": [...], "default": ...}')
     parsed = parser.parse_args(args)
     rows = catalogue()
     if parsed.provider not in rows:
         sys.stderr.write(f'unknown provider {parsed.provider!r}; the catalogue has {sorted(rows)}\n')
         return 2
-    if parsed.verb == 'watch':
-        sys.stdout.write(f'{parsed.provider}: {watch(rows[parsed.provider])}\n')
-        return 0
-    if parsed.verb == 'release':
-        sys.stdout.write(f'{parsed.provider}: {release(rows[parsed.provider], parsed.holder)}\n')
+    row = rows[parsed.provider]
+    if parsed.verb in {'watch', 'release'}:
+        out = watch(row) if parsed.verb == 'watch' else release(row, parsed.holder)
+        sys.stdout.write(f'{parsed.provider}: {out}\n')
         return 0
     spec = specs(serve_file()).get(parsed.provider)
     if spec is None:
         sys.stderr.write(f'no [{parsed.provider}] in {serve_file()}; see docs-src/local-llama.md\n')
         return 2
     try:
-        sys.stdout.write(f'{parsed.provider}: {ensure(rows[parsed.provider], spec, holder=parsed.holder)}\n')
+        sys.stdout.write(_spec_verb(parsed, row, spec))
     except Unsupported as error:
         sys.stderr.write(f'{error}\n')
         return 1
     return 0
+
+
+def _spec_verb(parsed: argparse.Namespace, row: Provider, spec: Mapping) -> str:
+    """The output of ``models`` or ``ensure`` on *row* with its serve.toml *spec*."""
+    if parsed.verb == 'models':
+        names, default = models_of(spec)
+        if parsed.json:
+            return json.dumps({'models': names, 'default': default}) + '\n'
+        return ''.join(f'{"*" if name == default else " "} {name}\n' for name in names)
+    return f'{parsed.provider}: {ensure(row, spec, holder=parsed.holder, model=parsed.model)}\n'
 
 
 if __name__ == '__main__':

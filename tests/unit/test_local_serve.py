@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from ai_lab.client import Provider
 from ai_lab.errors import Unsupported
-from ai_lab.serve import argv, ensure, release, specs, watch
+from ai_lab.serve import argv, ensure, models_of, preset, release, specs, watch
 
 ROW = Provider(name='llamacpp', wire='openai_chat', url='http://127.0.0.1:8080', auth='local', openai_path='/v1')
 
@@ -118,3 +120,59 @@ def test_the_watcher_leaves_when_the_server_is_released_or_gone(tmp_path):
     _started(tmp_path, 100)
     release(ROW, 100, alive=lambda _: True, stop=lambda _: None, state=tmp_path)
     assert watch(ROW, alive=lambda _: True, stop=lambda _: None, sleep=lambda _: None, state=tmp_path) == 'released'
+
+
+# Several models behind one router server: serve.toml is the one source; the INI preset is rendered from it.
+
+ROUTER = {
+    'command': ['llama-server', '--models-max', '1'],
+    'default': 'qwen3.8-27b',
+    'shared': {'jinja': True, 'flash-attn': 'on'},
+    'models': {
+        'qwen3.8-27b': {'model': '~/m/q.gguf', 'ctx-size': 196608, 'cache-type-k': 'q8_0'},
+        'qwen3-coder-30b-a3b': {'model': '/abs/c.gguf', 'n-cpu-moe': 14},
+    },
+}
+
+
+def test_the_preset_is_rendered_from_the_toml_tables():
+    text = preset(ROUTER)
+    assert text.startswith('version = 1\n')
+    assert '[*]\njinja = true\nflash-attn = on\n' in text
+    assert f'[qwen3.8-27b]\nmodel = {Path("~/m/q.gguf").expanduser()}\nctx-size = 196608\ncache-type-k = q8_0\n' in text
+    assert '[qwen3-coder-30b-a3b]\nmodel = /abs/c.gguf\nn-cpu-moe = 14\n' in text
+
+
+def test_a_router_spec_starts_with_its_rendered_preset(tmp_path):
+    command = argv(ROW, ROUTER, preset_file=tmp_path / 'serve-llamacpp.ini')
+    assert command == [
+        'llama-server', '--models-max', '1', '--models-preset', str(tmp_path / 'serve-llamacpp.ini'),
+        '--host', '127.0.0.1', '--port', '8080',
+    ]  # fmt: skip
+    assert (tmp_path / 'serve-llamacpp.ini').read_text(encoding='utf-8') == preset(ROUTER)
+
+
+def test_models_lists_the_names_and_the_default():
+    assert models_of(ROUTER) == (['qwen3-coder-30b-a3b', 'qwen3.8-27b'], 'qwen3.8-27b')
+    assert models_of({'command': ['x']}) == ([], None)
+
+
+def test_a_default_that_names_no_model_is_refused():
+    with pytest.raises(Unsupported, match='default'):
+        models_of({**ROUTER, 'default': 'nope'})
+
+
+def test_ensure_loads_the_chosen_model_and_refuses_an_unknown_one(tmp_path):
+    loaded = []
+    out = ensure(
+        ROW,
+        ROUTER,
+        probe=lambda _: True,
+        state=tmp_path,
+        model='qwen3-coder-30b-a3b',
+        load=lambda u, m: loaded.append(m),
+    )
+    assert out == 'running'
+    assert loaded == ['qwen3-coder-30b-a3b']
+    with pytest.raises(Unsupported, match=r'qwen3.8-27b'):
+        ensure(ROW, ROUTER, probe=lambda _: True, state=tmp_path, model='nope', load=lambda u, m: None)

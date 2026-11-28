@@ -1,0 +1,187 @@
+{
+  "description": "Requirement verdicts combine per id over the ok reviewers by merge.requirements.precedence (violated > amended > unverified > met > untouched): cites are the ordered union, evidence the winning row's; a row with an undeclared id, a verdict outside reply_verdicts or a mistyped field is dropped; a requirement no reviewer answered is unverified; an architecture id is a rule a finding may name.",
+  "input": {
+    "range": "a..b",
+    "profiles": [
+      "diff",
+      "security"
+    ],
+    "reviewers": [
+      {
+        "name": "diff",
+        "provider": "claude",
+        "status": "pending"
+      },
+      {
+        "name": "security",
+        "provider": "claude",
+        "status": "pending"
+      }
+    ],
+    "results": [
+      {
+        "name": "diff",
+        "findings": [
+          {
+            "severity": "MEDIUM",
+            "security": false,
+            "rule": "arch:AGENTS.md",
+            "file": "b.py",
+            "anchor": "import upward",
+            "summary": "imports upward",
+            "category": "Bug"
+          }
+        ],
+        "requirements": [
+          {
+            "id": "arch:AGENTS.md",
+            "verdict": "met",
+            "cites": [
+              "a.py"
+            ],
+            "evidence": "a.py keeps the layers."
+          },
+          {
+            "id": "arch:layout.toml",
+            "verdict": "untouched",
+            "cites": [],
+            "evidence": "no layout change."
+          },
+          {
+            "id": "arch:ghost.md",
+            "verdict": "violated",
+            "cites": [
+              "a.py"
+            ],
+            "evidence": "not declared: dropped."
+          },
+          {
+            "id": "arch:layout.toml",
+            "verdict": "broken",
+            "cites": [],
+            "evidence": "not a verdict: dropped."
+          },
+          {
+            "id": "arch:layout.toml",
+            "verdict": "violated",
+            "cites": "a.py",
+            "evidence": "cites not a list: dropped."
+          }
+        ]
+      },
+      {
+        "name": "security",
+        "findings": [],
+        "requirements": [
+          {
+            "id": "arch:AGENTS.md",
+            "verdict": "violated",
+            "cites": [
+              "b.py:3",
+              "a.py"
+            ],
+            "evidence": "b.py imports upward."
+          },
+          {
+            "id": "arch:AGENTS.md",
+            "verdict": "amended",
+            "cites": [],
+            "evidence": "ranks below violated."
+          }
+        ]
+      }
+    ],
+    "registry": [
+      "NAMED-SETS-NOT-COUNTS"
+    ],
+    "requirements": {
+      "architecture": [
+        {
+          "id": "arch:AGENTS.md",
+          "path": "AGENTS.md",
+          "blob": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "text": "AGENTS.md says: layers point down."
+        },
+        {
+          "id": "arch:layout.toml",
+          "path": "layout.toml",
+          "blob": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "text": "layout.toml says: layers point down."
+        },
+        {
+          "id": "arch:docs/architecture.md",
+          "path": "docs/architecture.md",
+          "blob": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "text": "docs/architecture.md says: layers point down."
+        }
+      ]
+    }
+  },
+  "expected": {
+    "schema_version": 3,
+    "range": "a..b",
+    "profiles": [
+      "diff",
+      "security"
+    ],
+    "reviewers": [
+      {
+        "name": "diff",
+        "provider": "claude",
+        "status": "ok",
+        "dropped_findings": 0
+      },
+      {
+        "name": "security",
+        "provider": "claude",
+        "status": "ok",
+        "dropped_findings": 0
+      }
+    ],
+    "findings": [
+      {
+        "id": "F-07cbdde917da",
+        "severity": "MEDIUM",
+        "security": false,
+        "rule": "arch:AGENTS.md",
+        "file": "b.py",
+        "anchor": "import upward",
+        "summary": "imports upward",
+        "category": "Bug",
+        "suggestion": "",
+        "detail": "",
+        "status": "OPEN",
+        "confidence": "single-reviewer",
+        "reviewers": [
+          {
+            "name": "diff",
+            "provider": "claude"
+          }
+        ]
+      }
+    ],
+    "requirements": [
+      {
+        "id": "arch:AGENTS.md",
+        "verdict": "violated",
+        "cites": [
+          "a.py",
+          "b.py:3"
+        ],
+        "evidence": "b.py imports upward."
+      },
+      {
+        "id": "arch:layout.toml",
+        "verdict": "untouched",
+        "cites": [],
+        "evidence": "no layout change."
+      },
+      {
+        "id": "arch:docs/architecture.md",
+        "verdict": "unverified",
+        "cites": [],
+        "evidence": "no reviewer returned a verdict on this requirement"
+      }
+    ]
+  }
+}

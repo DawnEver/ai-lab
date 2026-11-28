@@ -6,6 +6,8 @@ The diff is too large to inline. Below is its manifest. Explore the changes your
 
 {{rules}}
 
+{{requirements}}
+
 Scope: {{scope}}
 
 {{output_contract}}

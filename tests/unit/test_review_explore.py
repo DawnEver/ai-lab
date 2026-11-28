@@ -28,7 +28,7 @@ from ai_lab.review.explore import (
 from ai_lab.review.source import GitSource
 from ai_lab.review.tiers import ledger_path, summary
 from ai_lab.review.tiers import main as tiers_main
-from tests.review_principles import PRINCIPLES_FILE
+from tests.review_principles import CALLER_ARGS
 
 _GIT = shutil.which('git') or 'git'
 SENTINEL = 'secret_sauce = compute_the_thing()'
@@ -77,7 +77,7 @@ class Scripted:
 
 
 def _review(repo: Path, range_: str, call, capsys) -> dict:
-    argv = ['--principles', str(PRINCIPLES_FILE), '--rules', '', '--range', range_, '--model', 'm',
+    argv = [*CALLER_ARGS, '--rules', '', '--range', range_, '--model', 'm',
             '--repo', str(repo), '--lens', 'light', '--no-summary']  # fmt: skip
     assert main(argv, call=call) == 0
     return json.loads(capsys.readouterr().out)
@@ -158,7 +158,7 @@ def test_paths_given_empty_is_the_whole_range(tmp_path, capsys):
     """dev-lab reviews an oversize head as ONE slice with no paths: `--paths` with nothing after it (D123)."""
     repo, range_ = _repo(tmp_path, {'src/a.py': f'{SENTINEL}\n', 'lib/b.py': 'x = 1\n'})
     call = Scripted({'findings': []})
-    argv = ['--principles', str(PRINCIPLES_FILE), '--rules', '', '--range', range_, '--model', 'm',
+    argv = [*CALLER_ARGS, '--rules', '', '--range', range_, '--model', 'm',
             '--repo', str(repo), '--lens', 'light', '--no-summary', '--paths']  # fmt: skip
     assert main(argv, call=call) == 0
     prompt = _prompt(call.requests[0])

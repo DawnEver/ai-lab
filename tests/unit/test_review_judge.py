@@ -13,7 +13,7 @@ import pytest
 
 from ai_lab.review.judge import ANCHOR_WINDOW, judge_of, main, verified
 from ai_lab.review.source import GitSource
-from tests.review_principles import PRINCIPLES_FILE
+from tests.review_principles import CALLER_ARGS
 from tests.unit.test_review_explore import _repo
 
 SENTINEL = 'secret_sauce = compute_the_thing()'
@@ -33,7 +33,7 @@ def _run(tmp_path: Path, findings: list[dict], call, capsys, *extra: str, files:
     file = tmp_path / 'findings.json'
     file.write_text(json.dumps({'findings': findings}), encoding='utf-8')
     code = main(['--range', range_, '--repo', str(repo), '--model', 'm', '--rules', 'R1,R2',
-                 '--principles', str(PRINCIPLES_FILE), '--findings', str(file), *extra], call=call)  # fmt: skip
+                 *CALLER_ARGS, '--findings', str(file), *extra], call=call)  # fmt: skip
     out = capsys.readouterr()
     return code, (json.loads(out.out) if out.out else None), out.err
 
@@ -299,7 +299,7 @@ def test_a_bad_findings_file_is_refused(tmp_path: Path, capsys, content: str) ->
     file = tmp_path / 'findings.json'
     file.write_text(content, encoding='utf-8')
     code = main(['--range', range_, '--repo', str(repo), '--model', 'm', '--rules', 'R1',
-                 '--principles', str(PRINCIPLES_FILE), '--findings', str(file)],
+                 *CALLER_ARGS, '--findings', str(file)],
                 call=lambda _r: pytest.fail('no call on a refused invocation'))  # fmt: skip
     out = capsys.readouterr()
     assert code == 2
@@ -312,6 +312,6 @@ def test_a_range_git_cannot_read_is_refused(tmp_path: Path, capsys) -> None:
     file = tmp_path / 'findings.json'
     file.write_text(json.dumps({'findings': [_finding('a')]}), encoding='utf-8')
     code = main(['--range', 'nope..nada', '--repo', str(repo), '--model', 'm', '--rules', 'R1',
-                 '--principles', str(PRINCIPLES_FILE), '--findings', str(file)], call=lambda _r: {})  # fmt: skip
+                 *CALLER_ARGS, '--findings', str(file)], call=lambda _r: {})  # fmt: skip
     assert code == 2
     assert capsys.readouterr().out == ''

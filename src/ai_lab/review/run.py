@@ -56,8 +56,23 @@ def _plan(method: Method, mode: Mapping, rng: random.Random, lens: str) -> list[
 
 
 def _schema(method: Method) -> dict:
+    """A reviewer's answer: its findings, and -- when the caller declared any -- a verdict on every requirement."""
     item = {k: v for k, v in method.finding_schema.items() if k not in {'$schema', 'title'}}
-    return {'type': 'object', 'required': ['findings'], 'properties': {'findings': {'type': 'array', 'items': item}}}
+    properties: dict = {'findings': {'type': 'array', 'items': item}}
+    if not method.requirements:
+        return {'type': 'object', 'required': ['findings'], 'properties': properties}
+    verdict = {
+        'type': 'object',
+        'required': ['id', 'verdict', 'cites', 'evidence'],
+        'properties': {
+            'id': {'enum': [row['id'] for row in method.requirements]},
+            'verdict': {'enum': list(method.spec['merge']['requirements']['reply_verdicts'])},
+            'cites': {'type': 'array', 'items': {'type': 'string'}},
+            'evidence': {'type': 'string'},
+        },
+    }
+    properties['requirements'] = {'type': 'array', 'items': verdict}
+    return {'type': 'object', 'required': ['findings', 'requirements'], 'properties': properties}
 
 
 def _asking(schema: Mapping) -> dict:
@@ -94,8 +109,8 @@ def explored(call: Callable[[Mapping], Mapping], request: Mapping, prompt: Seque
 
 def _result(name: str, reply: Mapping) -> dict:
     if reply['ok']:
-        findings = (reply['result'] or {}).get('findings')
-        return {'name': name, 'findings': findings}
+        answered = reply['result'] or {}
+        return {'name': name, 'findings': answered.get('findings'), 'requirements': answered.get('requirements')}
     return {'name': name, 'error_kind': reply['kind'], 'error': reply['error']}
 
 

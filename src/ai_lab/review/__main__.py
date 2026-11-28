@@ -24,6 +24,14 @@ written FIRST: one cut at its output budget exits 3 naming it on stderr, before 
 <file>`` (``{"disposed": [{id, reason}]}``) names ids disposed of earlier: they are not re-raised, and the
 document lists them under ``disposed``.
 
+THE REQUIREMENTS are the caller's (``--requirements <file>``, :func:`~ai_lab.review.method.requirement_file`; dev-lab
+writes it from ``[tool.dev_lab.review] requirements``): every principle when ``"principles": true``, and each
+architecture document (``arch:<path>``, read by the caller at its trusted integration tip, fenced as data in the
+prompt). Every reviewer returns a verdict on each; the document lists one per requirement under ``requirements``
+(``met``, ``violated``, ``amended``, ``untouched``, or ``unverified`` -- no reviewer returned one, or a ``violated``
+whose cites name no file the whole change touches: advice, never a grounded claim). The review stays ADVISORY: a
+verdict is information for the integrator, and only a ``security`` finding holds a merge.
+
 THE MODEL CALLS ARE BATCHED BY DEFAULT (:mod:`ai_lab.batch`; ``--no-batch`` makes them at once): the summary is one
 batch, then each turn of every reviewer one more. A run whose ``--wait`` is spent with a batch still running prints
 nothing, says ``pending: <line>`` on stderr and exits :data:`~ai_lab.batch.PENDING_EXIT`; run again with the same
@@ -49,12 +57,16 @@ from ai_lab.review.explore import diff as git_diff
 from ai_lab.review.explore import numstat as git_numstat
 from ai_lab.review.method import (
     METHOD_DIR,
+    REQUIREMENTS_HELP,
+    Method,
     UnknownMethodVersion,
     configured_providers,
     load_method,
     principle_list,
+    requirement_file,
     rule_ids,
 )
+from ai_lab.review.rules import ground_violations
 from ai_lab.review.run import LENSES, run
 from ai_lab.review.source import BundleSource, GitSource, Source
 from ai_lab.review.summary import SummaryTruncated, change_summary, git_intent
@@ -93,6 +105,17 @@ def _disposed(path: str | None) -> dict[str, str]:
         msg = f'{path} is not {{"disposed": [{{id, reason}}]}}'
         raise ValueError(msg)
     return {str(row['id']): str(row['reason']) for row in rows}
+
+
+def _grounded(method: Method, doc: dict, whole: Callable[[], Sequence[Changed]]) -> dict:
+    """*doc* with each ``violated`` requirement citing no file of the WHOLE change (*whole*, read lazily) unverified.
+
+    The whole change, not the slice: a slice's reviewer may rightly cite a file another slice holds.
+    """
+    if not any(row['verdict'] == 'violated' for row in doc.get('requirements', ())):
+        return doc
+    changed = {path for *_, path in whole()}
+    return {**doc, 'requirements': ground_violations(method, doc['requirements'], changed)}
 
 
 def _summary(args: argparse.Namespace, source: Source, call: Callable, provider: str) -> dict | None:
@@ -138,6 +161,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         '--principles', help='a JSON file {"principles": [{id, name, statement}]} (required: the caller owns them)'
     )
+    parser.add_argument('--requirements', help=REQUIREMENTS_HELP)
     parser.add_argument('--pr-body', help='a file holding the PR body, read for the summary')
     parser.add_argument('--no-summary', action='store_true', help='omit the summary section (and its call)')
     parser.add_argument('--disposed', help='a JSON file {"disposed": [{id, reason}]}: ids not to re-raise')
@@ -158,7 +182,12 @@ def main(
     """Run one headless review and print its findings JSON; exit 2 on a refused invocation."""
     args = _parser().parse_args(argv)
     try:
-        method = load_method(args.method, principles=principle_list(args.principles), registry=rule_ids(args.rules))
+        method = load_method(
+            args.method,
+            principles=principle_list(args.principles),
+            registry=rule_ids(args.rules),
+            requirements=requirement_file(args.requirements),
+        )
         source: Source = (
             BundleSource(Path(args.bundle)) if args.bundle else
             GitSource(args.range_, args.repo, read_numstat=numstat, read_diff=diff, read_log=log, read_intent=intent)
@@ -216,6 +245,7 @@ def main(
         diff_bytes=change['diff_bytes'], turns=spent['turns'], read_bytes=spent['read_bytes'],
         findings=doc['findings'], seconds=time.monotonic() - started, usage=spent['usage'],
     ))  # fmt: skip
+    doc = _grounded(method, doc, lambda: rows if args.findings or not args.paths else source.numstat(()))
     if summary is not None:
         doc = {'summary': summary, **doc}
     sys.stdout.write(json.dumps(doc, ensure_ascii=False) + '\n')

@@ -2,6 +2,10 @@
 
 The method is ai-lab's data (PLAN-a-short-robust-toolchain P4): every executor -- this package's headless run, the
 ONE merge, sharp-review's Node planner -- reads :data:`METHOD_DIR`. ``python -m ai_lab.review.method`` prints it.
+
+What a review is held to is the CALLER's, given at load and never kept here: the principles (``--principles``), the
+registry ids (``--rules``) and the requirements (``--requirements``: every principle and/or each architecture
+document, :func:`requirement_file`). Every entry point that loads the method refuses an invocation missing one.
 """
 
 from __future__ import annotations
@@ -17,10 +21,14 @@ from typing import Final
 from ai_lab.client import route
 
 __all__ = [
+    'ARCHITECTURE_PREFIX',
     'METHOD_DIR',
     'METHOD_SCHEMA_VERSIONS',
     'NO_PRINCIPLES',
+    'NO_REQUIREMENTS',
     'NO_RULES',
+    'REQUIREMENTS_HELP',
+    'REQUIREMENT_KINDS',
     'REVIEW_TASK',
     'Method',
     'UnknownMethodVersion',
@@ -28,6 +36,7 @@ __all__ = [
     'default_config',
     'load_method',
     'principle_list',
+    'requirement_file',
     'rule_ids',
 ]
 
@@ -81,11 +90,20 @@ class Method:
     principles: tuple[dict, ...]
     #: The rule-id set the CALLER gave (the family registry's, passed in): the rest of the valid ``rule`` set.
     registry: tuple[str, ...]
+    #: The REQUIREMENTS the caller declared (``--requirements``): every reviewer returns a verdict on each. Rows
+    #: ``{id, kind: principle, statement}`` or ``{id, kind: architecture, path, blob, text}``, in that order.
+    requirements: tuple[dict, ...]
 
     @property
     def schema_version(self) -> int:
         """The method's version, which is also the findings JSON's."""
         return self.spec['schema_version']
+
+    @property
+    def rule_ids(self) -> tuple[str, ...]:
+        """Every id a finding's ``rule`` may name: the principles, the registry, then the architecture documents."""
+        documents = (row['id'] for row in self.requirements if row['kind'] == 'architecture')
+        return (*(p['id'] for p in self.principles), *self.registry, *documents)
 
     def text(self, relative: str) -> str:
         """A file of the method (a template, a partial) as text."""
@@ -151,6 +169,91 @@ def principle_list(given: str | Path | None) -> tuple[dict, ...]:
     return tuple(data['principles'])
 
 
+#: What an invocation without ``--requirements`` is refused with: what a review is held to is the caller's.
+NO_REQUIREMENTS: Final = (
+    '--requirements FILE is required and was not passed: the caller passes a JSON object of the requirements it '
+    'declares, {"principles": true, "architecture": [{id, path, blob, text}]} '
+    '(dev-lab writes it per run from [tool.dev_lab.review] requirements; {} declares none); ai-lab keeps none'
+)
+
+#: The ``--requirements`` flag's help, the same on every entry point that loads the method.
+REQUIREMENTS_HELP: Final = (
+    'a JSON file {"principles": true, "architecture": [{id, path, blob, text}]}: what every reviewer returns a '
+    'verdict on (required: the caller declares them; {} declares none)'
+)
+
+#: The requirement kinds a ``--requirements`` file may name, in the order their rows are listed.
+REQUIREMENT_KINDS: Final = ('principles', 'architecture')
+
+#: An architecture requirement's id: this prefix, then its document's path.
+ARCHITECTURE_PREFIX: Final = 'arch:'
+
+_DOCUMENT_KEYS: Final = frozenset({'id', 'path', 'blob', 'text'})
+
+
+def requirement_file(given: str | Path | None) -> dict:
+    """``--requirements FILE`` as the JSON object it holds; ``ValueError`` (:data:`NO_REQUIREMENTS`) when not given.
+
+    Its rows are checked where the method reads them (:func:`load_method`), so an object handed in directly is held
+    to the same shape.
+    """
+    if given is None:
+        raise ValueError(NO_REQUIREMENTS)
+    path = Path(given)
+    if not path.is_file():
+        msg = f'{path} not found: --requirements must name a JSON file {{"principles": true, "architecture": [...]}}'
+        raise FileNotFoundError(msg)
+    try:
+        data = _json(path)
+    except json.JSONDecodeError as bad:
+        msg = f'{path} is not JSON: {bad}'
+        raise ValueError(msg) from None
+    if not isinstance(data, dict):
+        msg = f'{path} must be a JSON object whose keys are among {list(REQUIREMENT_KINDS)}'
+        raise TypeError(msg)
+    return data
+
+
+def _document(row: object) -> dict:
+    """One architecture requirement, exactly ``{id, path, blob, text}``: strings, ``id`` the prefixed path, text."""
+    if (
+        not isinstance(row, dict)
+        or set(row) != _DOCUMENT_KEYS
+        or not all(isinstance(value, str) for value in row.values())
+        or not row['path'].strip()
+        or not row['text'].strip()
+        or row['id'] != ARCHITECTURE_PREFIX + row['path']
+    ):
+        shown = {key: value for key, value in row.items() if key != 'text'} if isinstance(row, dict) else row
+        msg = (
+            f'an architecture requirement is exactly {sorted(_DOCUMENT_KEYS)}, all strings, id '
+            f'"{ARCHITECTURE_PREFIX}<path>" and a non-empty text: {shown!r}'
+        )
+        raise ValueError(msg)
+    return {**row, 'kind': 'architecture'}
+
+
+def _requirements(given: Mapping, principles: Sequence[dict]) -> tuple[dict, ...]:
+    """The rows *given* declares: every principle when ``principles`` is ``true``, then each architecture document."""
+    if unknown := sorted(set(given) - set(REQUIREMENT_KINDS)):
+        msg = f'--requirements names {unknown}: the requirement kinds are {list(REQUIREMENT_KINDS)}'
+        raise ValueError(msg)
+    if 'principles' in given and given['principles'] is not True:
+        msg = f'--requirements principles is {given["principles"]!r}: true (every --principles entry) or absent'
+        raise ValueError(msg)
+    documents = given.get('architecture', [])
+    if not isinstance(documents, list):
+        msg = '--requirements architecture is not a list of {id, path, blob, text}'
+        raise TypeError(msg)
+    held = [{'id': p['id'], 'kind': 'principle', 'statement': p['statement']} for p in principles]
+    rows = [*(held if given.get('principles') else ()), *map(_document, documents)]
+    ids = [row['id'] for row in rows]
+    if repeated := sorted({one for one in ids if ids.count(one) > 1}):
+        msg = f'a requirement id is given twice: {repeated}'
+        raise ValueError(msg)
+    return tuple(rows)
+
+
 def _checked(principles: Iterable[dict]) -> tuple[dict, ...]:
     """Every entry is exactly ``{id, name, statement}``, all non-empty strings; ids unique."""
     entries = tuple(principles)
@@ -169,10 +272,14 @@ def _checked(principles: Iterable[dict]) -> tuple[dict, ...]:
     return entries
 
 
-def load_method(root: str | Path = METHOD_DIR, *, principles: Iterable[dict], registry: Iterable[str]) -> Method:
+def load_method(
+    root: str | Path = METHOD_DIR, *, principles: Iterable[dict], registry: Iterable[str], requirements: Mapping
+) -> Method:
     """The method at *root*; :class:`UnknownMethodVersion` naming the version, ``FileNotFoundError`` naming the file.
 
-    *principles* and *registry* are both the caller's (dev-lab owns them): ai-lab keeps no list and imports no registry.
+    *principles*, *registry* and *requirements* (the ``--requirements`` object, :func:`requirement_file`) are all the
+    caller's (dev-lab owns them): ai-lab keeps no list and imports no registry. An architecture requirement's id joins
+    the ids a finding's ``rule`` may name (:attr:`Method.rule_ids`).
     """
     root = Path(root)
     spec_file = root / 'method.toml'
@@ -189,8 +296,10 @@ def load_method(root: str | Path = METHOD_DIR, *, principles: Iterable[dict], re
     files = spec['files']
     principles = _checked(principles)
     ids = tuple(registry)
+    rows = _requirements(requirements, principles)
+    documents = [row['id'] for row in rows if row['kind'] == 'architecture']
     raw_schema = _json(root / files['finding_schema'])
-    finding_schema = _with_rule_ids(raw_schema, spec['rules'], [p['id'] for p in principles] + list(ids))
+    finding_schema = _with_rule_ids(raw_schema, spec['rules'], [p['id'] for p in principles] + list(ids) + documents)
     prompt_schemas = {'filled': finding_schema, 'unfilled': raw_schema}
     choice = spec['rules'].get('prompt_schema')
     if choice not in prompt_schemas:
@@ -205,6 +314,7 @@ def load_method(root: str | Path = METHOD_DIR, *, principles: Iterable[dict], re
         output_schema=_json(root / files['output_schema']),
         principles=principles,
         registry=ids,
+        requirements=rows,
     )
 
 
@@ -215,7 +325,7 @@ def _with_rule_ids(schema: dict, spec: dict, ids: Sequence[str]) -> dict:
         msg = f'the finding schema has no {field!r} property for the rule ids to fill'
         raise ValueError(msg)
     if repeated := sorted({one for one in ids if ids.count(one) > 1}):
-        msg = f'a rule id is declared twice (the principles and the registry together): {repeated}'
+        msg = f'a rule id is declared twice (the principles, the registry and the documents together): {repeated}'
         raise ValueError(msg)
     return {**schema, 'properties': {**schema['properties'], field: {**schema['properties'][field], 'enum': list(ids)}}}
 

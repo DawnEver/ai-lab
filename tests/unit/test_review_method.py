@@ -13,22 +13,25 @@ import pytest
 
 import ai_lab.review
 from ai_lab.review.method import (
+    ARCHITECTURE_PREFIX,
     METHOD_DIR,
     METHOD_SCHEMA_VERSIONS,
+    NO_REQUIREMENTS,
     Method,
     UnknownMethodVersion,
     load_method,
     main,
     principle_list,
+    requirement_file,
     rule_ids,
 )
-from tests.review_principles import PRINCIPLES, PRINCIPLES_FILE
+from tests.review_principles import PRINCIPLES, PRINCIPLES_FILE, REQUIREMENTS_FILE
 
 
 def test_the_packaged_method_is_the_default():
     """The method is ai-lab's own data (PLAN-a-short-robust-toolchain P4): no argument loads the packaged copy."""
     assert Path(ai_lab.review.__file__).parent / 'method_data' == METHOD_DIR
-    assert load_method(principles=PRINCIPLES, registry=()).root == METHOD_DIR
+    assert load_method(principles=PRINCIPLES, requirements={}, registry=()).root == METHOD_DIR
 
 
 def test_the_module_prints_the_packaged_method_directory(capsys):
@@ -38,7 +41,7 @@ def test_the_module_prints_the_packaged_method_directory(capsys):
 
 
 def test_the_method_is_read_in_place(method_dir):
-    method = load_method(method_dir, principles=PRINCIPLES, registry=())
+    method = load_method(method_dir, principles=PRINCIPLES, requirements={}, registry=())
     assert isinstance(method, Method)
     assert method.root == method_dir
     assert {p['key'] for p in method.profiles} >= {'diff', 'security', 'adversarial'}
@@ -63,7 +66,7 @@ def test_an_unknown_schema_version_is_refused_by_name(method_dir, tmp_path):
         spec.read_text(encoding='utf-8').replace('schema_version = 3', 'schema_version = 99'), encoding='utf-8'
     )
     with pytest.raises(UnknownMethodVersion, match=r'schema_version 99.*\[3\]'):
-        load_method(copy, principles=PRINCIPLES, registry=())
+        load_method(copy, principles=PRINCIPLES, requirements={}, registry=())
     assert 99 not in METHOD_SCHEMA_VERSIONS
 
 
@@ -74,7 +77,7 @@ def test_the_rule_ids_are_the_principles_then_the_registry(method_dir):
     schema with no other edit.
     """
     planted = {'id': 'fail-loud', 'name': 'Fail loud', 'statement': 'An unsupported case raises.'}
-    method = load_method(method_dir, principles=(*PRINCIPLES, planted), registry=('SOME-RULE',))
+    method = load_method(method_dir, principles=(*PRINCIPLES, planted), requirements={}, registry=('SOME-RULE',))
     field = method.spec['rules']['finding_field']
     raw = json.loads((method_dir / method.spec['files']['finding_schema']).read_text(encoding='utf-8'))
     assert 'enum' not in raw['properties'][field], 'a second copy of the ids'
@@ -90,7 +93,7 @@ def test_the_method_keeps_no_principle_list_of_its_own(method_dir):
     """The family principles are dev-lab's (user ruling 2026-10-27): none ships with the method, none is loaded."""
     assert not list(method_dir.rglob('principles*.json'))
     assert 'principles' not in tomllib.loads((method_dir / 'method.toml').read_text(encoding='utf-8'))['files']
-    assert load_method(method_dir, principles=(), registry=()).principles == ()
+    assert load_method(method_dir, principles=(), requirements={}, registry=()).principles == ()
 
 
 def test_the_principles_come_from_the_caller_or_the_invocation_is_refused(tmp_path):
@@ -126,12 +129,12 @@ def test_a_principles_file_of_the_wrong_shape_is_refused(tmp_path, text):
 )
 def test_a_principle_not_exactly_id_name_statement_is_refused(method_dir, entry):
     with pytest.raises(ValueError, match='a principle must be exactly'):
-        load_method(method_dir, principles=(entry,), registry=())
+        load_method(method_dir, principles=(entry,), requirements={}, registry=())
 
 
 def test_a_principle_id_given_twice_is_refused(method_dir):
     with pytest.raises(ValueError, match=r"given twice: \['occams-razor'\]"):
-        load_method(method_dir, principles=(*PRINCIPLES, PRINCIPLES[2]), registry=())
+        load_method(method_dir, principles=(*PRINCIPLES, PRINCIPLES[2]), requirements={}, registry=())
 
 
 def test_the_rule_ids_come_from_the_caller_or_the_invocation_is_refused():
@@ -144,12 +147,12 @@ def test_the_rule_ids_come_from_the_caller_or_the_invocation_is_refused():
 
 def test_a_principle_id_that_is_also_a_registry_id_is_refused(method_dir):
     with pytest.raises(ValueError, match='occams-razor'):
-        load_method(method_dir, principles=PRINCIPLES, registry=('occams-razor',))
+        load_method(method_dir, principles=PRINCIPLES, requirements={}, registry=('occams-razor',))
 
 
 def test_a_directory_without_a_method_is_refused_naming_it(tmp_path):
     with pytest.raises(FileNotFoundError, match=r'method.toml'):
-        load_method(tmp_path, principles=PRINCIPLES, registry=())
+        load_method(tmp_path, principles=PRINCIPLES, requirements={}, registry=())
 
 
 @pytest.mark.parametrize('choice', ['filled', 'unfilled', 'neither'])
@@ -163,10 +166,68 @@ def test_the_prompt_schema_is_the_one_the_method_names(method_dir, tmp_path, cho
     data = tomllib.loads(text)
     if choice == 'neither':
         with pytest.raises(ValueError, match=r"prompt_schema is 'neither'"):
-            load_method(copy, principles=PRINCIPLES, registry=())
+            load_method(copy, principles=PRINCIPLES, requirements={}, registry=())
         return
-    method = load_method(copy, principles=PRINCIPLES, registry=())
+    method = load_method(copy, principles=PRINCIPLES, requirements={}, registry=())
     field = data['rules']['finding_field']
     raw = json.loads((copy / data['files']['finding_schema']).read_text(encoding='utf-8'))
     assert 'enum' in method.finding_schema['properties'][field]
     assert method.prompt_schema == (method.finding_schema if choice == 'filled' else raw)
+
+
+def _document(path: str, text: str = 'Layers point down.') -> dict:
+    return {'id': f'{ARCHITECTURE_PREFIX}{path}', 'path': path, 'blob': 'b' * 40, 'text': text}
+
+
+def test_the_requirements_come_from_the_caller_or_the_invocation_is_refused(tmp_path):
+    """No file given: refused naming ``--requirements`` (D226: what a review is held to is the repo's declaration)."""
+    assert requirement_file(REQUIREMENTS_FILE) == {}
+    with pytest.raises(ValueError, match=r'^--requirements FILE is required and was not passed'):
+        requirement_file(None)
+    assert NO_REQUIREMENTS.startswith('--requirements FILE is required')
+    with pytest.raises(FileNotFoundError, match=r'--requirements'):
+        requirement_file(tmp_path / 'absent.json')
+    for text in ('not json', '[]'):
+        path = tmp_path / 'r.json'
+        path.write_text(text, encoding='utf-8')
+        with pytest.raises((ValueError, TypeError), match=re.escape(str(path))):
+            requirement_file(path)
+
+
+def test_principles_true_makes_every_given_principle_a_requirement_and_none_declares_nothing(method_dir):
+    """PLANTED CONTROL both ways: ``{}`` holds the review to no requirement, ``principles: true`` to every principle."""
+    assert load_method(method_dir, principles=PRINCIPLES, requirements={}, registry=()).requirements == ()
+    held = load_method(method_dir, principles=PRINCIPLES, requirements={'principles': True}, registry=())
+    assert [row['id'] for row in held.requirements] == [p['id'] for p in PRINCIPLES]
+    assert {row['kind'] for row in held.requirements} == {'principle'}
+
+
+def test_an_architecture_document_is_a_requirement_and_a_rule_a_finding_may_name(method_dir):
+    """Its id joins the ``rule`` enum after the principles and the registry; undeclared, it is no rule (CONTROL)."""
+    given = {'principles': True, 'architecture': [_document('AGENTS.md'), _document('docs/architecture.md')]}
+    method = load_method(method_dir, principles=PRINCIPLES, requirements=given, registry=('R1',))
+    ids = [row['id'] for row in method.requirements]
+    assert ids[-2:] == ['arch:AGENTS.md', 'arch:docs/architecture.md']
+    assert method.rule_ids == (*(p['id'] for p in PRINCIPLES), 'R1', 'arch:AGENTS.md', 'arch:docs/architecture.md')
+    assert method.finding_schema['properties']['rule']['enum'] == list(method.rule_ids)
+    bare = load_method(method_dir, principles=PRINCIPLES, requirements={}, registry=('R1',))
+    assert 'arch:AGENTS.md' not in bare.finding_schema['properties']['rule']['enum']
+
+
+@pytest.mark.parametrize(
+    ('given', 'refused'),
+    [
+        ({'rules': True}, r"names \['rules'\]"),
+        ({'principles': False}, 'principles is False'),
+        ({'principles': ['occams-razor']}, 'principles is'),
+        ({'architecture': {}}, 'architecture is not a list'),
+        ({'architecture': [{**_document('a.md'), 'id': 'a.md'}]}, 'an architecture requirement is exactly'),
+        ({'architecture': [{**_document('a.md'), 'text': ' '}]}, 'an architecture requirement is exactly'),
+        ({'architecture': [{**_document('a.md'), 'extra': 'x'}]}, 'an architecture requirement is exactly'),
+        ({'architecture': [{'id': 'arch:a.md', 'path': 'a.md', 'text': 'x'}]}, 'an architecture requirement is'),
+        ({'architecture': [_document('a.md'), _document('a.md')]}, r"given twice: \['arch:a.md'\]"),
+    ],
+)
+def test_a_requirements_object_of_the_wrong_shape_is_refused_by_name(method_dir, given, refused):
+    with pytest.raises((ValueError, TypeError), match=refused):
+        load_method(method_dir, principles=PRINCIPLES, requirements=given, registry=())

@@ -10,7 +10,7 @@ from ai_lab.review.__main__ import main
 from ai_lab.review.method import load_method
 from ai_lab.review.rules import finding_id, merge
 from ai_lab.review.summary import change_summary, git_intent, parse_log
-from tests.review_principles import PRINCIPLES, PRINCIPLES_FILE
+from tests.review_principles import CALLER_ARGS, PRINCIPLES
 from tests.unit.test_review_run import _errors
 
 
@@ -94,7 +94,7 @@ def test_git_intent_reads_commits_and_the_memory_the_range_adds(tmp_path):
 
 @pytest.fixture(scope='module')
 def method(method_dir):
-    return load_method(method_dir, principles=PRINCIPLES, registry=())
+    return load_method(method_dir, principles=PRINCIPLES, requirements={}, registry=())
 
 
 FINDING = {'severity': 'HIGH', 'security': False, 'rule': 'occams-razor', 'file': 'a.py', 'anchor': 'k = 1',
@@ -128,7 +128,7 @@ def _ok_call(request):
 
 
 def test_the_cli_puts_the_summary_first_and_honors_disposed(method_dir, tmp_path, capsys):
-    fid = finding_id(load_method(principles=PRINCIPLES, registry=()).spec['merge']['id'], FINDING)
+    fid = finding_id(load_method(principles=PRINCIPLES, requirements={}, registry=()).spec['merge']['id'], FINDING)
     disposed = tmp_path / 'disposed.json'
     disposed.write_text(json.dumps({'disposed': [{'id': fid, 'reason': 'wontfix'}]}), encoding='utf-8')
     body = tmp_path / 'pr.md'
@@ -139,7 +139,7 @@ def test_the_cli_puts_the_summary_first_and_honors_disposed(method_dir, tmp_path
         seen.append(range_)
         return {**INTENT, 'memory': []}
 
-    argv = ['--principles', str(PRINCIPLES_FILE), '--rules', '', '--method', str(method_dir), '--range', 'a..b',
+    argv = [*CALLER_ARGS, '--rules', '', '--method', str(method_dir), '--range', 'a..b',
             '--model', 'm', '--disposed', str(disposed), '--pr-body', str(body)]  # fmt: skip
     assert main(argv, call=lambda r: calls.append(r) or _ok_call(r), numstat=lambda *a, **k: [(1, 0, 'k.py')],
                 diff=_no_diff, intent=intent) == 0  # fmt: skip
@@ -150,11 +150,13 @@ def test_the_cli_puts_the_summary_first_and_honors_disposed(method_dir, tmp_path
     assert doc['disposed'] == [{'id': fid, 'reason': 'wontfix'}]
     assert seen == ['a..b']
     assert any('PR says why' in c['context'][0]['text'] for c in calls)
-    assert _errors(load_method(method_dir, principles=PRINCIPLES, registry=()).output_schema, doc) == []
+    assert (
+        _errors(load_method(method_dir, principles=PRINCIPLES, requirements={}, registry=()).output_schema, doc) == []
+    )
 
 
 def test_no_summary_skips_the_summary_call(method_dir, capsys):
-    argv = ['--principles', str(PRINCIPLES_FILE), '--rules', '', '--method', str(method_dir), '--range', 'a..b',
+    argv = [*CALLER_ARGS, '--rules', '', '--method', str(method_dir), '--range', 'a..b',
             '--model', 'm', '--no-summary']  # fmt: skip
     assert main(argv, call=_ok_call, numstat=lambda *a, **k: [(1, 0, 'k.py')], diff=_no_diff, intent=None) == 0
     assert 'summary' not in json.loads(capsys.readouterr().out)

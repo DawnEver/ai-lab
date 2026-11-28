@@ -4,6 +4,8 @@ This change is small: its WHOLE diff is below, with its map. Review it; read the
 
 {{rules}}
 
+{{requirements}}
+
 {{output_contract}}
 
 Change map:

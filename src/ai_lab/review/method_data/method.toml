@@ -52,6 +52,7 @@ trim = true
 rules = "prompts/rules.md"
 output_contract = "prompts/output-contract.md"
 requests = "prompts/requests.md"
+requirements = "prompts/requirements.md"
 
 [run_modes.interactive]
 call_modes = [
@@ -161,6 +162,26 @@ fields = [
 ]
 normalize = "each field stripped and its whitespace runs collapsed to one space; joined by a newline"
 means = "a finding is the same finding in every round and every reviewer while its rule, file and anchor line are: ids never carry a line number or a date"
+
+[merge.requirements]
+reply_verdicts = [
+  "met",
+  "violated",
+  "amended",
+  "untouched",
+]
+precedence = [
+  "violated",
+  "amended",
+  "unverified",
+  "met",
+  "untouched",
+]
+unverified = "unverified"
+missing_evidence = "no reviewer returned a verdict on this requirement"
+ungrounded_prefix = "not grounded: no cite is a file this change touches"
+combine = "per requirement id, over every ok reviewer's valid rows: the verdict first in precedence wins, with its first-seen row's evidence; cites are the ordered union of every row's; a requirement no ok reviewer returned a valid row for is `unverified` with `missing_evidence`. A row naming an unknown id, a verdict outside reply_verdicts or a field of the wrong type is dropped. Listed in requirement order, and only when the caller declared a requirement"
+ungrounded = "after the merge, a violated row none of whose cites (the part before the first ':') is a file the whole change touches becomes `unverified`, its evidence prefixed with ungrounded_prefix"
 
 [merge.escalate]
 severity = "the most severe any reviewer of the group gave, by severity_order"

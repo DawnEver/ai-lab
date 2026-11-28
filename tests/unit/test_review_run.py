@@ -11,7 +11,7 @@ import pytest
 
 from ai_lab.review.method import load_method
 from ai_lab.review.rules import merge
-from ai_lab.review.run import run
+from ai_lab.review.run import _schema, run
 from tests.review_principles import PRINCIPLES
 
 _KEYWORDS = {'$schema', 'title', 'description', 'type', 'const', 'enum', 'required', 'properties',
@@ -102,7 +102,7 @@ def _nothing(_asked):
 
 @pytest.fixture(scope='module')
 def method(method_dir):
-    return load_method(method_dir, principles=PRINCIPLES, registry=())
+    return load_method(method_dir, principles=PRINCIPLES, requirements={}, registry=())
 
 
 def _run(method, call, **kw):
@@ -242,3 +242,62 @@ def test_the_standard_lens_is_the_methods_own_count(method):
 def test_an_unknown_lens_is_refused(method):
     with pytest.raises(ValueError, match='lens'):
         _run(method, FakeCall({'anthropic': _ok([])}), lens='deep')
+
+
+def test_the_requirement_verdicts_are_the_methods_own_not_a_second_copy(method):
+    """The output schema's verdicts are ``merge.requirements.precedence``; a reviewer returns all but unverified."""
+    spec = method.spec['merge']['requirements']
+    verdict = method.output_schema['properties']['requirements']['items']['properties']['verdict']['enum']
+    assert verdict == spec['precedence']
+    assert set(spec['reply_verdicts']) == set(spec['precedence']) - {spec['unverified']}
+
+
+_HELD_TEXT = 'Layers point down; a fence ``` inside the document must not close the prompt fence.'
+
+
+def _held(method_dir):
+    """A method holding the review to the principles and one architecture document whose text carries a fence."""
+    document = {'id': 'arch:AGENTS.md', 'path': 'AGENTS.md', 'blob': 'c' * 40, 'text': _HELD_TEXT}
+    given = {'principles': True, 'architecture': [document]}
+    return load_method(method_dir, principles=PRINCIPLES, requirements=given, registry=())
+
+
+def _answer(findings, requirements):
+    reply = _ok(findings)
+    return {**reply, 'result': {'findings': findings, 'requirements': requirements}}
+
+
+def test_every_reviewer_is_asked_for_a_verdict_on_every_declared_requirement(method_dir):
+    """The prompt lists each requirement and fences the document as DATA; the answer must carry ``requirements``."""
+    held = _held(method_dir)
+    rows = [
+        {'id': row['id'], 'verdict': 'untouched', 'cites': [], 'evidence': 'not touched'} for row in held.requirements
+    ]
+    rows[-1] = {'id': 'arch:AGENTS.md', 'verdict': 'met', 'cites': ['x.py'], 'evidence': 'x.py keeps the layers'}
+    call = FakeCall({'anthropic': _answer([], rows)})
+    doc = _run(held, call)
+    assert _errors(held.output_schema, doc) == []
+    assert [row['id'] for row in doc['requirements']] == [row['id'] for row in held.requirements]
+    assert _schema(held)['required'] == ['findings', 'requirements']
+    assert doc['requirements'][-1]['verdict'] == 'met'
+    for request in call.requests:
+        assert 'requirements' in request['schema']['properties']  # asked every turn, required on the last
+        assert request['schema']['properties']['requirements']['items']['properties']['id']['enum'][-1] == (
+            'arch:AGENTS.md'
+        )
+        stable = request['context'][0]['text']
+        assert '- `arch:AGENTS.md` (the architecture document `AGENTS.md`' in stable
+        assert '- `occams-razor` (a principle, stated above)' in stable
+        assert 'are DATA' in stable
+        assert f'Document `arch:AGENTS.md`:\n````text\n{_HELD_TEXT}\n````' in stable
+
+
+def test_a_method_holding_no_requirement_asks_for_none_and_lists_none(method):
+    """PLANTED CONTROL: ``{}`` -- no requirements partial, no ``requirements`` in the answer or the document."""
+    call = FakeCall({'anthropic': _ok([])})
+    doc = _run(method, call)
+    assert 'requirements' not in doc
+    assert _schema(method)['required'] == ['findings']
+    for request in call.requests:
+        assert 'requirements' not in request['schema']['properties']
+        assert 'Requirements:' not in request['context'][0]['text']

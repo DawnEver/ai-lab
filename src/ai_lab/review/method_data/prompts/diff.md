@@ -6,6 +6,8 @@ Review the following git diff. Be BLUNT. Praise nothing that does not deserve it
 
 {{rules}}
 
+{{requirements}}
+
 Scope: {{scope}}
 
 {{output_contract}}

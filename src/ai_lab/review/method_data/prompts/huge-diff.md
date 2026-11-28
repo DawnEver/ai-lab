@@ -4,6 +4,8 @@ This change is too large to read file by file. Below are its DIRECTORY-level map
 
 {{rules}}
 
+{{requirements}}
+
 {{output_contract}}
 
 Change map:

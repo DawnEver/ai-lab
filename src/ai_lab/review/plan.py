@@ -21,11 +21,13 @@ from typing import Final
 from ai_lab.client import Provider, catalogue
 from ai_lab.review.method import (
     METHOD_DIR,
+    REQUIREMENTS_HELP,
     Method,
     UnknownMethodVersion,
     configured_providers,
     load_method,
     principle_list,
+    requirement_file,
     rule_ids,
 )
 from ai_lab.review.rules import pick, render_prompt
@@ -222,9 +224,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         '--principles', help='a JSON file {"principles": [{id, name, statement}]} (required: the caller owns them)'
     )
+    parser.add_argument('--requirements', help=REQUIREMENTS_HELP)
     args = parser.parse_args(argv)
     try:
-        method = load_method(args.method, principles=principle_list(args.principles), registry=rule_ids(args.rules))
+        method = load_method(
+            args.method,
+            principles=principle_list(args.principles),
+            registry=rule_ids(args.rules),
+            requirements=requirement_file(args.requirements),
+        )
         plan = build_plan(method, **_request(sys.stdin.read(), method.spec['pick']['count']))
     except (FileNotFoundError, UnknownMethodVersion, ValueError, TypeError) as refused:
         sys.stderr.write(f'refused: {refused}\n')

@@ -47,12 +47,14 @@ from ai_lab.call import answer
 from ai_lab.review.explore import TURN_BYTES, TURNS, change_map, serve
 from ai_lab.review.method import (
     METHOD_DIR,
+    REQUIREMENTS_HELP,
     REVIEW_TASK,
     Method,
     UnknownMethodVersion,
     configured_providers,
     load_method,
     principle_list,
+    requirement_file,
     rule_ids,
 )
 from ai_lab.review.run import explored
@@ -315,6 +317,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument('--model', required=True, help='the model id for the provider the method names none for')
     parser.add_argument('--rules', help='the registry rule ids, comma-separated (required)')
     parser.add_argument('--principles', help='a JSON file {"principles": [{id, name, statement}]} (required)')
+    parser.add_argument('--requirements', help=REQUIREMENTS_HELP)
     parser.add_argument('--findings', required=True, help='a JSON file {"findings": [...]}: the open findings')
     parser.add_argument('--max-calls', type=int, default=MAX_CALLS, help='the run budget in calls')
     parser.add_argument('--max-bytes', type=int, default=MAX_BYTES, help='the run budget in context bytes sent')
@@ -329,7 +332,12 @@ def main(
     """Judge every finding against the range's head and print the verdicts JSON; exit 2 on a refused invocation."""
     args = _parser().parse_args(argv)
     try:
-        method = load_method(METHOD_DIR, principles=principle_list(args.principles), registry=rule_ids(args.rules))
+        method = load_method(
+            METHOD_DIR,
+            principles=principle_list(args.principles),
+            registry=rule_ids(args.rules),
+            requirements=requirement_file(args.requirements),
+        )
         findings = _findings(args.findings)
         source: Source = BundleSource(Path(args.bundle)) if args.bundle else GitSource(args.range_, args.repo)
         rows = source.numstat()
@@ -340,7 +348,7 @@ def main(
     mode = method.spec['run_modes']['headless']
     providers = configured_providers({}, 'headless') or mode['providers']
     mapped = change_map(source.label, rows)
-    known = frozenset([*(p['id'] for p in method.principles), *method.registry])
+    known = frozenset(method.rule_ids)
 
     def verdicts_of(call: Callable[[Mapping], Mapping]) -> list[dict]:
         metered = _Metered(call, calls=args.max_calls, size=args.max_bytes)

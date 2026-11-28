@@ -131,9 +131,19 @@ object, so the reply's shape changed and the version moved. A caller prices the 
 
 ```
 python -m ai_lab.review [--method <dir>] --range main...HEAD --model <model id>
+                        --rules <ids> --principles <file> --requirements <file>
                         [--providers anthropic ...] [--repo <path>]
-python -m ai_lab.review.merge [--method <dir>]   < run-record.json
+python -m ai_lab.review.merge [--method <dir>] --rules <ids> --principles <file> --requirements <file>
+                              < run-record.json
 ```
+
+What a review is held to is its CALLER's (dev-lab owns it): the registry ids (`--rules`), the principles
+(`--principles`) and the REQUIREMENTS (`--requirements`, `{"principles": true, "architecture": [{id, path, blob,
+text}]}`; `{}` declares none). Every reviewer returns a verdict on each requirement -- `met`, `violated`,
+`amended` or `untouched`, with the changed files it cites -- and the document lists one per requirement under
+`requirements`, `unverified` when no reviewer answered or a `violated` one cites no file the change touches.
+An architecture document's id (`arch:<path>`) is also a `rule` a finding may name; its text is fenced in the
+prompt as data, never instructions.
 
 The review METHOD is ai-lab's own data, packaged as `ai_lab/review/method_data/` (it moved here from
 cc-market under PLAN-a-short-robust-toolchain P4): profiles, prompt templates, the finding schema and the

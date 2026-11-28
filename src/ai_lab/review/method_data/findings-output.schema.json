@@ -279,7 +279,7 @@
           },
           "security": {
             "type": "boolean",
-            "description": "true when any reviewer of this finding called it a security defect. A HIGH or security finding blocks the merge until a later round confirms it fixed or the integrator disposes of it."
+            "description": "true when any reviewer of this finding called it a security defect. The review is advisory: a security finding alone holds the merge; every other finding, HIGH included, is advice."
           },
           "rule": {
             "type": "string",

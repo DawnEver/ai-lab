@@ -2,4 +2,4 @@ Rules (not exhaustive; also the repo's CLAUDE.md, AGENTS.md, .claude/rules/). Ev
 Principles:
 {{principle_list}}
 Registry rules (the family registry, by id): {{registry_list}}
-Severity: HIGH is a defect that must not merge; MEDIUM and LOW never block. `security` is true for a security defect, whatever its severity.
+Severity: HIGH is the most severe defect, then MEDIUM, then LOW; the review is advisory, and no finding holds the merge but a `security` one. `security` is true for a security defect, whatever its severity.

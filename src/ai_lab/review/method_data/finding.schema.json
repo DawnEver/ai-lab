@@ -4,7 +4,7 @@
   "type": "object",
   "required": ["severity", "security", "rule", "file", "anchor", "summary", "category"],
   "properties": {
-    "severity": { "type": "string", "enum": ["HIGH", "MEDIUM", "LOW"], "description": "HIGH blocks the merge until fixed or disposed; MEDIUM and LOW do not." },
+    "severity": { "type": "string", "enum": ["HIGH", "MEDIUM", "LOW"], "description": "HIGH is the most severe advice, then MEDIUM, then LOW: none holds the merge (the review is advisory; only security does)." },
     "security": { "type": "boolean", "description": "true when the finding is a security defect; a security finding blocks the merge whatever its severity." },
     "rule": { "type": "string", "description": "The ONE id this finding violates: a principle id or a registry rule id from the list above; an unknown id refuses the finding." },
     "file": { "type": "string", "description": "The repo-relative path, no line number." },

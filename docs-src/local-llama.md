@@ -87,8 +87,10 @@ curl -s localhost:8080/v1/messages -H 'content-type: application/json' \
   -d '{"model":"qwen3.8-27b","max_tokens":32,"messages":[{"role":"user","content":"hi"}]}'
 ```
 
-A started server is detached and keeps the model loaded until you stop it (`taskkill /IM
-llama-server.exe /F`, or `pkill llama-server`).
+A launcher (`ccla`, `codla`) passes `--holder <its pid>` and runs `python -m ai_lab.serve release llamacpp
+--holder <pid>` when its session ends: the server ai_lab.serve started stops once no live session holds it,
+so the model's VRAM is freed with the last session. A server you started yourself (or `ensure` without
+`--holder`) is never stopped; stop it with `taskkill /IM llama-server.exe /F` or `pkill llama-server`.
 
 ## Another model
 
